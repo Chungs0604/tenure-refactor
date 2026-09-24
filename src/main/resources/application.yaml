@@ -1,0 +1,74 @@
+spring:
+  application:
+    name: tenure
+
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:tenure}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    open-in-view: false           # Service 가 DTO 를 반환하므로 불필요
+    hibernate:
+      ddl-auto: validate          # Flyway 가 정본. update/create 금지
+    properties:
+      hibernate:
+        default_batch_fetch_size: 100
+        format_sql: true
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+
+app:
+  jwt:
+    # HS256 서명 키. 최소 32바이트. 값은 .env 로 분리했다(.env.example 참고)
+    secret: ${JWT_SECRET}
+    access-expiration: 30m
+    refresh-expiration: 14d
+    # '로그인 상태 유지' 를 켰을 때 (API-001 keepLoggedIn)
+    refresh-expiration-keep-logged-in: 90d
+
+  storage:
+    # local | s3 — 배포 시 환경변수만 바꿔서 전환
+    type: ${STORAGE_TYPE:local}
+    local:
+      base-dir: ${UPLOAD_DIR:./uploads}
+      base-url: ${UPLOAD_BASE_URL:/uploads}
+    s3:
+      bucket: ${AWS_S3_BUCKET:}
+      region: ${AWS_REGION:ap-northeast-2}
+      # CDN 을 붙이면 여기만 바꾼다. 비우면 S3 기본 엔드포인트를 쓴다
+      base-url: ${AWS_S3_BASE_URL:}
+
+springdoc:
+  # 운영에서는 SWAGGER_ENABLED=false 로 끈다. 켜두면 스키마가 그대로 공개된다
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:true}
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:true}
+
+logging:
+  pattern:
+    # Boot 기본 CONSOLE_LOG_PATTERN 을 덮어쓰지 않는다. 덮으면 ISO-8601 타임스탬프·PID·
+    # 애플리케이션명이 사라지고, %clr() 이 빠져 색까지 전부 죽는다.
+    # 기본 패턴이 비워둔 correlation 슬롯에 traceId 만 끼워 넣는다.
+    correlation: "[%X{traceId:-________}] "
+  level:
+    org.hibernate.orm.jdbc.bind: trace
