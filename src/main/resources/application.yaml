@@ -2,9 +2,15 @@ spring:
   application:
     name: tenure
 
+  # 비밀값은 .env 에서 읽는다. .env 는 KEY=VALUE 형식이라 properties 로 그대로 파싱된다.
+  # optional: 이라 파일이 없어도 기동은 되고, 없는 값은 주입 시점에 에러가 난다.
+  # 이 줄이 있으면 IDE 실행 구성이나 EnvFile 플러그인에 따로 넣지 않아도 된다.
+  config:
+    import: optional:file:.env[.properties]
+
   datasource:
     url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:tenure}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-    username: ${DB_USERNAME:root}
+    username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
