@@ -4256,20 +4256,20 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 
 ### 이번 점검에서 확정한 것
 
-- **판매·구매 내역을 엔드포인트 하나로 합쳤다** — `제안받음`/`제안중` 탭을 별도 엔드포인트로 두면
-  `전체` 탭에서 제안과 거래를 클라이언트가 합쳐야 하고 그 순간 페이징이 깨진다. `API-161`·`API-162` 가
-  `rowType` 유니온으로 4개 탭을 전부 담는다
-- **`API-079` 의 단위를 사진으로 바꿨다** — `post_item_tag` 는 `post_image_id` 에 매달린다
-- **`ix_item_search`·`ix_item_listing_browse` 를 제거했다** — 쓰는 엔드포인트가 없다(`IDX-003`)
-- **`API-017` 의 노출 필드를 피그마로 확정했다**(`DEC-011`) — `grade`·`heightCm`·`weightKg`·`itemCount` 를 싣고
-  `gender` 는 뺐다. 헤더가 `레코드 사용자 | 168cm · 58kg` + 카운터 3종이다
-- **`API-071` 태그에 `saleStatus` 를 추가했다**(`DEC-012`) — 말풍선이 `#판매중` 을 2행으로 붙인다
-- **`email_verification` 테이블을 없애고 Redis 로 옮겼다**(`DEC-009`) — TTL 휘발 데이터인데
-  refresh token(`DEC-010`)과 저장소 결정이 엇갈려 있었다. `V3` 가 테이블을 내린다
-- **ErrorCode enum 이름을 코드 접두사에 맞췄다** — `PayoutAccountErrorCode`→`PayoutErrorCode`,
-  `TradeErrorCode`→`OrderErrorCode`. 이름과 접두사가 어긋나 있었다
-- **ErrorCode 의 도메인 패키지 배치표를 §5 에 넣었다** — `schema.yaml` 의 도메인 8개와
-  enum 16개가 1:1 이 아니라서, 어느 패키지에 놓이는지 근거가 없었다
+판단의 정본은 `schema.yaml` 의 `design_decisions` 다. 여기에는 결론만 적는다.
+
+| ID | 내용 |
+|---|---|
+| `DEC-009` | `email_verification` 테이블을 없애고 **Redis** 로 옮겼다. TTL 휘발 데이터인데 refresh token(`DEC-010`)과 저장소 결정이 엇갈려 있었다. `V3` 가 테이블을 내린다 |
+| `DEC-101` | `API-017` 의 노출 필드를 피그마로 확정했다 — `grade`·`heightCm`·`weightKg`·`itemCount` 를 싣고 `gender` 는 뺐다 |
+| `DEC-102` | `API-071` 태그에 `saleStatus` 를 추가했다. 말풍선이 `#판매중` 을 2행으로 붙인다 |
+| `DEC-103` | 판매·구매 내역을 엔드포인트 하나로 합쳤다. `rowType` 유니온으로 4개 탭을 담는다 |
+| `DEC-104` | `API-079` 의 조회 단위를 게시물에서 **사진**으로 바꿨다 |
+| `DEC-105` | ErrorCode enum 이름을 코드 접두사에 맞췄다. 예외 없음 |
+| `IDX-003` | `ix_item_search`·`ix_item_listing_browse` 를 제거했다. 쓰는 엔드포인트가 없다 |
+
+그 밖에 **도메인 패키지 배치표를 §5 에 넣었다** — 도메인과 ErrorCode 가 1:1 이 아니라
+어느 패키지에 놓이는지 근거가 없었다.
 
 ### 범위 밖으로 둔 것
 
