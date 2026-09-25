@@ -37,6 +37,21 @@ Spring Boot 는 `.env` 를 자동으로 읽지 않는다. 둘 중 하나로 주�
 
 코드를 변경한 뒤에는 반드시 테스트를 실행하고 결과를 보고할 것.
 
+## 브랜치
+
+`feat/<개발 API명>`. 전역 규약의 작업 흐름(브랜치 → PR → `develop` 병합)을 그대로 따르되
+이름만 이 형태로 쓴다.
+
+```
+feat/login        feat/signup        feat/post
+```
+
+`develop` 에서 따고 PR base 도 `develop` 이다. 저장소 기본 브랜치는 `main` 이라
+PR 을 열 때 base 를 명시해야 한다 — `gh pr create --base develop`.
+
+API ID(`API-001` 등)는 브랜치명이 아니라 **PR 본문의 `변경된 API`** 에 적는다.
+`docs/api-spec.md` 와 대조하기 위해서다.
+
 ## 구조
 
 ```
