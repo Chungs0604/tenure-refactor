@@ -2,7 +2,7 @@
 
 > **피그마** [Tenure UXUI 작업](https://www.figma.com/design/hnEDDkiI0V4js9JzWR2l2M/Tenure-UXUI-%EC%9E%91%EC%97%85?node-id=813-8486&m=dev)
 > **범위** 캔버스 `2. 최종 UI`(`813:8486`) 33개 섹션 전체. 보조로 `4. 랜딩페이지`(`5359:57698`)의 서비스 IA·거래 플로우
-> **생성일** 2026-09-24 · **DB** MySQL 8 · **테이블** 39개 · **컬럼** 317개
+> **생성일** 2026-09-24 · **DB** MySQL 8 · **테이블** 38개 · **컬럼** 307개
 > **정본** [`schema.yaml`](./schema.yaml) — 이 문서의 §2 관계 요약표, §4 화면 인벤토리, §5 컬럼 명세는 정본에서 생성된다
 
 ---
@@ -225,18 +225,6 @@ erDiagram
         varchar agreement_type "AgreementType"
         boolean agreed
         datetime agreed_at
-    }
-    email_verification {
-        bigint id PK
-        varchar email
-        varchar purpose "VerificationPurpose"
-        varchar code
-        datetime expires_at
-        datetime verified_at
-        varchar token UK
-        datetime token_expires_at
-        datetime consumed_at "1회용"
-        datetime created_at
     }
     user_withdrawal {
         bigint id PK
@@ -672,8 +660,8 @@ erDiagram
 | ID | 화면 | 목적 | 엔티티 | 액션 | 인증 | 소프트삭제 |
 |---|---|---|---|---|:--:|---|
 | SCR-001 | 온보딩 / 로그인 | 이메일·비밀번호 로그인, 로그인 상태 유지 | `user` | read | X | — |
-| SCR-002 | 회원가입 | 계정 생성 → 이메일 인증 → 약관 동의 → 주소 등록 → 프로필 작성 | `user`, `email_verification`, `user_agreement`, `shipping_address` | create | X | — |
-| SCR-003 | 비밀번호 찾기 | 이메일 인증 후 새 비밀번호 설정 | `user`, `email_verification` | update | X | — |
+| SCR-002 | 회원가입 | 계정 생성 → 이메일 인증 → 약관 동의 → 주소 등록 → 프로필 작성 | `user`, `user_agreement`, `shipping_address` | create | X | — |
+| SCR-003 | 비밀번호 찾기 | 이메일 인증 후 새 비밀번호 설정 | `user` | update | X | — |
 | SCR-004 | 계정 정보 (로그인 정보) | 실명·휴대폰번호·계정 이메일 조회 | `user` | read | O | — |
 | SCR-005 | 프로필 수정 | 프로필 사진·닉네임·성별·키·몸무게 변경 | `user` | read, update | O | — |
 | SCR-006 | 배송지 관리 | 배송지 목록·추가·수정·삭제, 기본 배송지 지정 | `shipping_address` | read, create, update, delete | O | — |
@@ -826,34 +814,6 @@ erDiagram
 | `agreed_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 동의 시점 기록 |
 
 인덱스: `uk_user_agreement`(user_id, agreement_type) · UNIQUE
-
-#### `email_verification` (EmailVerification)
-
-이메일 인증번호와, 인증 완료를 증명하는 1회용 토큰. 가입 전 단계라 User 와 FK 로 묶이지 않는다. (email, purpose) 당 항상 최신 1행만 존재한다.
-
-- **삭제 정책** `C` — 만료·소비된 행은 배치로 정리한다. 재발급 시에도 이전 행을 즉시 삭제해 (email, purpose) 당 1행만 유지한다
-- **soft delete** X
-- **화면 근거** 회원가입, 비밀번호 찾기
-
-| 컬럼 | 타입 | Java 타입 | PK | 필수 | 유니크 | 출처 | 설명 |
-|---|---|---|:--:|:--:|:--:|---|---|
-| `id` | BIGINT | Long | O | O |  | `inferred` | PK 관례 |
-| `email` | VARCHAR(255) | String |  | O |  | `design` | 인증 대상 이메일. user 생성 전이라 FK 불가 |
-| `purpose` | VARCHAR(20) | VerificationPurpose |  | O |  | `design` | 회원가입 / 비밀번호 찾기 두 플로우 |
-| `code` | VARCHAR(10) | String |  | O |  | `design` | '인증번호'. '인증번호가 틀렸습니다' |
-| `expires_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 인증번호 만료 시각 (발급 +3분). 토큰 수명과는 별개다 |
-| `verified_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | '인증되었습니다.' 인증번호 확인 시각. 이 시점에 token 이 발급된다 |
-| `token` | VARCHAR(64) | String |  |  | O | `inferred` | 인증 완료를 증명하는 1회용 토큰. 인증번호 확인(API-005) 시 발급되며 가입·비밀번호 재설정에 제시한다 |
-| `token_expires_at` | DATETIME(6) | LocalDateTime |  |  |  | `inferred` | 토큰 만료 시각 (발급 +10분). 가입 플로우(약관→주소→프로필)를 마칠 여유를 준다 |
-| `consumed_at` | DATETIME(6) | LocalDateTime |  |  |  | `inferred` | 토큰 소비 시각. **재사용 차단의 핵심** — NULL 이 아니면 이미 쓴 토큰이다 |
-| `created_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 감사 컬럼 관례 |
-
-인덱스: `uk_email_verification_token`(token) · UNIQUE, `uk_email_verification_target`(email, purpose) · UNIQUE
-
-> 제약 — 재발급 시 같은 (email, purpose) 의 기존 행을 DELETE 하고 새로 INSERT 한다. 항상 최신 1행만 남는다 *(강제: application)*
-> 제약 — 토큰 검증은 token 일치 + token_expires_at 미경과 + consumed_at IS NULL + purpose 일치를 모두 만족해야 한다 *(강제: application)*
-> 제약 — 토큰 소비(가입 완료·비밀번호 재설정) 시 consumed_at 을 세팅한다. 이미 소비된 토큰은 거부한다 *(강제: application)*
-> 제약 — purpose 는 토큰에 바인딩된다. SIGN_UP 토큰으로 PASSWORD_RESET 을 수행할 수 없다 *(강제: application)*
 
 #### `user_withdrawal` (UserWithdrawal)
 
@@ -1136,7 +1096,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `id` | BIGINT | Long | O | O |  | `inferred` | PK 관례 |
 | `parent_id` | BIGINT | Long |  |  |  | `design` | depth=1 이면 NULL |
 | `name` | VARCHAR(50) | String |  | O |  | `design` | 대분류 10종(화면 순서): 아우터·상의·하의·신발·가방·모자·치마·원피스·액세서리·주얼리. 세부 102종. 값은 `V2__seed_category.sql` 이 정본 |
-| `depth` | TINYINT | Integer |  | O |  | `design` | 1=카테고리, 2=세부 카테고리 |
+| `depth` | TINYINT | Byte |  | O |  | `design` | 1=카테고리, 2=세부 카테고리 |
 | `size_scheme` | VARCHAR(30) | String |  |  |  | `design` | '아이템 상세 정보 수정 (카테고리마다 세부 카테고리, 사이즈 다름)' — 카테고리별 사이즈 체계가 다르다(→ Q6) |
 | `sort_order` | SMALLINT | Short |  | O |  | `inferred` | 드롭다운 노출 순서 |
 
@@ -1689,7 +1649,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 |---|---|---|
 | **A** | `deleted_at` 보유 | `post`, `item` |
 | **B** | 상태 컬럼으로 대체 | `user`(status), `item_listing`(sale_status·closed_at), `chat_room`, `chat_room_member`(left_at) |
-| **C** | 하드 삭제 | `follow`, `user_block`, `email_verification`, `shipping_address`, `payout_account`, `notification_setting`, `notification`, `search_history`, `recent_view`, `wishlist`, `post_like`, `post_save`, `post_image`, `post_item_tag`, `item_image`, `item_measurement`, `item_condition`, `category`, `listing_featured_post`, `chat_message` |
+| **C** | 하드 삭제 | `follow`, `user_block`, `shipping_address`, `payout_account`, `notification_setting`, `notification`, `search_history`, `recent_view`, `wishlist`, `post_like`, `post_save`, `post_image`, `post_item_tag`, `item_image`, `item_measurement`, `item_condition`, `category`, `listing_featured_post`, `chat_message` |
 | **D** | append-only (삭제 금지) | `item_ownership`, `item_wear_record`, `purchase_offer`, `payment`, `trade_order`, `order_shipment`, `order_status_history`, `settlement`, `user_agreement`, `user_withdrawal`, `user_grade_history`, `report`, `post_tag_edit_log` |
 
 ### 규칙
@@ -1739,7 +1699,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 
 ### 6-2. 인덱스 설계 결정
 
-관계 요약표의 FK **69개 전부**에 인덱스를 걸었다(총 86개). 아래 세 건은 판단이 갈린 지점이라 근거를 남긴다.
+관계 요약표의 FK **69개 전부**에 인덱스를 걸었다(총 84개). 아래 세 건은 판단이 갈린 지점이라 근거를 남긴다.
 
 **IDX-001 — notification 의 (target_type, target_id) 복합 인덱스를 두지 않는다**
 
@@ -1810,6 +1770,30 @@ user.default_shipping_fee 컬럼을 만들지 않는다. 그 결과 미판매 �
 *재검토 시점:* 설정 화면이 디자인되면 컬럼을 추가한다
 
 ---
+
+**DEC-009 — 이메일 인증번호·토큰의 저장소**
+
+> 결정: **Redis (RDB 테이블 없음)**
+
+인증번호(3분)와 인증 토큰(10분)은 **TTL 이 있는 휘발 데이터**다. `DEC-010` 이 refresh token 에
+적용한 기준을 그대로 적용해 RDB 에 두지 않는다.
+
+```
+email-verify:{purpose}:{email}   → 인증번호·인증 여부   TTL 180s
+email-verify-token:{token}       → {purpose}:{email}    TTL 600s
+```
+
+- 만료가 TTL 로 끝나 **정리 배치가 필요 없다**
+- 재발급은 `SET` 덮어쓰기라 이전 것이 자동 무효화된다 — `(email, purpose)` 당 1행을 키가 강제한다
+- 1회용은 `GETDEL` 이 조회와 삭제를 원자적으로 처리해 **`consumed_at` 플래그 자체가 필요 없다**
+- JWT 자체 서명은 **재사용을 막을 수 없어** 배제한다. 비밀번호 재설정 토큰이 유출되면 수명 내내 반복 변경이 가능하다
+
+*경위:* 최초 설계는 `email_verification` 테이블이었다. `DEC-010` 과 같은 성격의 데이터인데
+저장소 결정이 엇갈려 있었고, `V3` 에서 테이블을 제거했다.
+
+*재검토 시점:* 발송 횟수 제한·어뷰징 추적처럼 **이력**이 필요해지면 별도 테이블을 검토한다.
+인증 자체는 Redis 에 둔 채 시도 기록만 쌓는 편이 낫다.
+
 
 **DEC-010 — refresh token 저장소**
 
@@ -1971,6 +1955,7 @@ INSERT 대신 `voided_at` 을 `NULL` 로 되돌리는 규칙을 제약으로 두
   `post_item_tag` 만 영속화하고 후보는 휘발시킨다. AI 는 외부 서비스로 본다
 - **태그 수정 이력** — `post_tag_edit_log` 는 정의만 하고 `MVP 외`
 - **로그아웃 · 공유하기** — 저장 대상 없음
+- **`email_verification` 테이블** — Redis 로 관리한다(`DEC-009`)
 - **refresh token 테이블** — Redis 로 관리한다(`DEC-010`). `spring-boot-starter-data-redis` 의존성이 필요하다
 - **관리자 기능** — 신고 접수 후 운영자가 게시물·아이템을 내리는 흐름. `report` 는 접수까지만 담는다
 - **탈퇴 후 재가입 시 제안 기회 초기화** — 알고 넘어간다. 막으려면 탈퇴자 식별 정보를 보관해야 해 즉시 익명화 원칙과 충돌한다

@@ -54,9 +54,9 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | API-001 | `POST` | `/api/v1/auth/login` | 이메일·비밀번호 로그인 | SCR-001 | User | X |
 | API-002 | `POST` | `/api/v1/auth/logout` | 로그아웃 (refresh token 무효화) | SCR-010 | — | O |
 | API-003 | `POST` | `/api/v1/auth/reissue` | access token 재발급 | —(화면 근거 없음) | — | X |
-| API-004 | `POST` | `/api/v1/auth/email-verifications` | 인증번호 발송 (가입·비밀번호 찾기) | SCR-002, SCR-003 | EmailVerification | X |
-| API-005 | `POST` | `/api/v1/auth/email-verifications/verify` | 인증번호 확인 | SCR-002, SCR-003 | EmailVerification | X |
-| API-006 | `PATCH` | `/api/v1/auth/password` | 비밀번호 재설정 | SCR-003 | User, EmailVerification | X |
+| API-004 | `POST` | `/api/v1/auth/email-verifications` | 인증번호 발송 (가입·비밀번호 찾기) | SCR-002, SCR-003 | —(Redis) | X |
+| API-005 | `POST` | `/api/v1/auth/email-verifications/verify` | 인증번호 확인 | SCR-002, SCR-003 | —(Redis) | X |
+| API-006 | `PATCH` | `/api/v1/auth/password` | 비밀번호 재설정 | SCR-003 | User | X |
 | API-010 | `GET` | `/api/v1/users/check-email` | 이메일 중복 확인 | SCR-002 | User | X |
 | API-011 | `GET` | `/api/v1/users/check-nickname` | 닉네임 중복 확인 | SCR-002 | User | X |
 | API-012 | `POST` | `/api/v1/users` | 회원가입 (약관·주소·프로필 일괄) | SCR-002 | User, UserAgreement, ShippingAddress | X |
@@ -152,12 +152,13 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 
 없는 동작은 **이유**를 적는다. 화면에 없는 기능을 기계적으로 만들지 않았다.
 
+이메일 인증번호·토큰과 refresh token 은 **Redis** 에 있어 이 표에 없다(`DEC-009`·`DEC-010`).
+
 | 엔티티 | 목록 | 상세 | 생성 | 수정 | 삭제 |
 |---|---|---|---|---|---|
 | `user` | API-017 (타인) | API-013 API-014 API-017 | API-012 (가입) | API-015 | API-016 (탈퇴=익명화) |
 | `user_grade_history` | 없음(화면 없음) | 없음 | 없음(승격 판정이 자동 생성) | 없음(append-only) | 없음(append-only) |
 | `user_agreement` | 없음(단독 조회 화면 없음) | 없음 | API-012 에 포함 | 없음(append-only) | 없음(append-only) |
-| `email_verification` | 없음(내부 검증용) | 없음 | API-004 | API-005 (verify) | 없음(만료 배치) |
 | `user_withdrawal` | 없음(운영 도구 범위 밖) | 없음 | API-016 에 포함 | 없음(append-only) | 없음(append-only) |
 | `follow` | API-050 API-051 | 없음(목록으로 충분) | API-052 | 없음(수정 개념 없음) | API-053 |
 | `user_block` | 없음(목록 화면 없음) | 없음 | API-054 | 없음 | API-055 |
@@ -259,7 +260,36 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 
 ## 5. ErrorCode 목록
 
-각 도메인의 `{도메인}ErrorCode` enum 이 된다. 메시지는 사용자에게 그대로 보여줄 수 있는 문장이다.
+메시지는 사용자에게 그대로 보여줄 수 있는 문장이다.
+
+**ErrorCode 는 도메인 패키지당 최대 1개다.** 어느 패키지에 놓이는지를 여기서 못박는다 —
+`domain/<도메인>/exception/{도메인}ErrorCode`.
+
+| 도메인 패키지 | ErrorCode enum |
+|---|---|
+| `user` | `UserErrorCode` |
+| `auth` | `AuthErrorCode` |
+| `follow` | `FollowErrorCode` |
+| `block` | `BlockErrorCode` |
+| `report` | `ReportErrorCode` |
+| `address` | `AddressErrorCode` |
+| `payout` | `PayoutErrorCode` |
+| `post` | `PostErrorCode` |
+| `item` | `ItemErrorCode` |
+| `category` | `CategoryErrorCode` |
+| `listing` | `ListingErrorCode` |
+| `wishlist` | `WishlistErrorCode` |
+| `offer` | `OfferErrorCode` |
+| `payment` | `PaymentErrorCode` |
+| `order` | `OrderErrorCode` |
+| `settlement` | — |
+| `chat` | `ChatErrorCode` |
+| `notification` | `NotificationErrorCode` |
+| `search` | `SearchErrorCode` |
+| **`global`** | `CommonErrorCode` · `MediaErrorCode` |
+
+**enum 이름은 코드 접두사와 일치시킨다. 예외는 없다.**
+`settlement` 는 사용자 조작이 개입하지 않아(배치가 계산한다) 전용 에러 코드가 없다.
 
 ### CommonErrorCode
 
@@ -306,7 +336,7 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | `ADDRESS_403` | 403 | 본인의 배송지가 아닙니다. | API-022~024 |
 | `ADDRESS_409_LAST_DEFAULT` | 409 | 기본 배송지는 삭제할 수 없습니다. | API-023 |
 
-### PayoutAccountErrorCode
+### PayoutErrorCode
 
 | 코드 | HTTP | 메시지 | 발생 API |
 |---|:--:|---|---|
@@ -315,14 +345,24 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | `PAYOUT_409_PENDING_SETTLEMENT` | 409 | 정산 대기 중인 거래가 있어 삭제할 수 없습니다. | API-033 |
 | `PAYOUT_400_REQUIRED` | 400 | 판매 전환을 위해 정산 계좌를 먼저 등록해주세요. | API-111 |
 
-### SocialErrorCode
+### FollowErrorCode
 
 | 코드 | HTTP | 메시지 | 발생 API |
 |---|:--:|---|---|
 | `FOLLOW_409` | 409 | 이미 팔로우한 사용자입니다. | API-052 |
 | `FOLLOW_400_SELF` | 400 | 자기 자신을 팔로우할 수 없습니다. | API-052 |
+
+### BlockErrorCode
+
+| 코드 | HTTP | 메시지 | 발생 API |
+|---|:--:|---|---|
 | `BLOCK_409` | 409 | 이미 차단한 사용자입니다. | API-054 |
 | `BLOCK_400_SELF` | 400 | 자기 자신을 차단할 수 없습니다. | API-054 |
+
+### ReportErrorCode
+
+| 코드 | HTTP | 메시지 | 발생 API |
+|---|:--:|---|---|
 | `REPORT_404_TARGET` | 404 | 신고 대상을 찾을 수 없습니다. | API-056 |
 
 ### PostErrorCode
@@ -350,6 +390,11 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | `ITEM_400_MEASUREMENT` | 400 | 해당 카테고리에 맞지 않는 실측 항목입니다. | API-092, API-094 |
 | `ITEM_400_CATEGORY` | 400 | 세부 카테고리를 선택해주세요. | API-092, API-094 |
 | `ITEM_409_TAG_CLOSED_PERIOD` | 409 | 이미 판매된 아이템의 과거 태그는 수정할 수 없습니다. | API-073, API-083 |
+
+### CategoryErrorCode
+
+| 코드 | HTTP | 메시지 | 발생 API |
+|---|:--:|---|---|
 | `CATEGORY_404` | 404 | 카테고리를 찾을 수 없습니다. | API-092, API-094 |
 
 ### ListingErrorCode
@@ -361,6 +406,11 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | `LISTING_400_FEATURED_RANGE` | 400 | 대표 OOTD 는 1개 이상 5개 이하로 선택해주세요. | API-111, API-115 |
 | `LISTING_403_FEE_BEARER` | 403 | 기본 사용자는 수수료 부담과 배송비를 지정할 수 없습니다. | API-111, API-112 |
 | `LISTING_409_SOLD` | 409 | 이미 판매 완료된 상품입니다. | API-112, API-113, API-141 |
+
+### WishlistErrorCode
+
+| 코드 | HTTP | 메시지 | 발생 API |
+|---|:--:|---|---|
 | `WISHLIST_409` | 409 | 이미 관심 등록한 아이템입니다. | API-121 |
 | `WISHLIST_404` | 404 | 위시리스트 항목을 찾을 수 없습니다. | API-122, API-123 |
 
@@ -386,7 +436,7 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | `PAYMENT_409_CAPTURE` | 409 | 결제 확정에 실패했습니다. | API-144 |
 | `PAYMENT_409_REFUND` | 409 | 환불 처리에 실패했습니다. | API-166 |
 
-### TradeErrorCode
+### OrderErrorCode
 
 | 코드 | HTTP | 메시지 | 발생 API |
 |---|:--:|---|---|
@@ -4214,6 +4264,12 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 - **`API-017` 의 노출 필드를 피그마로 확정했다**(`DEC-011`) — `grade`·`heightCm`·`weightKg`·`itemCount` 를 싣고
   `gender` 는 뺐다. 헤더가 `레코드 사용자 | 168cm · 58kg` + 카운터 3종이다
 - **`API-071` 태그에 `saleStatus` 를 추가했다**(`DEC-012`) — 말풍선이 `#판매중` 을 2행으로 붙인다
+- **`email_verification` 테이블을 없애고 Redis 로 옮겼다**(`DEC-009`) — TTL 휘발 데이터인데
+  refresh token(`DEC-010`)과 저장소 결정이 엇갈려 있었다. `V3` 가 테이블을 내린다
+- **ErrorCode enum 이름을 코드 접두사에 맞췄다** — `PayoutAccountErrorCode`→`PayoutErrorCode`,
+  `TradeErrorCode`→`OrderErrorCode`. 이름과 접두사가 어긋나 있었다
+- **ErrorCode 의 도메인 패키지 배치표를 §5 에 넣었다** — `schema.yaml` 의 도메인 8개와
+  enum 16개가 1:1 이 아니라서, 어느 패키지에 놓이는지 근거가 없었다
 
 ### 범위 밖으로 둔 것
 
