@@ -25,15 +25,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 class FlywayMigrationTest extends IntegrationTestSupport {
 
 	/** 정본 {@code docs/schema.yaml} 기준 수치. 스키마를 바꾸면 이 숫자도 같이 바뀐다. */
-	private static final int EXPECTED_TABLES = 39;
-	private static final int EXPECTED_COLUMNS = 317;
+	private static final int EXPECTED_TABLES = 38;
+	private static final int EXPECTED_COLUMNS = 307;
 	private static final int EXPECTED_FOREIGN_KEYS = 69;
 
 	@Autowired
 	private DataSource dataSource;
 
 	@Test
-	@DisplayName("테이블 39개가 생성된다")
+	@DisplayName("테이블 38개가 생성된다")
 	void migration_applied_createsAllTables() throws Exception {
 		List<String> tables = queryStrings("""
 				select table_name from information_schema.tables
@@ -45,10 +45,12 @@ class FlywayMigrationTest extends IntegrationTestSupport {
 		assertThat(tables).contains("item_ownership", "item_wear_record", "trade_order", "purchase_offer");
 		// 예약어 회피 확인 — order 가 아니라 trade_order 다
 		assertThat(tables).doesNotContain("order");
+		// 인증번호·토큰은 Redis 로 옮겼다 (DEC-009). V3 가 내린다
+		assertThat(tables).doesNotContain("email_verification");
 	}
 
 	@Test
-	@DisplayName("컬럼 317개와 FK 69개가 만들어진다")
+	@DisplayName("컬럼 307개와 FK 69개가 만들어진다")
 	void migration_applied_createsAllColumnsAndForeignKeys() throws Exception {
 		long columns = queryLong("""
 				select count(*) from information_schema.columns
