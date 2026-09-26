@@ -46,7 +46,7 @@ public class PostImage {
 
 	/** '바로 게시한 사진들이 순서대로 보여요' */
 	@Column(name = "sort_order", nullable = false)
-	private Short sortOrder;
+	private Integer sortOrder;
 
 	/** '대표 사진' / '대표 OOTD' */
 	@Column(name = "is_cover", nullable = false)

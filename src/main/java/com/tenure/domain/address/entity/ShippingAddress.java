@@ -20,8 +20,8 @@ import lombok.NoArgsConstructor;
 /**
  * 배송지 주소록. 주문 시에는 OrderShipment 로 값을 스냅샷한다.
  *
- * <p>생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
- * 스키마에서 읽을 수 없다. {@code @Builder} 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
+ * 무엇이 필수 인자인지는 도메인 규칙이라 스키마에서 읽을 수 없다.
+ * {@code @Builder} 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
  */
 @Entity
 @Table(name = "shipping_address")
@@ -66,4 +66,18 @@ public class ShippingAddress extends BaseEntity {
 	@Column(name = "is_default", nullable = false)
 	private Boolean isDefault;
 
+	/** 배송지 등록. 첫 배송지는 기본으로 지정된다 (API-021). */
+	public static ShippingAddress register(User user, String recipientName, String phone,
+			String address, String addressDetail, String deliveryRequest, boolean isDefault
+	) {
+		return ShippingAddress.builder()
+				.user(user)
+				.recipientName(recipientName)
+				.phone(phone)
+				.address(address)
+				.addressDetail(addressDetail)
+				.deliveryRequest(deliveryRequest)
+				.isDefault(isDefault)
+				.build();
+	}
 }

@@ -51,6 +51,10 @@ app:
     # '로그인 상태 유지' 를 켰을 때 (API-001 keepLoggedIn)
     refresh-expiration-keep-logged-in: 90d
 
+  mail:
+    # log | smtp — 로컬은 로그로 찍고, 운영에서만 실제로 보낸다
+    type: ${MAIL_TYPE:log}
+
   storage:
     # local | s3 — 배포 시 환경변수만 바꿔서 전환
     type: ${STORAGE_TYPE:local}

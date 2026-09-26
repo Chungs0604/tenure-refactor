@@ -46,7 +46,7 @@ public class Category {
 
 	/** 1=카테고리, 2=세부 카테고리 */
 	@Column(name = "depth", nullable = false)
-	private Byte depth;
+	private Integer depth;
 
 	/** '아이템 상세 정보 수정 (카테고리마다 세부 카테고리, 사이즈 다름)' — 카테고리별 사이즈 체계가 다르다(→ Q6) */
 	@Column(name = "size_scheme", length = 30)
@@ -54,6 +54,6 @@ public class Category {
 
 	/** 드롭다운 노출 순서 */
 	@Column(name = "sort_order", nullable = false)
-	private Short sortOrder;
+	private Integer sortOrder;
 
 }

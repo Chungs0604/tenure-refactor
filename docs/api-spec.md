@@ -612,7 +612,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 인증번호 확인. 인증 **불필요**. 관련 화면 SCR-002, SCR-003.
 
-요청 `{ email, purpose, code }` → `{ verificationToken, expiresAt }`. 인증 완료를 증명하는 **1회용 토큰**으로 수명은 **10분**이다(가입 플로우를 마칠 여유). `purpose` 가 토큰에 바인딩되어 `SIGN_UP` 토큰으로 `PASSWORD_RESET` 을 수행할 수 없다. 소비 시 `consumed_at` 이 찍히고 재사용은 거부된다(`DEC-009`).
+요청 `{ email, purpose, code }` → `{ verificationToken, expiresAt }`. 인증 완료를 증명하는 **1회용 토큰**으로 수명은 **10분**이다(가입 플로우를 마칠 여유). `purpose` 가 토큰에 바인딩되어 `SIGN_UP` 토큰으로 `PASSWORD_RESET` 을 수행할 수 없다. 토큰은 Redis 키 `email-verify-token:{token}` 에 있고, 소비할 때 `GETDEL` 로 읽으면서 지워 **재사용이 구조적으로 불가능**하다(`DEC-009`).
 
 **요청 본문**
 
@@ -647,7 +647,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 비밀번호 재설정. 인증 **불필요**. 관련 화면 SCR-003.
 
-요청 `{ email, verificationToken, newPassword }`. 토큰은 `purpose=PASSWORD_RESET` 이어야 하고 미소비 상태여야 한다. 성공 시 `consumed_at` 을 세팅해 재사용을 막는다.
+요청 `{ email, verificationToken, newPassword }`. 토큰은 `purpose=PASSWORD_RESET` 이어야 한다. `GETDEL` 로 읽는 즉시 키가 사라지므로 같은 토큰을 두 번 쓸 수 없다.
 
 **요청 본문**
 
@@ -743,8 +743,8 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 | `nickname` | String | O | UNIQUE | — |
 | `profileImageKey` | String |  | — | 미지정 시 기본 이미지 |
 | `gender` | Gender |  | MALE \| FEMALE | — |
-| `heightCm` | Short |  | — | 키 |
-| `weightKg` | Short |  | — | 몸무게 |
+| `heightCm` | Integer |  | — | 키 |
+| `weightKg` | Integer |  | — | 몸무게 |
 | `agreements[].agreementType` | AgreementType | O | SERVICE_TERMS \| PRIVACY_POLICY \| THIRD_PARTY_PROVISION | 3종 모두 필요 |
 | `agreements[].agreed` | Boolean | O | true 여야 함 | — |
 | `address.recipientName` | String | O | — | — |
@@ -822,8 +822,8 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 | `nickname` | String | — |
 | `profileImageUrl` | String | — |
 | `gender` | Gender | MALE \| FEMALE |
-| `heightCm` | Short | — |
-| `weightKg` | Short | — |
+| `heightCm` | Integer | — |
+| `weightKg` | Integer | — |
 | `grade` | UserGrade | BASIC \| RECORD |
 | `gradeExpiresAt` | LocalDateTime | 레코드 보장 만료 |
 | `followerCount` | Integer | 카운터 컬럼 |
@@ -868,8 +868,8 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 | `nickname` | String |  | UNIQUE | — |
 | `profileImageKey` | String |  | null 이면 기본 이미지로 | — |
 | `gender` | Gender |  | MALE \| FEMALE | — |
-| `heightCm` | Short |  | — | — |
-| `weightKg` | Short |  | — | — |
+| `heightCm` | Integer |  | — | — |
+| `weightKg` | Integer |  | — | — |
 
 **응답** (`data`)
 
@@ -935,8 +935,8 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 | `nickname` | String | 탈퇴자는 '탈퇴한 사용자' |
 | `profileImageUrl` | String | 탈퇴자는 null |
 | `grade` | UserGrade | BASIC \| RECORD — 헤더의 '레코드 사용자' 배지 |
-| `heightCm` | Short | '168cm' — 탈퇴자는 null |
-| `weightKg` | Short | '58kg' — 탈퇴자는 null |
+| `heightCm` | Integer | '168cm' — 탈퇴자는 null |
+| `weightKg` | Integer | '58kg' — 탈퇴자는 null |
 | `postCount` | Integer | '피드 60' — 카운터 컬럼 |
 | `itemCount` | Integer | '아이템 16' — COUNT 계산 |
 | `followerCount` | Integer | '팔로워 201' — 카운터 컬럼 |
@@ -1687,7 +1687,7 @@ OOTD 게시. 인증 **필요**. 관련 화면 SCR-018.
 | `aspectRatio` | AspectRatio | O | RATIO_3_4 \| RATIO_4_5 \| RATIO_1_1 | — |
 | `quickPosted` | Boolean |  | 기본 false | 바로 게시 여부 |
 | `images[].imageKey` | String | O | API-060 응답 | — |
-| `images[].sortOrder` | Short | O | — | — |
+| `images[].sortOrder` | Integer | O | — | — |
 | `images[].isCover` | Boolean |  | 1장만 true | — |
 | `images[].tags[].itemId` | Long |  | 본인 보유 아이템만 | 이미지당 최대 5개 |
 | `images[].tags[].posX` | BigDecimal |  | 0~1 | — |
@@ -2230,7 +2230,7 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `description` | String |  | — | — |
 | `firstOwnedDate` | LocalDate |  | — | 최초 보유 날짜 = 최초 소유 구간 start_date |
 | `images[].imageKey` | String |  | — | — |
-| `images[].sortOrder` | Short |  | — | — |
+| `images[].sortOrder` | Integer |  | — | — |
 | `measurements.shoulderWidth` | BigDecimal |  | 대분류별 필수·금지 | 상의·아우터·원피스 필수 |
 | `measurements.chestWidth` | BigDecimal |  | — | 상의·아우터·원피스 필수 |
 | `measurements.sleeveLength` | BigDecimal |  | — | 상의·아우터·원피스 필수 |
@@ -2285,7 +2285,7 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `coverImageUrl` | String | 대표 사진 |
 | `images[].id` | Long | — |
 | `images[].url` | String | 상세 사진 캐러셀 |
-| `images[].sortOrder` | Short | — |
+| `images[].sortOrder` | Integer | — |
 | `category.id` | Long | 수정 화면의 드롭다운 초기값 |
 | `category.name` | String | — |
 | `sizeLabel` | String | — |
@@ -2380,7 +2380,7 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `wearTarget` | WearTarget |  | — | — |
 | `coverImageKey` | String |  | API-060 응답 | 대표 사진 교체 |
 | `images[].imageKey` | String |  | API-060 응답 | **전체 교체** — 생략하면 유지 |
-| `images[].sortOrder` | Short |  | — | — |
+| `images[].sortOrder` | Integer |  | — | — |
 | `description` | String |  | — | — |
 | `firstOwnedDate` | LocalDate |  | 구간 1개 + 본인 소유일 때만 | 최초 구간 start_date 도 갱신 |
 | `measurements` | ProductMeasurements |  | 대분류별 필수·금지 | — |
@@ -4028,10 +4028,10 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 | `saleStatus` | String |  | ALL \| INCLUDE_ON_SALE \| ONLY_ON_SALE | 판매 상태 3모드 |
 | `authorGender` | String |  | ALL \| MALE \| FEMALE | 게시자 성별 |
 | `categoryIds` | Long[] |  | — | 세부 카테고리 |
-| `heightMin` | Short |  | 0~200 | — |
-| `heightMax` | Short |  | 0~200 | — |
-| `weightMin` | Short |  | 0~150 | — |
-| `weightMax` | Short |  | 0~150 | — |
+| `heightMin` | Integer |  | 0~200 | — |
+| `heightMax` | Integer |  | 0~200 | — |
+| `weightMin` | Integer |  | 0~150 | — |
+| `weightMax` | Integer |  | 0~150 | — |
 | `page` | Integer |  | — | — |
 | `size` | Integer |  | — | — |
 

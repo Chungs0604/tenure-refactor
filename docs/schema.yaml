@@ -1123,15 +1123,15 @@ entities:
     evidence: 프로필 작성 > 성별
   - name: heightCm
     column: height_cm
-    db_type: SMALLINT
-    java_type: Short
+    db_type: INT
+    java_type: Integer
     nullable: true
     source: design
     evidence: 프로필 작성 > 키 '170cm'. 검색 필터 '필터/키-몸무게'의 대상
   - name: weightKg
     column: weight_kg
-    db_type: SMALLINT
-    java_type: Short
+    db_type: INT
+    java_type: Integer
     nullable: true
     source: design
     evidence: 프로필 작성 > 몸무게 '64kg'
@@ -1994,8 +1994,8 @@ entities:
     evidence: 촬영·앨범 이미지. 저장소 키를 넣는다 (DEC-006)
   - name: sortOrder
     column: sort_order
-    db_type: SMALLINT
-    java_type: Short
+    db_type: INT
+    java_type: Integer
     nullable: false
     source: design
     evidence: '''바로 게시한 사진들이 순서대로 보여요'''
@@ -2318,8 +2318,8 @@ entities:
     evidence: '대분류 10종(화면 순서): 아우터·상의·하의·신발·가방·모자·치마·원피스·액세서리·주얼리. 세부 102종. 값은 V2__seed_category.sql 이 정본'
   - name: depth
     column: depth
-    db_type: TINYINT
-    java_type: Byte
+    db_type: INT
+    java_type: Integer
     nullable: false
     source: design
     evidence: 1=카테고리, 2=세부 카테고리
@@ -2332,8 +2332,8 @@ entities:
     evidence: '''아이템 상세 정보 수정 (카테고리마다 세부 카테고리, 사이즈 다름)'' — 카테고리별 사이즈 체계가 다르다(→ Q6)'
   - name: sortOrder
     column: sort_order
-    db_type: SMALLINT
-    java_type: Short
+    db_type: INT
+    java_type: Integer
     nullable: false
     default: 0
     source: inferred
@@ -2507,8 +2507,8 @@ entities:
     evidence: 상품 상세 이미지 캐러셀. 저장소 키를 넣는다 (DEC-006)
   - name: sortOrder
     column: sort_order
-    db_type: SMALLINT
-    java_type: Short
+    db_type: INT
+    java_type: Integer
     nullable: false
     source: inferred
     evidence: 노출 순서
@@ -3079,8 +3079,8 @@ entities:
     evidence: 대표로 건 OOTD 게시물
   - name: sortOrder
     column: sort_order
-    db_type: SMALLINT
-    java_type: Short
+    db_type: INT
+    java_type: Integer
     nullable: false
     default: 0
     source: inferred
