@@ -70,11 +70,11 @@ public class User extends BaseEntity {
 
 	/** 프로필 작성 > 키 '170cm'. 검색 필터 '필터/키-몸무게'의 대상 */
 	@Column(name = "height_cm")
-	private Short heightCm;
+	private Integer heightCm;
 
 	/** 프로필 작성 > 몸무게 '64kg' */
 	@Column(name = "weight_kg")
-	private Short weightKg;
+	private Integer weightKg;
 
 	/** '유저가 레코드 사용자인지, 기본 사용자인지에 따라 수수료 부담·배송비 섹션이 서로 다릅니다' */
 	@Enumerated(EnumType.STRING)

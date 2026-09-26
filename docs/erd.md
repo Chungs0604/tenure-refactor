@@ -746,8 +746,8 @@ erDiagram
 | `nickname` | VARCHAR(30) | String |  | O | O | `design` | 프로필 작성 > 닉네임. '중복된 닉네임입니다' / '닉네임을 설정해주세요.' |
 | `profile_image_key` | VARCHAR(500) | String |  |  |  | `design` | '프로필 사진은 필수로 받지 않습니다! 등록하지 않았다면 기본 프로필 사진'. 저장소 키를 넣는다 (DEC-006) |
 | `gender` | VARCHAR(10) | Gender |  |  |  | `design` | 프로필 작성 > 성별 |
-| `height_cm` | SMALLINT | Short |  |  |  | `design` | 프로필 작성 > 키 '170cm'. 검색 필터 '필터/키-몸무게'의 대상 |
-| `weight_kg` | SMALLINT | Short |  |  |  | `design` | 프로필 작성 > 몸무게 '64kg' |
+| `height_cm` | INT | Integer |  |  |  | `design` | 프로필 작성 > 키 '170cm'. 검색 필터 '필터/키-몸무게'의 대상 |
+| `weight_kg` | INT | Integer |  |  |  | `design` | 프로필 작성 > 몸무게 '64kg' |
 | `grade` | VARCHAR(20) | UserGrade |  | O |  | `design` | '유저가 레코드 사용자인지, 기본 사용자인지에 따라 수수료 부담·배송비 섹션이 서로 다릅니다' |
 | `status` | VARCHAR(20) | UserStatus |  | O |  | `inferred` | 회원탈퇴 화면 존재 + 탈퇴 후에도 이력 참조 필요 |
 | `anonymized_at` | DATETIME(6) | LocalDateTime |  |  |  | `inferred` | 탈퇴 시 개인정보 파기 시점. NULL이면 파기 전 (→ DEC-004) |
@@ -988,7 +988,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `id` | BIGINT | Long | O | O |  | `inferred` | PK 관례 |
 | `post_id` | BIGINT | Long |  | O |  | `inferred` | 부모 FK |
 | `image_key` | VARCHAR(500) | String |  | O |  | `design` | 촬영·앨범 이미지. 저장소 키를 넣는다 (DEC-006) |
-| `sort_order` | SMALLINT | Short |  | O |  | `design` | '바로 게시한 사진들이 순서대로 보여요' |
+| `sort_order` | INT | Integer |  | O |  | `design` | '바로 게시한 사진들이 순서대로 보여요' |
 | `is_cover` | BOOLEAN | Boolean |  | O |  | `design` | '대표 사진' / '대표 OOTD' |
 
 인덱스: `uk_post_image_order`(post_id, sort_order) · UNIQUE
@@ -1087,9 +1087,9 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `id` | BIGINT | Long | O | O |  | `inferred` | PK 관례 |
 | `parent_id` | BIGINT | Long |  |  |  | `design` | depth=1 이면 NULL |
 | `name` | VARCHAR(50) | String |  | O |  | `design` | 대분류 10종(화면 순서): 아우터·상의·하의·신발·가방·모자·치마·원피스·액세서리·주얼리. 세부 102종. 값은 `V2__seed_category.sql` 이 정본 |
-| `depth` | TINYINT | Byte |  | O |  | `design` | 1=카테고리, 2=세부 카테고리 |
+| `depth` | INT | Integer |  | O |  | `design` | 1=카테고리, 2=세부 카테고리 |
 | `size_scheme` | VARCHAR(30) | String |  |  |  | `design` | '아이템 상세 정보 수정 (카테고리마다 세부 카테고리, 사이즈 다름)' — 카테고리별 사이즈 체계가 다르다(→ Q6) |
-| `sort_order` | SMALLINT | Short |  | O |  | `inferred` | 드롭다운 노출 순서 |
+| `sort_order` | INT | Integer |  | O |  | `inferred` | 드롭다운 노출 순서 |
 
 인덱스: `ix_category_parent`(parent_id, sort_order)
 
@@ -1134,7 +1134,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `id` | BIGINT | Long | O | O |  | `inferred` | PK 관례 |
 | `item_id` | BIGINT | Long |  | O |  | `inferred` | 부모 FK |
 | `image_key` | VARCHAR(500) | String |  | O |  | `design` | 상품 상세 이미지 캐러셀. 저장소 키를 넣는다 (DEC-006) |
-| `sort_order` | SMALLINT | Short |  | O |  | `inferred` | 노출 순서 |
+| `sort_order` | INT | Integer |  | O |  | `inferred` | 노출 순서 |
 
 인덱스: `uk_item_image_order`(item_id, sort_order) · UNIQUE
 
@@ -1285,7 +1285,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `id` | BIGINT | Long | O | O |  | `inferred` | PK 관례 |
 | `listing_id` | BIGINT | Long |  | O |  | `inferred` | 부모 FK |
 | `post_id` | BIGINT | Long |  | O |  | `design` | 대표로 건 OOTD 게시물 |
-| `sort_order` | SMALLINT | Short |  | O |  | `inferred` | 노출 순서 |
+| `sort_order` | INT | Integer |  | O |  | `inferred` | 노출 순서 |
 
 인덱스: `uk_listing_featured_post`(listing_id, post_id) · UNIQUE, `ix_listing_featured_post_post`(post_id)
 
@@ -1961,8 +1961,8 @@ INSERT 대신 `voided_at` 을 `NULL` 로 되돌리는 규칙을 제약으로 두
 | 정산 대기 중 계좌 삭제 불가 | 정산할 계좌가 사라지면 안 됨 | 애플리케이션 |
 | 미판매+구매제안X 상품은 채팅 개설 불가 | "'미판매 + 구매제안X'인 상품이면 채팅이 애초에 열리지는 않지만" | 애플리케이션 |
 | 비밀번호 8자 이상 | "(8자 이상)" | 애플리케이션 |
-| 인증번호 3분 / 토큰 10분 | 인증번호는 대입 창을 좁히고, 토큰은 가입 플로우를 마칠 여유를 준다 | `expires_at` / `token_expires_at` |
-| 인증 토큰은 1회용 | `consumed_at` 이 NULL 이 아니면 거부. 재사용 시 비밀번호 반복 변경이 가능해진다 | 애플리케이션 |
+| 인증번호 3분 / 토큰 10분 | 인증번호는 대입 창을 좁히고, 토큰은 가입 플로우를 마칠 여유를 준다 | Redis TTL |
+| 인증 토큰은 1회용 | `GETDEL` 로 읽으면서 키를 지운다. 재사용 시 비밀번호 반복 변경이 가능해진다 | Redis (`DEC-009`) |
 | 인증 토큰에 `purpose` 바인딩 | `SIGN_UP` 토큰으로 `PASSWORD_RESET` 불가 | 애플리케이션 |
 | 레코드 승격 | 직전 30일 유효 OOTD 20개 이상(게시일 기준). 게시 즉시 판정 | 애플리케이션 |
 | 레코드 보장 | 승격 후 30일. 만료 시 재평가해 미달이면 강등 | 배치 + `grade_expires_at` |

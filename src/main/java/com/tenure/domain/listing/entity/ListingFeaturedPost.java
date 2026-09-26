@@ -48,6 +48,6 @@ public class ListingFeaturedPost {
 
 	/** 노출 순서 */
 	@Column(name = "sort_order", nullable = false)
-	private Short sortOrder;
+	private Integer sortOrder;
 
 }
