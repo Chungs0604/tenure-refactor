@@ -57,4 +57,17 @@ public class UserAgreement {
 	@Column(name = "agreed_at", nullable = false)
 	private LocalDateTime agreedAt;
 
+	/**
+	 * 약관 동의 기록. 법적 증빙이라 append-only 다 — 재동의는 새 행으로 쌓는다.
+	 *
+	 * <p>{@code agreedAt} 을 여기서 찍는다. 감사 컬럼이 아니라 동의한 시점 자체가 증빙이다.
+	 */
+	public static UserAgreement agree(User user, AgreementType agreementType) {
+		return UserAgreement.builder()
+				.user(user)
+				.agreementType(agreementType)
+				.agreed(true)
+				.agreedAt(LocalDateTime.now())
+				.build();
+	}
 }

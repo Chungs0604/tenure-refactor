@@ -102,4 +102,32 @@ public class User extends BaseEntity {
 	@Column(name = "post_count", nullable = false)
 	private Integer postCount;
 
+	/**
+	 * 회원가입. 이메일 인증을 통과한 뒤에만 호출된다 (API-012).
+	 *
+	 * <p>비밀번호는 해시를 받는다 — 엔티티가 인코더를 알면 도메인이 보안 구현에 묶인다.
+	 * 등급은 BASIC 으로 시작하고 레코드 승격은 게시 시점에 판정한다.
+	 */
+	public static User signUp(String email, String passwordHash, String realName, String phone,
+			String nickname, String profileImageKey, Gender gender, Integer heightCm, Integer weightKg) {
+		return User.builder()
+				.email(email)
+				.passwordHash(passwordHash)
+				.realName(realName)
+				.phone(phone)
+				.nickname(nickname)
+				.profileImageKey(profileImageKey)
+				.gender(gender)
+				.heightCm(heightCm)
+				.weightKg(weightKg)
+				.grade(UserGrade.BASIC)
+				.status(UserStatus.ACTIVE)
+				.followerCount(0)
+				.postCount(0)
+				.build();
+	}
+
+	public boolean isWithdrawn() {
+		return status == UserStatus.WITHDRAWN;
+	}
 }
