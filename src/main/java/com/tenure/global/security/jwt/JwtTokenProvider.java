@@ -90,6 +90,9 @@ public class JwtTokenProvider {
 	}
 
 	/** 발급된 refresh token 과, 저장소에 넣을 식별자·수명. */
-	public record IssuedRefreshToken(String token, String tokenId, Duration ttl) {
-	}
+	public record IssuedRefreshToken(
+			String token,
+			String tokenId,
+			Duration ttl
+	) {}
 }
