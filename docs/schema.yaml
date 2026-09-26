@@ -814,11 +814,13 @@ enums:
   evidence: '회원가입 > 동의 받기: ''서비스 이용 약관 동의(필수)'' ''개인정보처리방침 동의 (필수)'' ''개인 정보의 제 3자 제공 (필수)'''
   value_evidence_table: user_agreement
 - name: VerificationPurpose
+  domain: auth
+  storage: redis
   values:
   - SIGN_UP
   - PASSWORD_RESET
   source: design
-  evidence: 회원가입과 비밀번호 찾기 두 섹션 모두 '인증번호' 입력 단계를 가진다
+  evidence: 회원가입과 비밀번호 찾기 두 섹션 모두 '인증번호' 입력 단계를 가진다. 어느 컬럼도 쓰지 않는다 — Redis 키 email-verify:{purpose}:{email} 의 일부다 (DEC-009)
 - name: ReportTargetType
   values:
   - POST
@@ -1005,12 +1007,13 @@ enums:
   evidence: 메시지 입력창의 '사진' 첨부 버튼과 '전송' 버튼
   value_evidence_table: chat_message
 - name: RecentViewTargetType
+  domain: search
+  storage: redis
   values:
   - POST
   - USER
   source: design
   evidence: '''최근 본 사용자가 있거나 최근 검색이 있을 경우'' + ''방금 보신 OOTD와 유사한 게시물'' — 게시물과 사용자 열람 이력을 모두 추적한다'
-  value_evidence_table: recent_view
 - name: NotificationTargetType
   values:
   - POST
@@ -4400,72 +4403,6 @@ entities:
     - user_id
     - searched_at
     unique: false
-- name: RecentView
-  table: recent_view
-  domain: search
-  description: 최근 본 게시물·사용자. 검색 첫 화면의 '최근 본 사용자'와 '방금 보신 OOTD와 유사한 게시물' 추천의 입력이다.
-  soft_delete: false
-  delete_policy: C
-  delete_rationale: 개인 열람 이력. 보존 의무 없음
-  source: design
-  evidence:
-  - '''최근 본 사용자가 있거나 최근 검색이 있을 경우'''
-  - '''방금 보신 OOTD와 유사한 게시물'''
-  fields:
-  - name: id
-    column: id
-    db_type: BIGINT
-    java_type: Long
-    pk: true
-    auto_increment: true
-    nullable: false
-    source: inferred
-    evidence: PK 관례
-  - name: userId
-    column: user_id
-    db_type: BIGINT
-    java_type: Long
-    nullable: false
-    source: inferred
-    evidence: 열람자
-  - name: targetType
-    column: target_type
-    db_type: VARCHAR(20)
-    java_type: RecentViewTargetType
-    nullable: false
-    enum: RecentViewTargetType
-    source: design
-    evidence: 게시물 / 사용자
-  - name: targetId
-    column: target_id
-    db_type: BIGINT
-    java_type: Long
-    nullable: false
-    source: inferred
-    evidence: 다형 참조라 FK 없음
-  - name: viewedAt
-    column: viewed_at
-    db_type: DATETIME(6)
-    java_type: LocalDateTime
-    nullable: false
-    source: design
-    evidence: '''최근'' 정렬 기준'
-  indexes:
-  - name: uk_recent_view
-    columns:
-    - user_id
-    - target_type
-    - target_id
-    unique: true
-    note: 재열람 시 viewed_at 만 갱신
-  - name: ix_recent_view_user
-    columns:
-    - user_id
-    - viewed_at
-    unique: false
-  pattern: 다형 참조 (polymorphic)
-  pattern_note: target_type + target_id 로 POST / USER 열람 이력을 가리킨다. FK 를 걸 수 없다
-  polymorphic_delete_handling: 삭제된 대상은 목록에서 제외한다. 조회 시 대상 테이블의 deleted_at 을 확인해 걸러낸다
 relations:
 - from: UserGradeHistory
   to: User
@@ -5487,21 +5424,6 @@ relations:
     inverse_field: null
   source: design
   evidence: 사람 FK. 탈퇴 시 명시적 삭제
-- from: RecentView
-  to: User
-  type: many_to_one
-  fk_column: user_id
-  nullable: false
-  on_delete: RESTRICT
-  relation_kind: 소유
-  zero_priority: false
-  jpa:
-    owning_side: RecentView
-    field: user
-    fetch: LAZY
-    inverse_field: null
-  source: design
-  evidence: 사람 FK. 탈퇴 시 명시적 삭제
 derived_columns:
 - column: user.follower_count
   master: follow
@@ -5630,6 +5552,19 @@ design_decisions:
   decision: 값을 복사한다. 원본을 FK 로 참조하지 않는다
   rationale: 거래는 체결 시점의 조건으로 고정되어야 한다. 원본(배송지·정산계좌·판매가·수수료 요율)은 사용자가 나중에 고치거나 지울 수 있어 FK 로 묶으면 과거 거래가 사후에 달라지거나 삭제가 막힌다. 복사 시점은 그 값이 거래 조건으로 확정되는 순간이다 — purchase_offer 는 제안 전송 시점(요율·수수료), order_shipment 는 제안 전송 시점(배송지), trade_order 는 수락 시점(금액), settlement 는 구매 확정 시점(계좌). item_wear_record.worn_date 는 태그 생성 시점의 post.worn_date 다. 복사한 컬럼에는 FK 를 걸지 않는다 — 걸면 스냅샷의 목적이 사라진다
   revisit_when: 스냅샷 컬럼을 새로 추가할 때 이 기준의 어느 시점에 해당하는지 먼저 정한다. 해당하는 시점이 없으면 스냅샷이 아니라 파생 컬럼일 수 있다
+- id: DEC-014
+  topic: 최근 본 게시물·사용자의 저장소
+  considered: [Redis Sorted Set, RDB 테이블 + 사용자당 건수 상한, RDB 테이블 + 보관 기간 배치]
+  decision: Redis Sorted Set (RDB 테이블 없음)
+  rationale: 열람 이력은 다시 볼 일도 남길 이유도 없는데 RDB 에 영구 보관되고 있었다 — 보관 정책이 아예 없었다. 게다가 게시물·프로필을 조회할 때마다 쓰기가 일어나 읽기 경로에 쓰기가 붙은 구조다. Sorted Set 이 기존 동작을 그대로 한다 — 키 `recent-view:{userId}:{targetType}` 에 score 를 열람 시각으로 두면 ZADD 가 재열람 시 score 만 갱신해 uk(user_id, target_type, target_id) 와 같고, ZREVRANGE 로 최근 N건을 읽고 ZREMRANGEBYRANK 로 상한을 유지한다. 구조가 보관 정책을 대신하므로 기간을 따로 정할 필요가 없다. DEC-003·DEC-009·DEC-010 과 같은 기준이다
+  supersedes: 최초 설계는 recent_view 테이블이었다. 삭제 정책을 C(하드 삭제)로 분류해놓고 지우는 경로를 정하지 않아 api-spec 의 CRUD 표에 보관 정책 없음 으로 남아 있었다. V4 에서 테이블을 제거했다
+  revisit_when: 열람 이력으로 추천 모델을 학습시키는 등 장기 보관이 필요해지면 별도 저장소를 검토한다. 화면에 쓰는 최근 목록은 그때도 Redis 에 둔다
+- id: DEC-015
+  topic: 알림의 보관 기간
+  considered: [90일 경과 삭제, 사용자당 최근 200건 유지, 보관 정책을 두지 않음]
+  decision: 90일 경과 삭제 (배치)
+  rationale: 알림은 읽음 상태와 탭별 페이징이 있어 RDB 가 맞다 — 여기까지는 recent_view 와 다르다. 다만 UNIQUE 제약이 없어 거래·제안·팔로우·위시 이벤트마다 행이 쌓이고 지우는 경로가 없어 무한히 증가했다. 화면이 어제 · 10월 24일 수준의 최근성을 보여주므로 90일이면 체감 손실이 없다. 건수 상한은 거래가 몰린 날 오래된 알림이 기간과 무관하게 밀려나서 택하지 않았다
+  revisit_when: 운영 데이터를 확보한 뒤 실제 조회 분포를 보고 기간을 조정한다. 알림량이 예상보다 많으면 읽은 것과 안 읽은 것의 기간을 나누는 안을 검토한다
 - id: DEC-101
   topic: 타인에게 보이는 프로필 필드 — 등급·키·몸무게는 공개, 성별은 비공개
   considered:

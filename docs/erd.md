@@ -2,7 +2,7 @@
 
 > **피그마** [Tenure UXUI 작업](https://www.figma.com/design/hnEDDkiI0V4js9JzWR2l2M/Tenure-UXUI-%EC%9E%91%EC%97%85?node-id=813-8486&m=dev)
 > **범위** 캔버스 `2. 최종 UI`(`813:8486`) 33개 섹션 전체. 보조로 `4. 랜딩페이지`(`5359:57698`)의 서비스 IA·거래 플로우
-> **생성일** 2026-09-24 · **DB** MySQL 8 · **테이블** 38개 · **컬럼** 307개
+> **생성일** 2026-09-24 · **DB** MySQL 8 · **테이블** 37개 · **컬럼** 302개
 > **정본** [`schema.yaml`](./schema.yaml) — 이 문서의 §2 관계 요약표, §4 화면 인벤토리, §5 컬럼 명세는 정본에서 생성된다
 
 ---
@@ -70,7 +70,7 @@ item (불변, soft delete)
 | 3 | 0순위 CASCADE 3건 제거 | `item_ownership.item_id`, `item_wear_record.item_id`, `order_status_history.order_id` |
 | 4 | 사람(`user`) 참조 CASCADE 6건 제거 | 30개 FK 전부 RESTRICT 단일 정책으로 통일 |
 | 5 | `user_grade_history` 신설 | `UserGrade.RECORD` 승격 사실을 기록할 자리가 없었다 |
-| 6 | `recent_view` 신설 | `최근 본 사용자`, `방금 보신 OOTD와 유사한 게시물` 추천의 입력 |
+| 6 | `recent_view` 신설 | `최근 본 사용자`, `방금 보신 OOTD와 유사한 게시물` 추천의 입력. **v3 에서 Redis 로 옮겨 테이블은 없앴다**(`DEC-014`) |
 | 7 | `purchase_offer` append-only 고정 | 행이 지워지면 "제안 기회 복구 안 됨" 규칙이 무력화된다 |
 | 8 | `OfferStatus`·`PaymentStatus` 값별 시각 컬럼 분리 | 취소/거절/만료/환불을 구분할 자리가 없었다 |
 | 9 | 카테고리 대분류 10종 확정 | `아이템 상세 수정/*` 프레임 10개 |
@@ -87,7 +87,7 @@ item (불변, soft delete)
 | **이력 테이블 (audit trail)** | `user_grade_history`, `post_tag_edit_log`, `order_status_history` | `before_*`/`after_*` + `changed_by` + `changed_at`. `changed_by` 가 NULL 이면 시스템 변경. 항상 append-only |
 | **단일 테이블 상속 (STI)** | `purchase_offer` | `offer_type` 으로 두 유형을 한 테이블에. 생명주기와 화면 구성이 거의 같고 목록에서 함께 조회되기 때문 |
 | **자기 참조** | `category` | `parent_id` nullable, `depth` 로 2단 고정. 하위가 있으면 `RESTRICT` |
-| **다형 참조 (polymorphic)** | `report`, `notification`, `recent_view` | `target_type` + `target_id`. **FK 를 걸 수 없어** DB 가 무결성을 보장하지 못한다 → §6-1 에서 대상 삭제 처리를 정했다 |
+| **다형 참조 (polymorphic)** | `report`, `notification` | `target_type` + `target_id`. **FK 를 걸 수 없어** DB 가 무결성을 보장하지 못한다 → §6-1 에서 대상 삭제 처리를 정했다 |
 
 ---
 
@@ -166,7 +166,6 @@ item (불변, soft delete)
 | 66 | `chat_message` | `user` | N:1 | `sender_id` | O | `RESTRICT` | 참조 |  | 사람 FK |
 | 67 | `notification` | `user` | N:1 | `user_id` | O | `RESTRICT` | 소유 |  | 사람 FK. 탈퇴 시 애플리케이션이 명시적으로 삭제 |
 | 68 | `search_history` | `user` | N:1 | `user_id` | O | `RESTRICT` | 소유 |  | 사람 FK. 탈퇴 시 명시적 삭제 |
-| 69 | `recent_view` | `user` | N:1 | `user_id` | O | `RESTRICT` | 소유 |  | 사람 FK. 탈퇴 시 명시적 삭제 |
 
 ## 3. ERD
 
@@ -601,7 +600,6 @@ erDiagram
     user ||--o{ chat_message : "sender_id"
     user ||--o{ notification : "user_id"
     user ||--o{ search_history : "user_id"
-    user ||--o{ recent_view : "user_id"
 
     chat_room {
         bigint id PK
@@ -643,13 +641,6 @@ erDiagram
         bigint user_id
         varchar keyword
         datetime searched_at
-    }
-    recent_view {
-        bigint id PK
-        bigint user_id
-        varchar target_type "RecentViewTargetType"
-        bigint target_id
-        datetime viewed_at
     }
 ```
 
@@ -703,7 +694,7 @@ erDiagram
 | SCR-042 | 채팅방 | 아이템 정보 헤더와 메시지 송수신. 거래 단계별 CTA | `chat_room`, `chat_message`, `item`, `item_listing` | read, create, paging | O | `item` |
 | SCR-043 | 채팅방 관리 (차단 · 나가기 · 신고) | 상대 차단/해제, 채팅방 나가기, 신고 | `chat_room_member`, `user_block`, `report` | update, delete, create | O | — |
 | SCR-044 | 알림 | 알림 목록. 확인 필요/아이템 소식/거래 현황/관심 등록 탭 | `notification` | read, filter, paging | O | — |
-| SCR-045 | 검색 | 검색어 입력, 최근 검색·최근 본 사용자, 추천 섹션 | `search_history`, `recent_view`, `post`, `item`, `user` | read, create, delete, search | O | `post`, `item` |
+| SCR-045 | 검색 | 검색어 입력, 최근 검색·최근 본 사용자, 추천 섹션 | `search_history`, `post`, `item`, `user` (최근 열람은 Redis) | read, create, delete, search | O | `post`, `item` |
 | SCR-046 | 검색 결과 | 게시물 탭 / 계정 탭 결과, 필터 적용 | `post`, `item`, `user`, `category` | read, search, filter, paging | O | `post`, `item` |
 | SCR-047 | 검색 필터 | 판매 상태·게시자 성별·카테고리·키/몸무게로 필터 | `category`, `item_listing`, `user` | filter | O | — |
 
@@ -1613,26 +1604,6 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 
 인덱스: `ix_search_history_user`(user_id, searched_at)
 
-#### `recent_view` (RecentView)
-
-최근 본 게시물·사용자. 검색 첫 화면의 '최근 본 사용자'와 '방금 보신 OOTD와 유사한 게시물' 추천의 입력이다.
-
-- **패턴** `다형 참조 (polymorphic)` — target_type + target_id 로 POST / USER 열람 이력을 가리킨다. FK 를 걸 수 없다
-- **삭제 정책** `C` — 개인 열람 이력. 보존 의무 없음
-- **soft delete** X
-- **대상 삭제 시** 삭제된 대상은 목록에서 제외한다. 조회 시 대상 테이블의 deleted_at 을 확인해 걸러낸다
-- **화면 근거** '최근 본 사용자가 있거나 최근 검색이 있을 경우', '방금 보신 OOTD와 유사한 게시물'
-
-| 컬럼 | 타입 | Java 타입 | PK | 필수 | 유니크 | 출처 | 설명 |
-|---|---|---|:--:|:--:|:--:|---|---|
-| `id` | BIGINT | Long | O | O |  | `inferred` | PK 관례 |
-| `user_id` | BIGINT | Long |  | O |  | `inferred` | 열람자 |
-| `target_type` | VARCHAR(20) | RecentViewTargetType |  | O |  | `design` | 게시물 / 사용자 |
-| `target_id` | BIGINT | Long |  | O |  | `inferred` | 다형 참조라 FK 없음 |
-| `viewed_at` | DATETIME(6) | LocalDateTime |  | O |  | `design` | '최근' 정렬 기준 |
-
-인덱스: `uk_recent_view`(user_id, target_type, target_id) · UNIQUE, `ix_recent_view_user`(user_id, viewed_at)
-
 ---
 ## 6. 삭제 정책
 
@@ -1649,7 +1620,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 |---|---|---|
 | **A** | `deleted_at` 보유 | `post`, `item` |
 | **B** | 상태 컬럼으로 대체 | `user`(status), `item_listing`(sale_status·closed_at), `chat_room`, `chat_room_member`(left_at) |
-| **C** | 하드 삭제 | `follow`, `user_block`, `shipping_address`, `payout_account`, `notification_setting`, `notification`, `search_history`, `recent_view`, `wishlist`, `post_like`, `post_save`, `post_image`, `post_item_tag`, `item_image`, `item_measurement`, `item_condition`, `category`, `listing_featured_post`, `chat_message` |
+| **C** | 하드 삭제 | `follow`, `user_block`, `shipping_address`, `payout_account`, `notification_setting`, `notification`, `search_history`, `wishlist`, `post_like`, `post_save`, `post_image`, `post_item_tag`, `item_image`, `item_measurement`, `item_condition`, `category`, `listing_featured_post`, `chat_message` |
 | **D** | append-only (삭제 금지) | `item_ownership`, `item_wear_record`, `purchase_offer`, `payment`, `trade_order`, `order_shipment`, `order_status_history`, `settlement`, `user_agreement`, `user_withdrawal`, `user_grade_history`, `report`, `post_tag_edit_log` |
 
 ### 규칙
@@ -1666,7 +1637,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `phone`, `real_name` | 고정 마스크 값 치환 |
 | `profile_image_key`, `gender`, `height_cm`, `weight_kg` | NULL |
 | `nickname` | 저장값 `탈퇴한사용자_{id}`, 화면 표시 `탈퇴한 사용자` |
-| 연관 삭제 | `shipping_address` `payout_account` `search_history` `recent_view` `notification` `notification_setting` 하드 삭제 |
+| 연관 삭제 | `shipping_address` `payout_account` `search_history` `notification` `notification_setting` 하드 삭제. Redis 의 `recent-view:{userId}:*` 키도 함께 지운다 |
 
 컬럼 제약을 풀지 않고 값 치환만으로 파기가 성립한다. 시점은 DEC-004 로 확정했다 — 탈퇴 즉시 파기한다.
 
@@ -1689,7 +1660,6 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 |---|---|
 | `report` | 대상(post·item)이 soft delete 라 참조가 유지된다. 삭제된 게시물·아이템도 신고 검토가 가능하다 |
 | `notification` | 대상이 삭제되면 딥링크 진입 시 '삭제된 게시물입니다' 를 표시한다. 알림 행 자체는 남긴다 |
-| `recent_view` | 삭제된 대상은 목록에서 제외한다. 조회 시 대상 테이블의 deleted_at 을 확인해 걸러낸다 |
 
 세 경우 모두 대상(`post`·`item`)이 **soft delete** 라 참조가 물리적으로 끊기지는 않는다.
 `user` 도 탈퇴 시 행이 남으므로(B분류) 마찬가지다. 즉 **끊어진 참조는 발생하지 않고**,
@@ -1699,13 +1669,13 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 
 ### 6-2. 인덱스 설계 결정
 
-관계 요약표의 FK **69개 전부**에 인덱스를 걸었다(총 84개). 아래 세 건은 판단이 갈린 지점이라 근거를 남긴다.
+관계 요약표의 FK **68개 전부**에 인덱스를 걸었다(총 82개). 아래 세 건은 판단이 갈린 지점이라 근거를 남긴다.
 
 **IDX-001 — notification 의 (target_type, target_id) 복합 인덱스를 두지 않는다**
 
 > 결정: **추가하지 않음**
 
-다형 참조에 복합 인덱스를 거는 것은 '대상으로 역방향 조회'가 있을 때의 이야기다. notification 은 항상 user_id 기준으로만 조회되고(알림 목록·안읽음 배지) 특정 게시물·거래로 알림을 역추적하는 화면이 없다. 반면 알림은 쓰기가 매우 잦은 테이블이라 인덱스 하나가 곧 쓰기 비용이다. 스킬 5-2 ⑥(과도한 인덱스 경계)을 따라 추가하지 않는다. report·recent_view 는 각각 신고 검토와 중복 열람 판정에서 대상 기준 조회가 실제로 있어 인덱스를 둔다
+다형 참조에 복합 인덱스를 거는 것은 '대상으로 역방향 조회'가 있을 때의 이야기다. notification 은 항상 user_id 기준으로만 조회되고(알림 목록·안읽음 배지) 특정 게시물·거래로 알림을 역추적하는 화면이 없다. 반면 알림은 쓰기가 매우 잦은 테이블이라 인덱스 하나가 곧 쓰기 비용이다. 스킬 5-2 ⑥(과도한 인덱스 경계)을 따라 추가하지 않는다. report 는 신고 검토에서 대상 기준 조회가 실제로 있어 인덱스를 둔다
 
 *재검토 시점:* 특정 대상에 연결된 알림을 역추적하는 화면(예: 운영자의 신고 처리 화면에서 관련 알림 조회)이 생기면 재검토한다
 
@@ -1849,6 +1819,45 @@ Levis LVC 1955
 같은 화면의 다른 말풍선(`Our Legacy / Third Cut`)에는 2행이 없다 — 즉 `ON_SALE` 일 때만 붙는다.
 `API-071` 의 `images[].tags[].saleStatus` 로 내려 클라이언트가 말풍선 높이를 결정하게 한다.
 판매 등록이 없는 아이템은 `null` 이다.
+
+---
+
+**DEC-014 — 최근 본 게시물·사용자의 저장소**
+
+> 결정: **Redis Sorted Set (RDB 테이블 없음)**
+
+열람 이력은 다시 볼 일도 남길 이유도 없는데 RDB 에 **영구 보관**되고 있었다 —
+삭제 정책을 C(하드 삭제)로 분류해놓고 지우는 경로를 정하지 않았다.
+게다가 게시물·프로필을 **조회할 때마다 쓰기**가 일어나 읽기 경로에 쓰기가 붙은 구조다.
+
+```
+recent-view:{userId}:{targetType}    score = 열람 시각
+```
+
+- `ZADD` 가 재열람 시 score 만 갱신한다 → `uk(user_id, target_type, target_id)` 와 동일
+- `ZREVRANGE` 로 최근 N건, `ZREMRANGEBYRANK` 로 상한 유지
+- **구조가 보관 정책을 대신한다.** 기간을 따로 정할 필요가 없다
+
+`DEC-003`·`DEC-009`·`DEC-010` 과 같은 기준이다. `V4` 에서 테이블을 제거했다.
+
+*재검토 시점:* 열람 이력으로 추천 모델을 학습시키는 등 장기 보관이 필요해지면 별도 저장소를
+검토한다. 화면에 쓰는 최근 목록은 그때도 Redis 에 둔다.
+
+---
+
+**DEC-015 — 알림의 보관 기간**
+
+> 결정: **90일 경과 삭제 (배치)**
+
+알림은 읽음 상태와 탭별 페이징이 있어 **RDB 가 맞다** — 여기까지는 `recent_view` 와 다르다.
+다만 UNIQUE 제약이 없어 거래·제안·팔로우·위시 이벤트마다 행이 쌓이는데 **지우는 경로가 없어
+무한히 증가**하고 있었다.
+
+화면이 `어제`·`10월 24일` 수준의 최근성을 보여주므로 90일이면 체감 손실이 없다.
+건수 상한은 거래가 몰린 날 오래된 알림이 기간과 무관하게 밀려나서 택하지 않았다.
+
+*재검토 시점:* 운영 데이터를 확보한 뒤 실제 조회 분포를 보고 기간을 조정한다.
+알림량이 예상보다 많으면 읽은 것과 안 읽은 것의 기간을 나누는 안을 검토한다.
 
 ---
 

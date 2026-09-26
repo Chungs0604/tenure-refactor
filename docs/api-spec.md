@@ -64,7 +64,7 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | API-014 | `GET` | `/api/v1/users/me` | 내 프로필 + 카운터 | SCR-005, SCR-020 | User, Item, Wishlist, Follow | O |
 | API-015 | `PATCH` | `/api/v1/users/me` | 프로필 수정 (사진·닉네임·성별·키·몸무게) | SCR-005 | User | O |
 | API-016 | `DELETE` | `/api/v1/users/me` | 회원탈퇴 (사유 수집 + 즉시 익명화) | SCR-009 | User, UserWithdrawal | O |
-| API-017 | `GET` | `/api/v1/users/{userId}` | 타인 프로필 | SCR-012 | User, Follow, UserBlock, RecentView | O |
+| API-017 | `GET` | `/api/v1/users/{userId}` | 타인 프로필 | SCR-012 | User, Follow, UserBlock, 최근 열람(Redis) | O |
 | API-020 | `GET` | `/api/v1/shipping-addresses` | 배송지 목록 | SCR-006 | ShippingAddress | O |
 | API-021 | `POST` | `/api/v1/shipping-addresses` | 배송지 추가 | SCR-006, SCR-002 | ShippingAddress | O |
 | API-022 | `PUT` | `/api/v1/shipping-addresses/{addressId}` | 배송지 수정 | SCR-006 | ShippingAddress | O |
@@ -85,7 +85,7 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | API-056 | `POST` | `/api/v1/reports` | 신고 (게시물·상품·사용자) | SCR-013, SCR-019, SCR-026, SCR-043 | Report | O |
 | API-060 | `POST` | `/api/v1/images` | 이미지 업로드 → 저장소 키 반환 | SCR-017, SCR-018, SCR-024, SCR-042 | —(PostImage·ItemImage·ChatMessage 의 선행 단계) | O |
 | API-070 | `GET` | `/api/v1/posts` | 홈 피드 (모두 / 팔로우 탭) | SCR-014 | Post, PostImage, Follow, UserBlock | O |
-| API-071 | `GET` | `/api/v1/posts/{postId}` | OOTD 상세 | SCR-015 | Post, PostImage, PostItemTag, PostLike, PostSave, Follow, RecentView | O |
+| API-071 | `GET` | `/api/v1/posts/{postId}` | OOTD 상세 | SCR-015 | Post, PostImage, PostItemTag, PostLike, PostSave, Follow, 최근 열람(Redis) | O |
 | API-072 | `POST` | `/api/v1/posts` | OOTD 게시 | SCR-018 | Post, PostImage, PostItemTag | O |
 | API-073 | `PATCH` | `/api/v1/posts/{postId}` | 게시물 수정 (본문·태그) | SCR-019 | Post, PostItemTag | O |
 | API-074 | `DELETE` | `/api/v1/posts/{postId}` | 게시물 삭제 (soft) | SCR-019 | Post | O |
@@ -142,8 +142,8 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | API-192 | `PATCH` | `/api/v1/notifications/read-all` | 전체 읽음 | SCR-044 | Notification | O |
 | API-200 | `GET` | `/api/v1/search/posts` | 게시물 검색 (필터 적용) | SCR-046, SCR-047 | Post, Item, ItemListing, Category, User, SearchHistory | O |
 | API-201 | `GET` | `/api/v1/search/users` | 계정 검색 | SCR-046 | User, SearchHistory | O |
-| API-202 | `GET` | `/api/v1/search/recommendations` | 추천 섹션 (유사·인기·최신·인기 사용자) | SCR-045 | Post, User, RecentView | O |
-| API-203 | `GET` | `/api/v1/search/histories` | 최근 검색어 + 최근 본 사용자 | SCR-045 | SearchHistory, RecentView | O |
+| API-202 | `GET` | `/api/v1/search/recommendations` | 추천 섹션 (유사·인기·최신·인기 사용자) | SCR-045 | Post, User, 최근 열람(Redis) | O |
+| API-203 | `GET` | `/api/v1/search/histories` | 최근 검색어 + 최근 본 사용자 | SCR-045 | SearchHistory, 최근 열람(Redis) | O |
 | API-204 | `DELETE` | `/api/v1/search/histories/{historyId}` | 최근 검색어 개별 삭제 | SCR-045 | SearchHistory | O |
 | API-205 | `DELETE` | `/api/v1/search/histories` | 최근 검색어 전체 삭제 | SCR-045 | SearchHistory | O |
 ---
@@ -152,7 +152,7 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 
 없는 동작은 **이유**를 적는다. 화면에 없는 기능을 기계적으로 만들지 않았다.
 
-이메일 인증번호·토큰과 refresh token 은 **Redis** 에 있어 이 표에 없다(`DEC-009`·`DEC-010`).
+이메일 인증번호·토큰 · refresh token · 최근 열람 이력 · 공휴일 캐시는 **Redis** 에 있어 이 표에 없다(`DEC-009`·`DEC-010`·`DEC-014`·`DEC-003`).
 
 | 엔티티 | 목록 | 상세 | 생성 | 수정 | 삭제 |
 |---|---|---|---|---|---|
@@ -193,7 +193,6 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | `chat_message` | API-183 | 없음 | API-184 | 없음(수정 화면 없음) | 없음(삭제 화면 없음) |
 | `notification` | API-190 | 없음(목록에 전체 필드) | 없음(시스템 발행) | API-191 API-192 | 없음(보관 정책 없음) |
 | `search_history` | API-203 | 없음 | API-200 API-201 이 부수효과로 기록 | 없음 | API-204 API-205 |
-| `recent_view` | API-203 에 포함 | 없음 | API-071 API-017 이 부수효과로 기록 | 없음(재열람 시 viewed_at 만 갱신) | 없음(보관 정책 없음) |
 
 > `user_grade_history` 는 어떤 응답에도 나오지 않는다. 레코드 등급 승격·강등의 **판정 근거를 남기는 감사 테이블**이며
 > 화면에 노출되지 않는다. 과잉설계가 아니라 **레코드 승격 정책**(직전 30일 유효 OOTD 20개, 게시일 기준)의 재현성을 위한 것이다.
@@ -920,7 +919,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 탈퇴 사용자는 `nickname` 이 `탈퇴한 사용자` 로 내려가고 `profileImageUrl`·`heightCm`·`weightKg` 는 `null` 이다(익명화 시 NULL 처리, `DEC-004`).
 
-**부수효과** — 조회 시 `recent_view` 에 `(targetType=USER, targetId=userId)` 를 기록한다(이미 있으면 `viewed_at` 만 갱신). `API-203` 의 `최근 본 사용자` 입력이다.
+**부수효과** — 조회 시 Redis 의 `recent-view:{userId}:USER` 에 `ZADD` 한다(재열람이면 시각만 갱신). `API-203` 의 `최근 본 사용자` 입력이다(`DEC-014`).
 
 **경로 파라미터**
 
@@ -1591,7 +1590,7 @@ OOTD 상세. 인증 **필요**. 관련 화면 SCR-015.
 
 작성자 줄은 `팔로우 101명 · 피드 60개` 다. **여기엔 키·몸무게가 없다** — 체형은 프로필(`API-017`)에서만 보여준다.
 `isLiked`·`isSaved` 가 있어야 하트·북마크 토글의 초기 상태를 그릴 수 있다.
-**부수효과** — 조회 시 `recent_view` 에 `(targetType=POST, targetId=postId)` 를 기록한다(이미 있으면 `viewed_at` 만 갱신). `API-202` 의 `방금 보신 OOTD와 유사한 게시물` 입력이다.
+**부수효과** — 조회 시 Redis 의 `recent-view:{userId}:POST` 에 `ZADD` 한다(재열람이면 시각만 갱신). `API-202` 의 `방금 보신 OOTD와 유사한 게시물` 입력이다(`DEC-014`).
 
 **경로 파라미터**
 
@@ -4125,7 +4124,7 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 
 추천 섹션 (유사·인기·최신·인기 사용자). 인증 **필요**. 관련 화면 SCR-045.
 
-응답 `{ similarPosts[], popularPosts[], latestPosts[], popularUsers[] }` — `방금 보신 OOTD와 유사한 게시물` · `지금 인기 있는 스타일` · `새로 올라온 OOTD` · `인기 사용자`. 유사 추천의 입력은 `recent_view` 다.
+응답 `{ similarPosts[], popularPosts[], latestPosts[], popularUsers[] }` — `방금 보신 OOTD와 유사한 게시물` · `지금 인기 있는 스타일` · `새로 올라온 OOTD` · `인기 사용자`. 유사 추천의 입력은 Redis 의 `recent-view:{userId}:POST` 다(`DEC-014`).
 
 **응답** (`data`)
 
@@ -4267,6 +4266,8 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 | `DEC-104` | `API-079` 의 조회 단위를 게시물에서 **사진**으로 바꿨다 |
 | `DEC-105` | ErrorCode enum 이름을 코드 접두사에 맞췄다. 예외 없음 |
 | `IDX-003` | `ix_item_search`·`ix_item_listing_browse` 를 제거했다. 쓰는 엔드포인트가 없다 |
+| `DEC-014` | `recent_view` 테이블을 없애고 **Redis Sorted Set** 으로 옮겼다. 보관 정책이 없어 영구 보관되던 고부하 테이블이다. `V4` 가 내린다 |
+| `DEC-015` | `notification` 보관 기간을 **90일** 로 정했다. 지우는 경로가 없어 무한 증가하고 있었다 |
 
 그 밖에 **도메인 패키지 배치표를 §5 에 넣었다** — 도메인과 ErrorCode 가 1:1 이 아니라
 어느 패키지에 놓이는지 근거가 없었다.
