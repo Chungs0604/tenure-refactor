@@ -1,10 +1,12 @@
 package com.tenure.domain.user.controller;
 
 import com.tenure.domain.user.dto.request.UserCreateRequest;
+import com.tenure.domain.user.dto.request.UserUpdateRequest;
 import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.AvailabilityResponse;
 import com.tenure.domain.user.dto.response.MyProfileResponse;
 import com.tenure.domain.user.dto.response.UserCreateResponse;
+import com.tenure.domain.user.dto.response.UserUpdateResponse;
 import com.tenure.global.response.BaseResponse;
 import com.tenure.global.security.AuthUser;
 import io.swagger.v3.oas.annotations.Operation;
@@ -76,6 +78,16 @@ public interface UserApi {
 	@ApiResponse(responseCode = "200", description = "조회 성공")
 	ResponseEntity<BaseResponse<MyProfileResponse>> getMyProfile(
 			@Parameter(hidden = true) AuthUser authUser);
+
+	@Operation(summary = "프로필 수정",
+			description = "사진만 선택이다. profileImageKey 를 null 로 보내면 기본 이미지로 되돌린다.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "수정 성공"),
+			@ApiResponse(responseCode = "409", description = "USER_409_NICKNAME — 중복된 닉네임")
+	})
+	ResponseEntity<BaseResponse<UserUpdateResponse>> updateProfile(
+			@Parameter(hidden = true) AuthUser authUser,
+			@Valid UserUpdateRequest request);
 }
 
 

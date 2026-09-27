@@ -6,10 +6,12 @@ import com.tenure.domain.auth.enums.VerificationPurpose;
 import com.tenure.domain.auth.service.AuthService;
 import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.user.dto.request.UserCreateRequest;
+import com.tenure.domain.user.dto.request.UserUpdateRequest;
 import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.AvailabilityResponse;
 import com.tenure.domain.user.dto.response.MyProfileResponse;
 import com.tenure.domain.user.dto.response.UserCreateResponse;
+import com.tenure.domain.user.dto.response.UserUpdateResponse;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.user.entity.UserAgreement;
 import com.tenure.domain.user.enums.AgreementType;
@@ -170,6 +172,31 @@ public class UserService {
 				toImageUrl(user.getProfileImageKey()),
 				itemCount, wishCount
 		);
+	}
+
+	/** 프로필 수정. 닉네임을 바꿀 때만 중복을 확인한다. */
+	@Transactional
+	@Loggable("프로필 수정")
+	public UserUpdateResponse updateProfile(Long userId, UserUpdateRequest request) {
+		User user = findUser(userId);
+
+		// 본인 닉네임 빼고 검사 — 본인의 이전 닉네임은 그대로 사용 가능
+		if (userRepository.existsOtherNickname(request.getNickname(), userId)) {
+			log.warn("다른 사용자가 쓰고 있는 닉네임입니다. nickname={}", request.getNickname());
+			throw new CustomException(UserErrorCode.USER_409_NICKNAME);
+		}
+
+		user.updateProfile(
+				request.getNickname(),
+				request.getProfileImageKey(),
+				request.getGender(),
+				request.getHeightCm(),
+				request.getWeightKg()
+		);
+
+		return UserUpdateResponse.builder()
+				.id(user.getId())
+				.build();
 	}
 
 	private User findUser(Long userId) {

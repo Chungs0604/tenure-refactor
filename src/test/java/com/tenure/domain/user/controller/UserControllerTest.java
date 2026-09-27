@@ -2,10 +2,12 @@ package com.tenure.domain.user.controller;
 
 import com.tenure.domain.auth.exception.AuthErrorCode;
 import com.tenure.domain.user.dto.request.UserCreateRequest;
+import com.tenure.domain.user.dto.request.UserUpdateRequest;
 import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.AvailabilityResponse;
 import com.tenure.domain.user.dto.response.MyProfileResponse;
 import com.tenure.domain.user.dto.response.UserCreateResponse;
+import com.tenure.domain.user.dto.response.UserUpdateResponse;
 import com.tenure.domain.user.enums.AgreementType;
 import com.tenure.domain.user.enums.Gender;
 import com.tenure.domain.user.enums.UserGrade;
@@ -26,11 +28,13 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -312,6 +316,79 @@ class UserControllerTest extends ControllerSliceTestSupport {
 	}
 
 	@Nested
+	@DisplayName("PATCH /api/v1/users/me")
+	class UpdateProfile {
+
+		@Test
+		@DisplayName("수정에 성공하면 id 를 내려준다")
+		void updateProfile_validRequest_returnsId() throws Exception {
+			given(userService.updateProfile(eq(USER_ID), any(UserUpdateRequest.class)))
+					.willReturn(UserUpdateResponse.builder().id(USER_ID).build());
+
+			mvc.perform(patch(USERS_URL + "/me")
+							.with(authentication(principalOf(USER_ID)))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(updateRequest(builder -> {}))))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.data.id").value(USER_ID));
+		}
+
+		@Test
+		@DisplayName("사진 키는 null 로 보낼 수 있다")
+		void updateProfile_nullImageKey_returnsOk() throws Exception {
+			given(userService.updateProfile(eq(USER_ID), any(UserUpdateRequest.class)))
+					.willReturn(UserUpdateResponse.builder().id(USER_ID).build());
+
+			// 기본 이미지로 되돌리는 유일한 방법이라 검증에서 막으면 화면이 동작하지 않는다
+			mvc.perform(patch(USERS_URL + "/me")
+							.with(authentication(principalOf(USER_ID)))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(updateRequest(builder -> builder.profileImageKey(null)))))
+					.andExpect(status().isOk());
+		}
+
+		@Test
+		@DisplayName("닉네임이 비면 400 이고 서비스를 호출하지 않는다")
+		void updateProfile_blankNickname_returnsBadRequest() throws Exception {
+			expectError(updateRequest(builder -> builder.nickname(" ")), 400, "COMMON_400");
+
+			verifyNoInteractions(userService);
+		}
+
+		@Test
+		@DisplayName("성별이 없으면 400 이다")
+		void updateProfile_nullGender_returnsBadRequest() throws Exception {
+			// 프로필 입력값 중 사진만 선택이다. 생략을 허용하면 null 의 의미가 두 곳으로 갈린다
+			expectError(updateRequest(builder -> builder.gender(null)), 400, "COMMON_400");
+		}
+
+		@Test
+		@DisplayName("키가 범위를 넘으면 400 이다")
+		void updateProfile_heightOutOfRange_returnsBadRequest() throws Exception {
+			expectError(updateRequest(builder -> builder.heightCm(201)), 400, "COMMON_400");
+		}
+
+		@Test
+		@DisplayName("닉네임이 중복이면 409 를 반환한다")
+		void updateProfile_duplicateNickname_returnsConflict() throws Exception {
+			willThrow(new CustomException(UserErrorCode.USER_409_NICKNAME))
+					.given(userService).updateProfile(eq(USER_ID), any(UserUpdateRequest.class));
+
+			expectError(updateRequest(builder -> {}), 409, "USER_409_NICKNAME");
+		}
+
+		private void expectError(UserUpdateRequest request, int status, String code) throws Exception {
+			mvc.perform(patch(USERS_URL + "/me")
+							.with(authentication(principalOf(USER_ID)))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(request)))
+					.andExpect(status().is(status))
+					.andExpect(jsonPath("$.success").value(false))
+					.andExpect(jsonPath("$.code").value(code));
+		}
+	}
+
+	@Nested
 	@DisplayName("공개되지 않은 경로")
 	class Protected {
 
@@ -341,6 +418,19 @@ class UserControllerTest extends ControllerSliceTestSupport {
 
 	private static UsernamePasswordAuthenticationToken principalOf(Long userId) {
 		return new UsernamePasswordAuthenticationToken(new AuthUser(userId), null, List.of());
+	}
+
+	/** 유효한 수정 요청을 만들고, 검사하려는 필드 하나만 덮어쓴다. */
+	private static UserUpdateRequest updateRequest(Consumer<UserUpdateRequest.UserUpdateRequestBuilder> override) {
+		UserUpdateRequest.UserUpdateRequestBuilder builder = UserUpdateRequest.builder()
+				.nickname(NICKNAME)
+				.profileImageKey("user/2026/09/ab12.jpg")
+				.gender(Gender.MALE)
+				.heightCm(168)
+				.weightKg(58);
+
+		override.accept(builder);
+		return builder.build();
 	}
 
 	private static AvailabilityResponse available(boolean available) {

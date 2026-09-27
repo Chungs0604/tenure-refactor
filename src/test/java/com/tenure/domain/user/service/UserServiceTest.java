@@ -7,10 +7,12 @@ import com.tenure.domain.auth.exception.AuthErrorCode;
 import com.tenure.domain.auth.service.AuthService;
 import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.user.dto.request.UserCreateRequest;
+import com.tenure.domain.user.dto.request.UserUpdateRequest;
 import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.AvailabilityResponse;
 import com.tenure.domain.user.dto.response.MyProfileResponse;
 import com.tenure.domain.user.dto.response.UserCreateResponse;
+import com.tenure.domain.user.dto.response.UserUpdateResponse;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.user.entity.UserAgreement;
 import com.tenure.domain.user.enums.AgreementType;
@@ -389,6 +391,81 @@ class UserServiceTest {
 		}
 	}
 
+	@Nested
+	@DisplayName("프로필 수정")
+	class UpdateProfile {
+
+		@Test
+		@DisplayName("보낸 값으로 프로필을 덮어쓴다")
+		void updateProfile_validRequest_overwritesProfile() {
+			User user = profileUser();
+			given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+			given(userRepository.existsOtherNickname("Yujin", USER_ID)).willReturn(false);
+
+			UserUpdateResponse response = userService.updateProfile(USER_ID, updateRequest("Yujin", "user/new.jpg"));
+
+			assertThat(response.getId()).isEqualTo(USER_ID);
+			assertThat(user.getNickname()).isEqualTo("Yujin");
+			assertThat(user.getProfileImageKey()).isEqualTo("user/new.jpg");
+			assertThat(user.getGender()).isEqualTo(Gender.FEMALE);
+			assertThat(user.getHeightCm()).isEqualTo(170);
+			assertThat(user.getWeightKg()).isEqualTo(64);
+		}
+
+		@Test
+		@DisplayName("사진 키를 null 로 보내면 기본 이미지로 되돌린다")
+		void updateProfile_nullImageKey_resetsToDefaultImage() {
+			User user = profileUser();
+			given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+			given(userRepository.existsOtherNickname(NICKNAME, USER_ID)).willReturn(false);
+
+			userService.updateProfile(USER_ID, updateRequest(NICKNAME, null));
+
+			assertThat(user.getProfileImageKey()).isNull();
+		}
+
+		@Test
+		@DisplayName("닉네임을 그대로 보내면 자기 행은 중복으로 보지 않는다")
+		void updateProfile_sameNickname_passesDuplicateCheck() {
+			User user = profileUser();
+			given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+			// 대소문자를 무시하는 collation 이라 자기 닉네임도 existsByNickname 에는 걸린다
+			given(userRepository.existsOtherNickname(NICKNAME, USER_ID)).willReturn(false);
+
+			userService.updateProfile(USER_ID, updateRequest(NICKNAME, IMAGE_KEY));
+
+			assertThat(user.getNickname()).isEqualTo(NICKNAME);
+		}
+
+		@Test
+		@DisplayName("다른 사용자가 쓰는 닉네임이면 USER_409_NICKNAME 이고 아무것도 바꾸지 않는다")
+		void updateProfile_duplicateNickname_throwsConflict() {
+			User user = profileUser();
+			given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+			given(userRepository.existsOtherNickname("Yujin", USER_ID)).willReturn(true);
+
+			assertThatThrownBy(() -> userService.updateProfile(USER_ID, updateRequest("Yujin", IMAGE_KEY)))
+					.isInstanceOf(CustomException.class)
+					.extracting(UserServiceTest::errorCodeOf)
+					.isEqualTo(UserErrorCode.USER_409_NICKNAME);
+
+			assertThat(user.getNickname()).isEqualTo(NICKNAME);
+		}
+
+		@Test
+		@DisplayName("없는 사용자면 USER_404 이고 중복 검사조차 하지 않는다")
+		void updateProfile_unknownUser_throwsNotFound() {
+			given(userRepository.findById(USER_ID)).willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> userService.updateProfile(USER_ID, updateRequest(NICKNAME, IMAGE_KEY)))
+					.isInstanceOf(CustomException.class)
+					.extracting(UserServiceTest::errorCodeOf)
+					.isEqualTo(UserErrorCode.USER_404);
+
+			verify(userRepository, times(0)).existsOtherNickname(any(), any());
+		}
+	}
+
 	/** 조회용 고정 사용자. 카운터 컬럼은 가입 시 0 이라 화면 예시 값으로 채워 둔다. */
 	private static User profileUser() {
 		User user = User.signUp(
@@ -399,6 +476,16 @@ class UserServiceTest {
 		ReflectionTestUtils.setField(user, "followerCount", 201);
 		ReflectionTestUtils.setField(user, "postCount", 60);
 		return user;
+	}
+
+	private static UserUpdateRequest updateRequest(String nickname, String profileImageKey) {
+		return UserUpdateRequest.builder()
+				.nickname(nickname)
+				.profileImageKey(profileImageKey)
+				.gender(Gender.FEMALE)
+				.heightCm(170)
+				.weightKg(64)
+				.build();
 	}
 
 	private static UserCreateRequest request() {
