@@ -62,7 +62,9 @@ public class JwtTokenProvider {
 	/** 서명·만료가 유효하면 클레임을, 아니면 {@code null} 을 돌려준다. */
 	public Claims parseOrNull(String token) {
 		try {
-			return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
+			return Jwts.parser().verifyWith(key).build()
+					.parseSignedClaims(token)
+					.getPayload();
 		} catch (JwtException | IllegalArgumentException e) {
 			log.debug("토큰 파싱 실패: {}", e.getMessage());
 			return null;

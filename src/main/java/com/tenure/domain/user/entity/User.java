@@ -108,8 +108,11 @@ public class User extends BaseEntity {
 	 * <p>비밀번호는 해시를 받는다 — 엔티티가 인코더를 알면 도메인이 보안 구현에 묶인다.
 	 * 등급은 BASIC 으로 시작하고 레코드 승격은 게시 시점에 판정한다.
 	 */
-	public static User signUp(String email, String passwordHash, String realName, String phone,
-			String nickname, String profileImageKey, Gender gender, Integer heightCm, Integer weightKg) {
+	public static User signUp(
+			String email, String passwordHash, String realName,
+			String phone, String nickname, String profileImageKey,
+			Gender gender, Integer heightCm, Integer weightKg
+	) {
 		return User.builder()
 				.email(email)
 				.passwordHash(passwordHash)
@@ -125,6 +128,14 @@ public class User extends BaseEntity {
 				.followerCount(0)
 				.postCount(0)
 				.build();
+	}
+
+	/**
+	 * 비밀번호 재설정
+	 * 해시를 받는다 — 엔티티가 인코더를 알지 않는다.
+	 */
+	public void changePassword(String passwordHash) {
+		this.passwordHash = passwordHash;
 	}
 
 	public boolean isWithdrawn() {

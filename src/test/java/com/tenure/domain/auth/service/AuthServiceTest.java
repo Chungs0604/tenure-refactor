@@ -2,17 +2,32 @@ package com.tenure.domain.auth.service;
 
 import com.tenure.domain.auth.dto.request.EmailVerificationConfirmRequest;
 import com.tenure.domain.auth.dto.request.EmailVerificationSendRequest;
+import com.tenure.domain.auth.dto.request.LoginRequest;
+import com.tenure.domain.auth.dto.request.PasswordResetRequest;
+import com.tenure.domain.auth.dto.request.TokenReissueRequest;
 import com.tenure.domain.auth.dto.response.EmailVerificationConfirmResponse;
 import com.tenure.domain.auth.dto.response.EmailVerificationSendResponse;
+import com.tenure.domain.auth.dto.response.LoginResponse;
+import com.tenure.domain.auth.dto.response.TokenReissueResponse;
 import com.tenure.domain.auth.enums.VerificationPurpose;
 import com.tenure.domain.auth.exception.AuthErrorCode;
 import com.tenure.domain.auth.store.EmailVerificationStore;
+import com.tenure.domain.user.entity.User;
+import com.tenure.domain.user.enums.Gender;
+import com.tenure.domain.user.enums.UserGrade;
+import com.tenure.domain.user.enums.UserStatus;
 import com.tenure.domain.user.exception.UserErrorCode;
 import com.tenure.domain.user.repository.UserRepository;
 import com.tenure.global.exception.CustomException;
 import com.tenure.global.exception.ErrorCode;
 import com.tenure.global.mail.EmailSender;
+import com.tenure.global.security.jwt.JwtTokenProvider;
+import com.tenure.global.security.refresh.RefreshTokenStore;
+import com.tenure.global.storage.FileStorage;
+import io.jsonwebtoken.Claims;
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -20,6 +35,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static com.tenure.domain.auth.enums.VerificationPurpose.PASSWORD_RESET;
 import static com.tenure.domain.auth.enums.VerificationPurpose.SIGN_UP;
@@ -28,6 +45,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -39,12 +57,220 @@ class AuthServiceTest {
 	private static final String EMAIL = "gildong@naver.com";
 	private static final String CODE = "123456";
 	private static final String TOKEN = "d4f1c0ab9e7b4c2f8a5d3e6b1c9f0a2d";
+	private static final Long USER_ID = 1L;
+	private static final String NICKNAME = "gildong";
+	private static final String RAW_PASSWORD = "password123";
+	private static final String HASHED_PASSWORD = "$2a$10$hashed";
+	private static final String IMAGE_KEY = "user/2026/06/ab12.jpg";
 
 	@Mock private EmailVerificationStore verificationStore;
 	@Mock private UserRepository userRepository;
 	@Mock private EmailSender emailSender;
+	@Mock private PasswordEncoder passwordEncoder;
+	@Mock private JwtTokenProvider jwtTokenProvider;
+	@Mock private RefreshTokenStore refreshTokenStore;
+	@Mock private FileStorage fileStorage;
 
 	@InjectMocks private AuthService authService;
+
+	@Nested
+	@DisplayName("로그인")
+	class Login {
+
+		@Test
+		@DisplayName("이메일·비밀번호가 맞으면 토큰과 사용자 정보를 내려준다")
+		void login_validCredentials_issuesTokens() {
+			givenUser(activeUser(IMAGE_KEY));
+			givenPasswordMatches(true);
+			givenTokensIssued(false);
+			given(fileStorage.toUrl(IMAGE_KEY)).willReturn("https://cdn.tenure.app/" + IMAGE_KEY);
+
+			LoginResponse response = authService.login(loginRequest(false));
+
+			assertThat(response.getAccessToken()).isEqualTo("access-token");
+			assertThat(response.getRefreshToken()).isEqualTo("refresh-token");
+			assertThat(response.getUser().getId()).isEqualTo(USER_ID);
+			assertThat(response.getUser().getNickname()).isEqualTo(NICKNAME);
+			assertThat(response.getUser().getProfileImageUrl())
+					.isEqualTo("https://cdn.tenure.app/" + IMAGE_KEY);
+			assertThat(response.getUser().getGrade()).isEqualTo(UserGrade.BASIC);
+
+			// 발급한 tokenId 가 저장되지 않으면 재발급이 곧바로 401 이 된다
+			verify(refreshTokenStore).save(USER_ID, "token-id", Duration.ofDays(14));
+		}
+
+		@Test
+		@DisplayName("프로필 사진이 없으면 URL 없이 내려준다")
+		void login_noProfileImage_returnsNullUrl() {
+			givenUser(activeUser(null));
+			givenPasswordMatches(true);
+			givenTokensIssued(false);
+
+			LoginResponse response = authService.login(loginRequest(false));
+
+			assertThat(response.getUser().getProfileImageUrl()).isNull();
+			// 키가 없는데 저장소를 치면 base-url 만 붙은 깨진 URL 이 나간다
+			verifyNoInteractions(fileStorage);
+		}
+
+		@Test
+		@DisplayName("로그인 상태 유지를 켜면 긴 수명으로 리프레시 토큰을 발급한다")
+		void login_keepLoggedIn_issuesLongLivedRefreshToken() {
+			givenUser(activeUser(null));
+			givenPasswordMatches(true);
+			givenTokensIssued(true);
+
+			authService.login(loginRequest(true));
+
+			verify(jwtTokenProvider).issueRefreshToken(USER_ID, true);
+		}
+
+		@Test
+		@DisplayName("가입되지 않은 이메일이면 AUTH_404_EMAIL 예외가 발생한다")
+		void login_unknownEmail_throwsNotFound() {
+			given(userRepository.findByEmail(EMAIL)).willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> authService.login(loginRequest(false)))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_404_EMAIL);
+
+			verifyNoInteractions(jwtTokenProvider, refreshTokenStore);
+		}
+
+		@Test
+		@DisplayName("비밀번호가 틀리면 AUTH_401_CREDENTIAL 예외가 발생한다")
+		void login_wrongPassword_throwsUnauthorized() {
+			givenUser(activeUser(null));
+			givenPasswordMatches(false);
+
+			assertThatThrownBy(() -> authService.login(loginRequest(false)))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_401_CREDENTIAL);
+
+			verifyNoInteractions(jwtTokenProvider, refreshTokenStore);
+		}
+
+		@Test
+		@DisplayName("탈퇴한 계정이면 AUTH_404_EMAIL 예외가 발생한다")
+		void login_withdrawnAccount_throwsNotFound() {
+			// 익명화(DEC-004) 전 상태. 비밀번호를 보기 전에 끊어야 한다
+			User withdrawn = activeUser(null);
+			ReflectionTestUtils.setField(withdrawn, "status", UserStatus.WITHDRAWN);
+			givenUser(withdrawn);
+
+			assertThatThrownBy(() -> authService.login(loginRequest(false)))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_404_EMAIL);
+
+			verifyNoInteractions(passwordEncoder, jwtTokenProvider, refreshTokenStore);
+		}
+
+		private void givenUser(User user) {
+			given(userRepository.findByEmail(EMAIL)).willReturn(Optional.of(user));
+		}
+
+		private void givenPasswordMatches(boolean matches) {
+			given(passwordEncoder.matches(RAW_PASSWORD, HASHED_PASSWORD)).willReturn(matches);
+		}
+
+		private void givenTokensIssued(boolean keepLoggedIn) {
+			given(jwtTokenProvider.issueRefreshToken(USER_ID, keepLoggedIn)).willReturn(
+					new JwtTokenProvider.IssuedRefreshToken(
+							"refresh-token", "token-id", Duration.ofDays(14)));
+			given(jwtTokenProvider.issueAccessToken(USER_ID)).willReturn("access-token");
+		}
+	}
+
+	@Nested
+	@DisplayName("로그아웃")
+	class Logout {
+
+		@Test
+		@DisplayName("이 사용자의 리프레시 토큰을 전부 무효화한다")
+		void logout_authenticatedUser_revokesAllRefreshTokens() {
+			authService.logout(USER_ID);
+
+			// 기기 단위로 끊을 수 없다 — access token 에 tokenId 클레임이 없다
+			verify(refreshTokenStore).revokeAll(USER_ID);
+		}
+	}
+
+	@Nested
+	@DisplayName("액세스 토큰 재발급")
+	class Reissue {
+
+		private static final String REFRESH_TOKEN = "refresh-token";
+		private static final String TOKEN_ID = "token-id";
+
+		@Test
+		@DisplayName("살아 있는 리프레시 토큰이면 새 액세스 토큰을 발급한다")
+		void reissue_aliveRefreshToken_issuesAccessToken() {
+			givenParsedRefreshToken(TOKEN_ID);
+			given(refreshTokenStore.isAlive(USER_ID, TOKEN_ID)).willReturn(true);
+			given(jwtTokenProvider.issueAccessToken(USER_ID)).willReturn("new-access-token");
+
+			TokenReissueResponse response = authService.reissue(reissueRequest());
+
+			assertThat(response.getAccessToken()).isEqualTo("new-access-token");
+		}
+
+		@Test
+		@DisplayName("서명이 깨졌거나 만료됐으면 AUTH_401_TOKEN 예외가 발생한다")
+		void reissue_invalidToken_throwsUnauthorized() {
+			given(jwtTokenProvider.parseOrNull(REFRESH_TOKEN)).willReturn(null);
+
+			assertThatThrownBy(() -> authService.reissue(reissueRequest()))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_401_TOKEN);
+
+			verifyNoInteractions(refreshTokenStore);
+		}
+
+		@Test
+		@DisplayName("액세스 토큰을 넣으면 AUTH_401_TOKEN 예외가 발생한다")
+		void reissue_accessToken_throwsUnauthorized() {
+			// tid 클레임이 없는 것이 access token 이다. 이걸로 재발급이 되면 refresh 무효화가 무력해진다
+			givenParsedRefreshToken(null);
+
+			assertThatThrownBy(() -> authService.reissue(reissueRequest()))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_401_TOKEN);
+
+			verifyNoInteractions(refreshTokenStore);
+		}
+
+		@Test
+		@DisplayName("로그아웃으로 무효화된 토큰이면 AUTH_401_TOKEN 예외가 발생한다")
+		void reissue_revokedToken_throwsUnauthorized() {
+			givenParsedRefreshToken(TOKEN_ID);
+			given(refreshTokenStore.isAlive(USER_ID, TOKEN_ID)).willReturn(false);
+
+			assertThatThrownBy(() -> authService.reissue(reissueRequest()))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_401_TOKEN);
+
+			verify(jwtTokenProvider, never()).issueAccessToken(any());
+		}
+
+		private void givenParsedRefreshToken(String tokenId) {
+			Claims claims = mock(Claims.class);
+			given(jwtTokenProvider.parseOrNull(REFRESH_TOKEN)).willReturn(claims);
+			given(jwtTokenProvider.getTokenId(claims)).willReturn(tokenId);
+			if (tokenId != null) {
+				given(jwtTokenProvider.getUserId(claims)).willReturn(USER_ID);
+			}
+		}
+
+		private TokenReissueRequest reissueRequest() {
+			return TokenReissueRequest.builder().refreshToken(REFRESH_TOKEN).build();
+		}
+	}
 
 	@Nested
 	@DisplayName("인증번호 발송")
@@ -239,6 +465,109 @@ class AuthServiceTest {
 			given(verificationStore.consumeToken(TOKEN))
 					.willReturn(new EmailVerificationStore.VerifiedTarget(purpose, email));
 		}
+	}
+
+	@Nested
+	@DisplayName("비밀번호 재설정")
+	class ResetPassword {
+
+		private static final String NEW_PASSWORD = "newPassword123";
+
+		@Test
+		@DisplayName("비밀번호 찾기 토큰이 맞으면 해시로 바꿔 저장한다")
+		void resetPassword_validToken_updatesPasswordHash() {
+			givenToken(PASSWORD_RESET);
+			User user = activeUser(null);
+			given(userRepository.findByEmail(EMAIL)).willReturn(Optional.of(user));
+			given(passwordEncoder.encode(NEW_PASSWORD)).willReturn("$2a$10$newHash");
+
+			authService.resetPassword(resetRequest(NEW_PASSWORD));
+
+			// 평문이 들어가면 다음 로그인이 전부 실패한다
+			assertThat(user.getPasswordHash()).isEqualTo("$2a$10$newHash");
+		}
+
+		@Test
+		@DisplayName("재설정하면 기존 리프레시 토큰을 전부 무효화한다")
+		void resetPassword_validToken_revokesRefreshTokens() {
+			givenToken(PASSWORD_RESET);
+			given(userRepository.findByEmail(EMAIL)).willReturn(Optional.of(activeUser(null)));
+			given(passwordEncoder.encode(NEW_PASSWORD)).willReturn("$2a$10$newHash");
+
+			authService.resetPassword(resetRequest(NEW_PASSWORD));
+
+			// 세션을 남겨두면 비밀번호를 바꾼 이유(탈취)가 해소되지 않는다
+			verify(refreshTokenStore).revokeAll(USER_ID);
+		}
+
+		@Test
+		@DisplayName("가입용 토큰이면 AUTH_400_PURPOSE_MISMATCH 예외가 발생하고 비밀번호를 바꾸지 않는다")
+		void resetPassword_signUpToken_throwsBadRequest() {
+			givenToken(SIGN_UP);
+
+			assertThatThrownBy(() -> authService.resetPassword(resetRequest(NEW_PASSWORD)))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_400_PURPOSE_MISMATCH);
+
+			// 토큰이 유효하지 않으면 계정을 조회하지도 않는다
+			verifyNoInteractions(userRepository, passwordEncoder);
+		}
+
+		@Test
+		@DisplayName("이미 사용된 토큰이면 AUTH_409_TOKEN_CONSUMED 예외가 발생한다")
+		void resetPassword_consumedToken_throwsConflict() {
+			given(verificationStore.consumeToken(TOKEN)).willReturn(null);
+			given(verificationStore.wasConsumed(TOKEN)).willReturn(true);
+
+			assertThatThrownBy(() -> authService.resetPassword(resetRequest(NEW_PASSWORD)))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_409_TOKEN_CONSUMED);
+
+			verifyNoInteractions(userRepository, passwordEncoder);
+		}
+
+		@Test
+		@DisplayName("인증은 통과했지만 계정이 없으면 USER_404 예외가 발생한다")
+		void resetPassword_userGone_throwsNotFound() {
+			givenToken(PASSWORD_RESET);
+			given(userRepository.findByEmail(EMAIL)).willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> authService.resetPassword(resetRequest(NEW_PASSWORD)))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(UserErrorCode.USER_404);
+		}
+
+		private void givenToken(VerificationPurpose purpose) {
+			given(verificationStore.consumeToken(TOKEN))
+					.willReturn(new EmailVerificationStore.VerifiedTarget(purpose, EMAIL));
+		}
+
+		private PasswordResetRequest resetRequest(String newPassword) {
+			return PasswordResetRequest.builder()
+					.email(EMAIL)
+					.verificationToken(TOKEN)
+					.newPassword(newPassword)
+					.build();
+		}
+	}
+
+	private static LoginRequest loginRequest(boolean keepLoggedIn) {
+		return LoginRequest.builder()
+				.email(EMAIL)
+				.password(RAW_PASSWORD)
+				.keepLoggedIn(keepLoggedIn)
+				.build();
+	}
+
+	/** id 가 박힌 활성 계정. 엔티티 팩토리는 id 를 만들지 않으므로 저장 이후 상태를 재현한다. */
+	private static User activeUser(String profileImageKey) {
+		User user = User.signUp(EMAIL, HASHED_PASSWORD, "홍길동", "821012345678",
+				NICKNAME, profileImageKey, Gender.MALE, 170, 64);
+		ReflectionTestUtils.setField(user, "id", USER_ID);
+		return user;
 	}
 
 	private static EmailVerificationSendRequest sendRequest(VerificationPurpose purpose) {

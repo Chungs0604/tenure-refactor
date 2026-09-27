@@ -30,7 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 가입과 중복 확인.
  *
- * <p>예외를 던지기 전에 판단 근거를 남긴다 — ErrorCode 자체는 {@code ServiceLoggingAspect} 가 찍는다.
+ * 예외를 던지기 전에 판단 근거를 남긴다 — ErrorCode 자체는
+ * ServiceLoggingAspect 가 찍는다.
  */
 @Slf4j
 @Service
@@ -49,7 +50,7 @@ public class UserService {
 	private final JwtTokenProvider jwtTokenProvider;
 	private final RefreshTokenStore refreshTokenStore;
 
-	/** 이메일 중복 확인 (API-010). 중복이어도 예외를 던지지 않는다 — 화면이 안내 문구를 띄운다. */
+	/** 이메일 중복 확인. 중복이어도 예외를 던지지 않는다 — 화면이 안내 문구를 띄운다. */
 	@Loggable("이메일 중복 확인")
 	public AvailabilityResponse checkEmail(String email) {
 		return AvailabilityResponse.builder()
@@ -57,7 +58,7 @@ public class UserService {
 				.build();
 	}
 
-	/** 닉네임 중복 확인 (API-011). */
+	/** 닉네임 중복 확인 */
 	@Loggable("닉네임 중복 확인")
 	public AvailabilityResponse checkNickname(String nickname) {
 		return AvailabilityResponse.builder()
@@ -66,7 +67,7 @@ public class UserService {
 	}
 
 	/**
-	 * 회원가입 (API-012). 약관·기본 배송지를 같은 트랜잭션에서 만든다.
+	 * 회원가입. 약관·기본 배송지를 같은 트랜잭션에서 만든다.
 	 */
 	@Transactional
 	@Loggable("회원가입")
@@ -79,7 +80,7 @@ public class UserService {
 		// 필수 약관 3종이 모두 있는지 검사
 		validateAgreements(request.getAgreements());
 
-		// 유니크 제약 선검사. DB 예외를 그대로 내보내지 않고 도메인 에러로 바꾼다
+		// 유니크 제약 선검사.
 		if (userRepository.existsByEmail(request.getEmail())) {
 			log.warn("이미 가입된 이메일 입니다. email={}", request.getEmail());
 			throw new CustomException(UserErrorCode.USER_409_EMAIL);
@@ -89,7 +90,7 @@ public class UserService {
 			throw new CustomException(UserErrorCode.USER_409_NICKNAME);
 		}
 
-		// 계정 생성. 비밀번호는 해시해서 넘긴다
+		// 계정 생성. 비밀번호는 해시해서 넘김
 		User signUpUser = User.signUp(
 				request.getEmail(),
 				passwordEncoder.encode(request.getPassword()),
@@ -99,18 +100,19 @@ public class UserService {
 				request.getProfileImageKey(),
 				request.getGender(),
 				request.getHeightCm(),
-				request.getWeightKg());
+				request.getWeightKg()
+		);
 
 		User user = userRepository.save(signUpUser);
 
-		// 약관 동의 기록. 법적 증빙이라 append-only(update, delete 금지) 다
+		// 약관 동의 기록. 법적 증빙이라 append-only(update, delete 금지)
 		request.getAgreements().forEach(agreement ->
 		{
 			UserAgreement agree = UserAgreement.agree(user, agreement.getAgreementType());
 			userAgreementRepository.save(agree);
 		});
 
-		// 첫 배송지는 기본 배송지로 등록한다
+		// 첫 배송지는 기본 배송지로 등록
 		UserCreateRequest.AddressRequest address = request.getAddress();
 
 		ShippingAddress shippingAddress = ShippingAddress.register(
@@ -120,7 +122,7 @@ public class UserService {
 
 		shippingAddressRepository.save(shippingAddress);
 
-		// 가입 직후 자동 로그인. keepLoggedIn 은 로그인 화면에만 있으므로 기본 수명을 쓴다
+		// 가입 직후 자동 로그인. keepLoggedIn 은 로그인 화면에만 있으므로 기본 수명 사용
 		JwtTokenProvider.IssuedRefreshToken refresh = jwtTokenProvider
 				.issueRefreshToken(user.getId(), false);
 
@@ -135,7 +137,7 @@ public class UserService {
 				.build();
 	}
 
-	/** 필수 약관이 모두 포함됐는지 본다. 동의 여부(true) 자체는 DTO 가 검증한다. */
+	/** 필수 약관이 모두 포함됐는지 확인. 동의 여부(true) 자체는 DTO 가 검증. */
 	private void validateAgreements(List<UserCreateRequest.AgreementRequest> agreements) {
 
 		Set<AgreementType> agreed = agreements.stream()
