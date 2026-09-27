@@ -23,6 +23,8 @@ import lombok.NoArgsConstructor;
  * 회원가입 요청 (API-012).
  *
  * <p>약관 3종 동의와 주소 1건을 함께 받아 화면 흐름(가입 → 약관 → 주소 → 프로필)을 한 번에 마감한다.
+ *
+ * <p>프로필 입력값 중 사진만 선택이다 — 수정 요청과 같은 규칙이라야 두 화면이 어긋나지 않는다.
  */
 @Getter
 @Builder
@@ -61,15 +63,18 @@ public class UserCreateRequest {
 	private String profileImageKey;
 
 	@Schema(description = "성별")
+	@NotNull
 	private Gender gender;
 
 	/** 엔티티는 SMALLINT(Short) 라 범위를 여기서 막는다 — 안 막으면 좁히기 변환에서 값이 뒤집힌다. */
 	@Schema(description = "키(cm)", example = "170")
+	@NotNull
 	@Min(0)
 	@Max(200)
 	private Integer heightCm;
 
 	@Schema(description = "몸무게(kg)", example = "64")
+	@NotNull
 	@Min(0)
 	@Max(150)
 	private Integer weightKg;

@@ -174,6 +174,40 @@ class UserControllerTest extends ControllerSliceTestSupport {
 		}
 
 		@Test
+		@DisplayName("성별이 없으면 400 을 반환한다")
+		void signUp_missingGender_returnsBadRequest() throws Exception {
+			expectBadRequest(request(it -> it.gender(null)));
+		}
+
+		@Test
+		@DisplayName("키가 없으면 400 을 반환한다")
+		void signUp_missingHeight_returnsBadRequest() throws Exception {
+			expectBadRequest(request(it -> it.heightCm(null)));
+		}
+
+		@Test
+		@DisplayName("몸무게가 없으면 400 을 반환한다")
+		void signUp_missingWeight_returnsBadRequest() throws Exception {
+			expectBadRequest(request(it -> it.weightKg(null)));
+		}
+
+		@Test
+		@DisplayName("프로필 사진은 없어도 가입된다")
+		void signUp_noProfileImage_returnsOk() throws Exception {
+			given(userService.signUp(any(UserCreateRequest.class))).willReturn(UserCreateResponse.builder()
+					.id(USER_ID)
+					.accessToken("access-token")
+					.refreshToken("refresh-token")
+					.build());
+
+			// 사진만 선택이다. 없으면 기본 프로필 이미지를 쓴다
+			mvc.perform(post(USERS_URL)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(request(it -> it.profileImageKey(null)))))
+					.andExpect(status().isOk());
+		}
+
+		@Test
 		@DisplayName("약관에 동의하지 않았으면 400 을 반환한다")
 		void signUp_agreementNotAccepted_returnsBadRequest() throws Exception {
 			// @AssertTrue 가 잡는다. false 를 담아 보내는 경로를 DTO 에서 막는다
