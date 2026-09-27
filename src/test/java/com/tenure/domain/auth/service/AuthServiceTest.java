@@ -2,17 +2,28 @@ package com.tenure.domain.auth.service;
 
 import com.tenure.domain.auth.dto.request.EmailVerificationConfirmRequest;
 import com.tenure.domain.auth.dto.request.EmailVerificationSendRequest;
+import com.tenure.domain.auth.dto.request.LoginRequest;
 import com.tenure.domain.auth.dto.response.EmailVerificationConfirmResponse;
 import com.tenure.domain.auth.dto.response.EmailVerificationSendResponse;
+import com.tenure.domain.auth.dto.response.LoginResponse;
 import com.tenure.domain.auth.enums.VerificationPurpose;
 import com.tenure.domain.auth.exception.AuthErrorCode;
 import com.tenure.domain.auth.store.EmailVerificationStore;
+import com.tenure.domain.user.entity.User;
+import com.tenure.domain.user.enums.Gender;
+import com.tenure.domain.user.enums.UserGrade;
+import com.tenure.domain.user.enums.UserStatus;
 import com.tenure.domain.user.exception.UserErrorCode;
 import com.tenure.domain.user.repository.UserRepository;
 import com.tenure.global.exception.CustomException;
 import com.tenure.global.exception.ErrorCode;
 import com.tenure.global.mail.EmailSender;
+import com.tenure.global.security.jwt.JwtTokenProvider;
+import com.tenure.global.security.refresh.RefreshTokenStore;
+import com.tenure.global.storage.FileStorage;
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -20,6 +31,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static com.tenure.domain.auth.enums.VerificationPurpose.PASSWORD_RESET;
 import static com.tenure.domain.auth.enums.VerificationPurpose.SIGN_UP;
@@ -39,12 +52,132 @@ class AuthServiceTest {
 	private static final String EMAIL = "gildong@naver.com";
 	private static final String CODE = "123456";
 	private static final String TOKEN = "d4f1c0ab9e7b4c2f8a5d3e6b1c9f0a2d";
+	private static final Long USER_ID = 1L;
+	private static final String NICKNAME = "gildong";
+	private static final String RAW_PASSWORD = "password123";
+	private static final String HASHED_PASSWORD = "$2a$10$hashed";
+	private static final String IMAGE_KEY = "user/2026/06/ab12.jpg";
 
 	@Mock private EmailVerificationStore verificationStore;
 	@Mock private UserRepository userRepository;
 	@Mock private EmailSender emailSender;
+	@Mock private PasswordEncoder passwordEncoder;
+	@Mock private JwtTokenProvider jwtTokenProvider;
+	@Mock private RefreshTokenStore refreshTokenStore;
+	@Mock private FileStorage fileStorage;
 
 	@InjectMocks private AuthService authService;
+
+	@Nested
+	@DisplayName("로그인")
+	class Login {
+
+		@Test
+		@DisplayName("이메일·비밀번호가 맞으면 토큰과 사용자 정보를 내려준다")
+		void login_validCredentials_issuesTokens() {
+			givenUser(activeUser(IMAGE_KEY));
+			givenPasswordMatches(true);
+			givenTokensIssued(false);
+			given(fileStorage.toUrl(IMAGE_KEY)).willReturn("https://cdn.tenure.app/" + IMAGE_KEY);
+
+			LoginResponse response = authService.login(loginRequest(false));
+
+			assertThat(response.getAccessToken()).isEqualTo("access-token");
+			assertThat(response.getRefreshToken()).isEqualTo("refresh-token");
+			assertThat(response.getUser().getId()).isEqualTo(USER_ID);
+			assertThat(response.getUser().getNickname()).isEqualTo(NICKNAME);
+			assertThat(response.getUser().getProfileImageUrl())
+					.isEqualTo("https://cdn.tenure.app/" + IMAGE_KEY);
+			assertThat(response.getUser().getGrade()).isEqualTo(UserGrade.BASIC);
+
+			// 발급한 tokenId 가 저장되지 않으면 재발급이 곧바로 401 이 된다
+			verify(refreshTokenStore).save(USER_ID, "token-id", Duration.ofDays(14));
+		}
+
+		@Test
+		@DisplayName("프로필 사진이 없으면 URL 없이 내려준다")
+		void login_noProfileImage_returnsNullUrl() {
+			givenUser(activeUser(null));
+			givenPasswordMatches(true);
+			givenTokensIssued(false);
+
+			LoginResponse response = authService.login(loginRequest(false));
+
+			assertThat(response.getUser().getProfileImageUrl()).isNull();
+			// 키가 없는데 저장소를 치면 base-url 만 붙은 깨진 URL 이 나간다
+			verifyNoInteractions(fileStorage);
+		}
+
+		@Test
+		@DisplayName("로그인 상태 유지를 켜면 긴 수명으로 리프레시 토큰을 발급한다")
+		void login_keepLoggedIn_issuesLongLivedRefreshToken() {
+			givenUser(activeUser(null));
+			givenPasswordMatches(true);
+			givenTokensIssued(true);
+
+			authService.login(loginRequest(true));
+
+			verify(jwtTokenProvider).issueRefreshToken(USER_ID, true);
+		}
+
+		@Test
+		@DisplayName("가입되지 않은 이메일이면 AUTH_404_EMAIL 예외가 발생한다")
+		void login_unknownEmail_throwsNotFound() {
+			given(userRepository.findByEmail(EMAIL)).willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> authService.login(loginRequest(false)))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_404_EMAIL);
+
+			verifyNoInteractions(jwtTokenProvider, refreshTokenStore);
+		}
+
+		@Test
+		@DisplayName("비밀번호가 틀리면 AUTH_401_CREDENTIAL 예외가 발생한다")
+		void login_wrongPassword_throwsUnauthorized() {
+			givenUser(activeUser(null));
+			givenPasswordMatches(false);
+
+			assertThatThrownBy(() -> authService.login(loginRequest(false)))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_401_CREDENTIAL);
+
+			verifyNoInteractions(jwtTokenProvider, refreshTokenStore);
+		}
+
+		@Test
+		@DisplayName("탈퇴한 계정이면 AUTH_404_EMAIL 예외가 발생한다")
+		void login_withdrawnAccount_throwsNotFound() {
+			// 익명화(DEC-004) 전 상태. 비밀번호를 보기 전에 끊어야 한다
+			User withdrawn = activeUser(null);
+			ReflectionTestUtils.setField(withdrawn, "status", UserStatus.WITHDRAWN);
+			givenUser(withdrawn);
+
+			assertThatThrownBy(() -> authService.login(loginRequest(false)))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_404_EMAIL);
+
+			verifyNoInteractions(passwordEncoder, jwtTokenProvider, refreshTokenStore);
+		}
+
+		private void givenUser(User user) {
+			given(userRepository.findByEmail(EMAIL)).willReturn(Optional.of(user));
+		}
+
+		private void givenPasswordMatches(boolean matches) {
+			given(passwordEncoder.matches(RAW_PASSWORD, HASHED_PASSWORD)).willReturn(matches);
+		}
+
+		private void givenTokensIssued(boolean keepLoggedIn) {
+			given(jwtTokenProvider.issueRefreshToken(USER_ID, keepLoggedIn)).willReturn(
+					new JwtTokenProvider.IssuedRefreshToken(
+							"refresh-token", "token-id", Duration.ofDays(14)));
+			given(jwtTokenProvider.issueAccessToken(USER_ID)).willReturn("access-token");
+		}
+	}
 
 	@Nested
 	@DisplayName("인증번호 발송")
@@ -239,6 +372,22 @@ class AuthServiceTest {
 			given(verificationStore.consumeToken(TOKEN))
 					.willReturn(new EmailVerificationStore.VerifiedTarget(purpose, email));
 		}
+	}
+
+	private static LoginRequest loginRequest(boolean keepLoggedIn) {
+		return LoginRequest.builder()
+				.email(EMAIL)
+				.password(RAW_PASSWORD)
+				.keepLoggedIn(keepLoggedIn)
+				.build();
+	}
+
+	/** id 가 박힌 활성 계정. 엔티티 팩토리는 id 를 만들지 않으므로 저장 이후 상태를 재현한다. */
+	private static User activeUser(String profileImageKey) {
+		User user = User.signUp(EMAIL, HASHED_PASSWORD, "홍길동", "821012345678",
+				NICKNAME, profileImageKey, Gender.MALE, 170, 64);
+		ReflectionTestUtils.setField(user, "id", USER_ID);
+		return user;
 	}
 
 	private static EmailVerificationSendRequest sendRequest(VerificationPurpose purpose) {

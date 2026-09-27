@@ -2,27 +2,36 @@ package com.tenure.domain.auth.service;
 
 import com.tenure.domain.auth.dto.request.EmailVerificationConfirmRequest;
 import com.tenure.domain.auth.dto.request.EmailVerificationSendRequest;
+import com.tenure.domain.auth.dto.request.LoginRequest;
 import com.tenure.domain.auth.dto.response.EmailVerificationConfirmResponse;
 import com.tenure.domain.auth.dto.response.EmailVerificationSendResponse;
+import com.tenure.domain.auth.dto.response.LoginResponse;
 import com.tenure.domain.auth.enums.VerificationPurpose;
 import com.tenure.domain.auth.exception.AuthErrorCode;
 import com.tenure.domain.auth.store.EmailVerificationStore;
+import com.tenure.domain.user.entity.User;
 import com.tenure.domain.user.exception.UserErrorCode;
 import com.tenure.domain.user.repository.UserRepository;
 import com.tenure.global.exception.CustomException;
 import com.tenure.global.logging.LogMask;
 import com.tenure.global.logging.Loggable;
 import com.tenure.global.mail.EmailSender;
+import com.tenure.global.security.jwt.JwtTokenProvider;
+import com.tenure.global.security.refresh.RefreshTokenStore;
+import com.tenure.global.storage.FileStorage;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import static com.tenure.domain.auth.enums.VerificationPurpose.*;
 
 /**
- * 이메일 인증. 상태는 전부 Redis 에 있고 RDB 는 가입 여부 확인에만 쓴다 (DEC-009).
+ * 로그인·토큰 발급과 이메일 인증.
+ *
+ * <p>인증번호·토큰·refresh token 은 전부 Redis 에 있다 (DEC-009, DEC-010). RDB 는 계정 조회에만 쓴다.
  *
  * <p>예외를 던지기 전에 <b>왜 끊겼는지</b>를 남긴다. 어떤 ErrorCode 로 끊겼는지는
  * {@code ServiceLoggingAspect} 가 이미 찍으므로, 여기서는 그것만으로 알 수 없는
@@ -37,6 +46,58 @@ public class AuthService {
 	private final EmailVerificationStore verificationStore;
 	private final UserRepository userRepository;
 	private final EmailSender emailSender;
+	private final PasswordEncoder passwordEncoder;
+	private final JwtTokenProvider jwtTokenProvider;
+	private final RefreshTokenStore refreshTokenStore;
+	private final FileStorage fileStorage;
+
+	/**
+	 * 로그인 (API-001).
+	 *
+	 * <p>미가입과 비밀번호 불일치를 다른 코드로 답한다 — 화면에 `가입되지 않은 이메일입니다` 문구가
+	 * 별도로 있어 두 경우를 가려 보여준다.
+	 */
+	@Loggable("로그인")
+	public LoginResponse login(LoginRequest request) {
+
+		User user = userRepository.findByEmail(request.getEmail())
+				.orElseThrow(() -> {
+					log.warn("가입 이력이 없는 이메일로 로그인을 시도했다. email={}", request.getEmail());
+					return new CustomException(AuthErrorCode.AUTH_404_EMAIL);
+				});
+
+		// 탈퇴 계정. 익명화(DEC-004)로 이메일이 치환되므로 보통은 위에서 걸리지만 파기 전 상태를 대비한다
+		if (user.isWithdrawn()) {
+			log.warn("탈퇴한 계정으로 로그인을 시도했다. userId={}", user.getId());
+			throw new CustomException(AuthErrorCode.AUTH_404_EMAIL);
+		}
+
+		// 비밀번호 대조. 입력값은 로그에 남기지 않는다
+		if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+			log.warn("비밀번호가 일치하지 않는다. userId={}", user.getId());
+			throw new CustomException(AuthErrorCode.AUTH_401_CREDENTIAL);
+		}
+
+		// `로그인 상태 유지` 는 선택 입력이라 없으면 기본 수명을 쓴다
+		boolean keepLoggedIn = Boolean.TRUE.equals(request.getKeepLoggedIn());
+
+		JwtTokenProvider.IssuedRefreshToken refresh = jwtTokenProvider
+				.issueRefreshToken(user.getId(), keepLoggedIn);
+
+		// 발급한 tokenId 를 남긴다. 살아 있는지가 재발급·로그아웃의 판단 근거다
+		refreshTokenStore.save(user.getId(), refresh.tokenId(), refresh.ttl());
+
+		return LoginResponse.builder()
+				.accessToken(jwtTokenProvider.issueAccessToken(user.getId()))
+				.refreshToken(refresh.token())
+				.user(LoginResponse.UserSummary.builder()
+						.id(user.getId())
+						.nickname(user.getNickname())
+						.profileImageUrl(toProfileImageUrl(user.getProfileImageKey()))
+						.grade(user.getGrade())
+						.build())
+				.build();
+	}
 
 	/**
 	 * 인증번호를 발송한다 (API-004).
@@ -136,5 +197,10 @@ public class AuthService {
 			log.warn("인증 토큰의 대상 이메일이 다릅니다. 토큰대상={} 요청={}", target.email(), email);
 			throw new CustomException(AuthErrorCode.AUTH_401_VERIFICATION_TOKEN);
 		}
+	}
+
+	/** 저장된 것은 키이고 화면에 필요한 것은 URL 이다 (DEC-006). 미등록이면 null 그대로 내려준다. */
+	private String toProfileImageUrl(String profileImageKey) {
+		return profileImageKey == null ? null : fileStorage.toUrl(profileImageKey);
 	}
 }

@@ -2,8 +2,10 @@ package com.tenure.domain.auth.controller;
 
 import com.tenure.domain.auth.dto.request.EmailVerificationConfirmRequest;
 import com.tenure.domain.auth.dto.request.EmailVerificationSendRequest;
+import com.tenure.domain.auth.dto.request.LoginRequest;
 import com.tenure.domain.auth.dto.response.EmailVerificationConfirmResponse;
 import com.tenure.domain.auth.dto.response.EmailVerificationSendResponse;
+import com.tenure.domain.auth.dto.response.LoginResponse;
 import com.tenure.global.response.BaseResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -21,8 +23,18 @@ import org.springframework.http.ResponseEntity;
  * {@code @RequestBody} 의 {@code @Valid} 는 인자 해석 단계에서 처리되므로 메서드 검증이 필요 없다.
  * {@code @RequestParam @NotBlank} 같은 제약을 추가하는 순간 {@code @Validated} 도 함께 붙여야 한다.
  */
-@Tag(name = "인증", description = "이메일 인증 API")
+@Tag(name = "인증", description = "로그인·토큰·이메일 인증 API")
 public interface AuthApi {
+
+	@Operation(summary = "로그인",
+			description = "이메일·비밀번호로 로그인한다. `keepLoggedIn` 을 켜면 리프레시 토큰 수명이 길어진다.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "로그인 성공"),
+			@ApiResponse(responseCode = "401", description = "AUTH_401_CREDENTIAL — 비밀번호 불일치"),
+			@ApiResponse(responseCode = "404", description = "AUTH_404_EMAIL — 가입되지 않은 이메일")
+	})
+	@SecurityRequirements
+	ResponseEntity<BaseResponse<LoginResponse>> login(@Valid LoginRequest request);
 
 	@Operation(summary = "인증번호 발송", description = "가입·비밀번호 찾기용 인증번호를 메일로 보낸다. 수명은 3분이다.")
 	@ApiResponses({

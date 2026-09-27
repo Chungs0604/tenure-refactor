@@ -2,11 +2,14 @@ package com.tenure.domain.auth.controller;
 
 import com.tenure.domain.auth.dto.request.EmailVerificationConfirmRequest;
 import com.tenure.domain.auth.dto.request.EmailVerificationSendRequest;
+import com.tenure.domain.auth.dto.request.LoginRequest;
 import com.tenure.domain.auth.dto.response.EmailVerificationConfirmResponse;
 import com.tenure.domain.auth.dto.response.EmailVerificationSendResponse;
+import com.tenure.domain.auth.dto.response.LoginResponse;
 import com.tenure.domain.auth.enums.VerificationPurpose;
 import com.tenure.domain.auth.exception.AuthErrorCode;
 import com.tenure.domain.auth.service.AuthService;
+import com.tenure.domain.user.enums.UserGrade;
 import com.tenure.domain.user.exception.UserErrorCode;
 import com.tenure.global.exception.CustomException;
 import com.tenure.support.ControllerSliceTestSupport;
@@ -21,6 +24,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -30,11 +34,96 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DisplayName("AuthController")
 class AuthControllerTest extends ControllerSliceTestSupport {
 
+	private static final String LOGIN_URL = "/api/v1/auth/login";
 	private static final String SEND_URL = "/api/v1/auth/email-verifications";
 	private static final String VERIFY_URL = "/api/v1/auth/email-verifications/verify";
 	private static final String EMAIL = "gildong@naver.com";
+	private static final String PASSWORD = "password123";
 
 	@MockitoBean private AuthService authService;
+
+	@Nested
+	@DisplayName("POST /api/v1/auth/login")
+	class Login {
+
+		@Test
+		@DisplayName("인증 없이 호출할 수 있고 토큰과 사용자 정보를 내려준다")
+		void login_noAuth_returnsTokens() throws Exception {
+			given(authService.login(any())).willReturn(
+					LoginResponse.builder()
+							.accessToken("access-token")
+							.refreshToken("refresh-token")
+							.user(LoginResponse.UserSummary.builder()
+									.id(1L)
+									.nickname("gildong")
+									.profileImageUrl("https://cdn.tenure.app/user/2026/06/ab12.jpg")
+									.grade(UserGrade.BASIC)
+									.build())
+							.build());
+
+			mvc.perform(post(LOGIN_URL)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(loginRequest(EMAIL, PASSWORD))))
+					.andExpect(status().isOk())
+					.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+					.andExpect(jsonPath("$.success").value(true))
+					.andExpect(jsonPath("$.data.accessToken").value("access-token"))
+					.andExpect(jsonPath("$.data.refreshToken").value("refresh-token"))
+					.andExpect(jsonPath("$.data.user.id").value(1))
+					.andExpect(jsonPath("$.data.user.nickname").value("gildong"))
+					.andExpect(jsonPath("$.data.user.grade").value("BASIC"));
+		}
+
+		@Test
+		@DisplayName("이메일 형식이 틀리면 400 을 반환하고 서비스를 호출하지 않는다")
+		void login_malformedEmail_returnsBadRequest() throws Exception {
+			mvc.perform(post(LOGIN_URL)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(loginRequest("not-an-email", PASSWORD))))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.code").value("COMMON_400"));
+
+			verifyNoInteractions(authService);
+		}
+
+		@Test
+		@DisplayName("비밀번호가 8자 미만이면 400 을 반환한다")
+		void login_shortPassword_returnsBadRequest() throws Exception {
+			mvc.perform(post(LOGIN_URL)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(loginRequest(EMAIL, "1234567"))))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.code").value("COMMON_400"));
+		}
+
+		@Test
+		@DisplayName("비밀번호가 틀리면 401 AUTH_401_CREDENTIAL 을 반환한다")
+		void login_wrongPassword_returnsUnauthorized() throws Exception {
+			willThrow(new CustomException(AuthErrorCode.AUTH_401_CREDENTIAL))
+					.given(authService).login(any());
+
+			mvc.perform(post(LOGIN_URL)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(loginRequest(EMAIL, PASSWORD))))
+					.andExpect(status().isUnauthorized())
+					.andExpect(jsonPath("$.success").value(false))
+					.andExpect(jsonPath("$.code").value("AUTH_401_CREDENTIAL"));
+		}
+
+		@Test
+		@DisplayName("가입되지 않은 이메일이면 404 AUTH_404_EMAIL 을 반환한다")
+		void login_unknownEmail_returnsNotFound() throws Exception {
+			willThrow(new CustomException(AuthErrorCode.AUTH_404_EMAIL))
+					.given(authService).login(any());
+
+			mvc.perform(post(LOGIN_URL)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(loginRequest(EMAIL, PASSWORD))))
+					.andExpect(status().isNotFound())
+					.andExpect(jsonPath("$.code").value("AUTH_404_EMAIL"))
+					.andExpect(jsonPath("$.message").value("가입되지 않은 이메일입니다."));
+		}
+	}
 
 	@Nested
 	@DisplayName("POST /api/v1/auth/email-verifications")
@@ -162,6 +251,14 @@ class AuthControllerTest extends ControllerSliceTestSupport {
 					.andExpect(status().isGone())
 					.andExpect(jsonPath("$.code").value("AUTH_410_CODE"));
 		}
+	}
+
+	private static LoginRequest loginRequest(String email, String password) {
+		return LoginRequest.builder()
+				.email(email)
+				.password(password)
+				.keepLoggedIn(false)
+				.build();
 	}
 
 	private static EmailVerificationSendRequest sendRequest(String email, VerificationPurpose purpose) {
