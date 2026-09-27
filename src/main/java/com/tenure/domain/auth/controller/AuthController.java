@@ -3,13 +3,17 @@ package com.tenure.domain.auth.controller;
 import com.tenure.domain.auth.dto.request.EmailVerificationConfirmRequest;
 import com.tenure.domain.auth.dto.request.EmailVerificationSendRequest;
 import com.tenure.domain.auth.dto.request.LoginRequest;
+import com.tenure.domain.auth.dto.request.TokenReissueRequest;
 import com.tenure.domain.auth.dto.response.EmailVerificationConfirmResponse;
 import com.tenure.domain.auth.dto.response.EmailVerificationSendResponse;
 import com.tenure.domain.auth.dto.response.LoginResponse;
+import com.tenure.domain.auth.dto.response.TokenReissueResponse;
 import com.tenure.domain.auth.service.AuthService;
 import com.tenure.global.response.BaseResponse;
+import com.tenure.global.security.AuthUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -28,6 +32,24 @@ public class AuthController implements AuthApi {
 			@RequestBody LoginRequest request
 	) {
 		LoginResponse response = authService.login(request);
+		return ResponseEntity.ok(BaseResponse.success(response));
+	}
+
+	@Override
+	@PostMapping("/logout")
+	public ResponseEntity<BaseResponse<Void>> logout(
+			@AuthenticationPrincipal AuthUser authUser
+	) {
+		authService.logout(authUser.id());
+		return ResponseEntity.ok(BaseResponse.success());
+	}
+
+	@Override
+	@PostMapping("/reissue")
+	public ResponseEntity<BaseResponse<TokenReissueResponse>> reissue(
+			@RequestBody TokenReissueRequest request
+	) {
+		TokenReissueResponse response = authService.reissue(request);
 		return ResponseEntity.ok(BaseResponse.success(response));
 	}
 

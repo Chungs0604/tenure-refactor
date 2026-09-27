@@ -3,9 +3,11 @@ package com.tenure.domain.auth.service;
 import com.tenure.domain.auth.dto.request.EmailVerificationConfirmRequest;
 import com.tenure.domain.auth.dto.request.EmailVerificationSendRequest;
 import com.tenure.domain.auth.dto.request.LoginRequest;
+import com.tenure.domain.auth.dto.request.TokenReissueRequest;
 import com.tenure.domain.auth.dto.response.EmailVerificationConfirmResponse;
 import com.tenure.domain.auth.dto.response.EmailVerificationSendResponse;
 import com.tenure.domain.auth.dto.response.LoginResponse;
+import com.tenure.domain.auth.dto.response.TokenReissueResponse;
 import com.tenure.domain.auth.enums.VerificationPurpose;
 import com.tenure.domain.auth.exception.AuthErrorCode;
 import com.tenure.domain.auth.store.EmailVerificationStore;
@@ -21,6 +23,7 @@ import com.tenure.global.mail.EmailSender;
 import com.tenure.global.security.jwt.JwtTokenProvider;
 import com.tenure.global.security.refresh.RefreshTokenStore;
 import com.tenure.global.storage.FileStorage;
+import io.jsonwebtoken.Claims;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -41,6 +44,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -176,6 +180,94 @@ class AuthServiceTest {
 					new JwtTokenProvider.IssuedRefreshToken(
 							"refresh-token", "token-id", Duration.ofDays(14)));
 			given(jwtTokenProvider.issueAccessToken(USER_ID)).willReturn("access-token");
+		}
+	}
+
+	@Nested
+	@DisplayName("로그아웃")
+	class Logout {
+
+		@Test
+		@DisplayName("이 사용자의 리프레시 토큰을 전부 무효화한다")
+		void logout_authenticatedUser_revokesAllRefreshTokens() {
+			authService.logout(USER_ID);
+
+			// 기기 단위로 끊을 수 없다 — access token 에 tokenId 클레임이 없다
+			verify(refreshTokenStore).revokeAll(USER_ID);
+		}
+	}
+
+	@Nested
+	@DisplayName("액세스 토큰 재발급")
+	class Reissue {
+
+		private static final String REFRESH_TOKEN = "refresh-token";
+		private static final String TOKEN_ID = "token-id";
+
+		@Test
+		@DisplayName("살아 있는 리프레시 토큰이면 새 액세스 토큰을 발급한다")
+		void reissue_aliveRefreshToken_issuesAccessToken() {
+			givenParsedRefreshToken(TOKEN_ID);
+			given(refreshTokenStore.isAlive(USER_ID, TOKEN_ID)).willReturn(true);
+			given(jwtTokenProvider.issueAccessToken(USER_ID)).willReturn("new-access-token");
+
+			TokenReissueResponse response = authService.reissue(reissueRequest());
+
+			assertThat(response.getAccessToken()).isEqualTo("new-access-token");
+		}
+
+		@Test
+		@DisplayName("서명이 깨졌거나 만료됐으면 AUTH_401_TOKEN 예외가 발생한다")
+		void reissue_invalidToken_throwsUnauthorized() {
+			given(jwtTokenProvider.parseOrNull(REFRESH_TOKEN)).willReturn(null);
+
+			assertThatThrownBy(() -> authService.reissue(reissueRequest()))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_401_TOKEN);
+
+			verifyNoInteractions(refreshTokenStore);
+		}
+
+		@Test
+		@DisplayName("액세스 토큰을 넣으면 AUTH_401_TOKEN 예외가 발생한다")
+		void reissue_accessToken_throwsUnauthorized() {
+			// tid 클레임이 없는 것이 access token 이다. 이걸로 재발급이 되면 refresh 무효화가 무력해진다
+			givenParsedRefreshToken(null);
+
+			assertThatThrownBy(() -> authService.reissue(reissueRequest()))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_401_TOKEN);
+
+			verifyNoInteractions(refreshTokenStore);
+		}
+
+		@Test
+		@DisplayName("로그아웃으로 무효화된 토큰이면 AUTH_401_TOKEN 예외가 발생한다")
+		void reissue_revokedToken_throwsUnauthorized() {
+			givenParsedRefreshToken(TOKEN_ID);
+			given(refreshTokenStore.isAlive(USER_ID, TOKEN_ID)).willReturn(false);
+
+			assertThatThrownBy(() -> authService.reissue(reissueRequest()))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_401_TOKEN);
+
+			verify(jwtTokenProvider, never()).issueAccessToken(any());
+		}
+
+		private void givenParsedRefreshToken(String tokenId) {
+			Claims claims = mock(Claims.class);
+			given(jwtTokenProvider.parseOrNull(REFRESH_TOKEN)).willReturn(claims);
+			given(jwtTokenProvider.getTokenId(claims)).willReturn(tokenId);
+			if (tokenId != null) {
+				given(jwtTokenProvider.getUserId(claims)).willReturn(USER_ID);
+			}
+		}
+
+		private TokenReissueRequest reissueRequest() {
+			return TokenReissueRequest.builder().refreshToken(REFRESH_TOKEN).build();
 		}
 	}
 

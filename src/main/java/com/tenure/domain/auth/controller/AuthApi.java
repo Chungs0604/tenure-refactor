@@ -3,11 +3,15 @@ package com.tenure.domain.auth.controller;
 import com.tenure.domain.auth.dto.request.EmailVerificationConfirmRequest;
 import com.tenure.domain.auth.dto.request.EmailVerificationSendRequest;
 import com.tenure.domain.auth.dto.request.LoginRequest;
+import com.tenure.domain.auth.dto.request.TokenReissueRequest;
 import com.tenure.domain.auth.dto.response.EmailVerificationConfirmResponse;
 import com.tenure.domain.auth.dto.response.EmailVerificationSendResponse;
 import com.tenure.domain.auth.dto.response.LoginResponse;
+import com.tenure.domain.auth.dto.response.TokenReissueResponse;
 import com.tenure.global.response.BaseResponse;
+import com.tenure.global.security.AuthUser;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
@@ -35,6 +39,24 @@ public interface AuthApi {
 	})
 	@SecurityRequirements
 	ResponseEntity<BaseResponse<LoginResponse>> login(@Valid LoginRequest request);
+
+	@Operation(summary = "로그아웃",
+			description = "이 사용자의 리프레시 토큰을 전부 무효화한다. 본문은 없다.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "로그아웃 성공"),
+			@ApiResponse(responseCode = "401", description = "COMMON_401 — 인증 필요")
+	})
+	ResponseEntity<BaseResponse<Void>> logout(
+			@Parameter(hidden = true) AuthUser authUser);
+
+	@Operation(summary = "액세스 토큰 재발급",
+			description = "리프레시 토큰으로 새 액세스 토큰을 받는다. 리프레시 토큰은 교체하지 않는다.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "재발급 성공"),
+			@ApiResponse(responseCode = "401", description = "AUTH_401_TOKEN — 만료·위조·이미 로그아웃된 토큰")
+	})
+	@SecurityRequirements
+	ResponseEntity<BaseResponse<TokenReissueResponse>> reissue(@Valid TokenReissueRequest request);
 
 	@Operation(summary = "인증번호 발송", description = "가입·비밀번호 찾기용 인증번호를 메일로 보낸다. 수명은 3분이다.")
 	@ApiResponses({

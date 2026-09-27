@@ -3,9 +3,11 @@ package com.tenure.domain.auth.service;
 import com.tenure.domain.auth.dto.request.EmailVerificationConfirmRequest;
 import com.tenure.domain.auth.dto.request.EmailVerificationSendRequest;
 import com.tenure.domain.auth.dto.request.LoginRequest;
+import com.tenure.domain.auth.dto.request.TokenReissueRequest;
 import com.tenure.domain.auth.dto.response.EmailVerificationConfirmResponse;
 import com.tenure.domain.auth.dto.response.EmailVerificationSendResponse;
 import com.tenure.domain.auth.dto.response.LoginResponse;
+import com.tenure.domain.auth.dto.response.TokenReissueResponse;
 import com.tenure.domain.auth.enums.VerificationPurpose;
 import com.tenure.domain.auth.exception.AuthErrorCode;
 import com.tenure.domain.auth.store.EmailVerificationStore;
@@ -19,6 +21,7 @@ import com.tenure.global.mail.EmailSender;
 import com.tenure.global.security.jwt.JwtTokenProvider;
 import com.tenure.global.security.refresh.RefreshTokenStore;
 import com.tenure.global.storage.FileStorage;
+import io.jsonwebtoken.Claims;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -96,6 +99,55 @@ public class AuthService {
 						.profileImageUrl(toProfileImageUrl(user.getProfileImageKey()))
 						.grade(user.getGrade())
 						.build())
+				.build();
+	}
+
+	/**
+	 * 로그아웃 (API-002). 이 사용자의 refresh token 을 전부 무효화한다.
+	 *
+	 * <p>access token 은 무효화하지 않는다 — 무상태 검증이라 저장소를 보지 않으며, 남은 수명(짧다)이
+	 * 지나면 재발급이 막혀 자연히 끊긴다.
+	 */
+	@Loggable("로그아웃")
+	public void logout(Long userId) {
+		refreshTokenStore.revokeAll(userId);
+	}
+
+	/**
+	 * 액세스 토큰 재발급 (API-003).
+	 *
+	 * <p>서명만 보고 발급하지 않는다. 저장소에 {@code tokenId} 가 살아 있어야 한다 — 그래야
+	 * 로그아웃한 토큰으로 계속 재발급받는 것을 막을 수 있다 (DEC-010).
+	 */
+	@Loggable("액세스 토큰 재발급")
+	public TokenReissueResponse reissue(TokenReissueRequest request) {
+
+		// 서명·만료 검증
+		Claims claims = jwtTokenProvider.parseOrNull(request.getRefreshToken());
+
+		if (claims == null) {
+			log.warn("서명이 깨졌거나 만료된 토큰으로 재발급을 시도했다");
+			throw new CustomException(AuthErrorCode.AUTH_401_TOKEN);
+		}
+
+		// tid 클레임이 없으면 access token 이다. 재발급 입력으로 쓸 수 없다
+		String tokenId = jwtTokenProvider.getTokenId(claims);
+
+		if (tokenId == null) {
+			log.warn("refresh token 이 아닌 토큰으로 재발급을 시도했다");
+			throw new CustomException(AuthErrorCode.AUTH_401_TOKEN);
+		}
+
+		Long userId = jwtTokenProvider.getUserId(claims);
+
+		// 로그아웃으로 이미 끊긴 토큰인지 본다
+		if (!refreshTokenStore.isAlive(userId, tokenId)) {
+			log.warn("무효화된 refresh token 으로 재발급을 시도했다. userId={}", userId);
+			throw new CustomException(AuthErrorCode.AUTH_401_TOKEN);
+		}
+
+		return TokenReissueResponse.builder()
+				.accessToken(jwtTokenProvider.issueAccessToken(userId))
 				.build();
 	}
 

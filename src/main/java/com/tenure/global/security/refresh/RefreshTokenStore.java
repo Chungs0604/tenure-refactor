@@ -1,7 +1,11 @@
 package com.tenure.global.security.refresh;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -16,6 +20,7 @@ import org.springframework.stereotype.Component;
 public class RefreshTokenStore {
 
 	private static final String KEY = "refresh:%d:%s";
+	private static final int SCAN_COUNT = 100;
 
 	private final StringRedisTemplate redis;
 
@@ -28,8 +33,28 @@ public class RefreshTokenStore {
 		return Boolean.TRUE.equals(redis.hasKey(KEY.formatted(userId, tokenId)));
 	}
 
-	/** 로그아웃. 해당 기기의 토큰만 끊는다. */
-	public void revoke(Long userId, String tokenId) {
-		redis.delete(KEY.formatted(userId, tokenId));
+	/**
+	 * 로그아웃 (API-002). 해당 사용자의 refresh token 을 전부 끊는다.
+	 *
+	 * <p>기기 단위로 끊지 않는 이유 — 로그아웃 요청은 access token 으로만 인증되고 access token 에는
+	 * {@code tokenId} 클레임이 없다. 어느 기기의 토큰인지 알 방법이 없으므로 전부 지운다.
+	 * 기기별 세션 화면이 생기면 그때 DEC-010 을 재검토한다.
+	 *
+	 * <p>{@code KEYS} 대신 {@code SCAN} 을 쓴다 — 키가 늘어도 Redis 를 블로킹하지 않는다.
+	 */
+	public void revokeAll(Long userId) {
+		ScanOptions options = ScanOptions.scanOptions()
+				.match(KEY.formatted(userId, "*"))
+				.count(SCAN_COUNT)
+				.build();
+
+		List<String> keys = new ArrayList<>();
+		try (Cursor<String> cursor = redis.scan(options)) {
+			cursor.forEachRemaining(keys::add);
+		}
+
+		if (!keys.isEmpty()) {
+			redis.delete(keys);
+		}
 	}
 }
