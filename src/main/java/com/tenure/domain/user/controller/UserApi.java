@@ -6,6 +6,7 @@ import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.AvailabilityResponse;
 import com.tenure.domain.user.dto.response.MyProfileResponse;
 import com.tenure.domain.user.dto.response.UserCreateResponse;
+import com.tenure.domain.user.dto.response.UserProfileResponse;
 import com.tenure.domain.user.dto.response.UserUpdateResponse;
 import com.tenure.global.response.BaseResponse;
 import com.tenure.global.security.AuthUser;
@@ -88,6 +89,17 @@ public interface UserApi {
 	ResponseEntity<BaseResponse<UserUpdateResponse>> updateProfile(
 			@Parameter(hidden = true) AuthUser authUser,
 			@Valid UserUpdateRequest request);
+
+	@Operation(summary = "타인 프로필 조회",
+			description = "카운터 3종과 팔로우·차단 상태를 내려준다. 성별은 싣지 않는다. "
+					+ "조회하면 '최근 본 사용자' 에 기록된다.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "조회 성공"),
+			@ApiResponse(responseCode = "404", description = "USER_404 — 사용자를 찾을 수 없음")
+	})
+	ResponseEntity<BaseResponse<UserProfileResponse>> getUserProfile(
+			@Parameter(hidden = true) AuthUser authUser,
+			@Parameter(description = "조회할 사용자 id", example = "1") Long userId);
 }
 
 

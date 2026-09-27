@@ -7,6 +7,7 @@ import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.AvailabilityResponse;
 import com.tenure.domain.user.dto.response.MyProfileResponse;
 import com.tenure.domain.user.dto.response.UserCreateResponse;
+import com.tenure.domain.user.dto.response.UserProfileResponse;
 import com.tenure.domain.user.dto.response.UserUpdateResponse;
 import com.tenure.domain.user.enums.AgreementType;
 import com.tenure.domain.user.enums.Gender;
@@ -48,6 +49,7 @@ class UserControllerTest extends ControllerSliceTestSupport {
 	private static final String EMAIL = "gildong@naver.com";
 	private static final String NICKNAME = "Sujun";
 	private static final Long USER_ID = 1L;
+	private static final Long OTHER_ID = 2L;
 	private static final String IMAGE_URL = "https://cdn.tenure.app/user/2026/09/ab12.jpg";
 
 	@MockitoBean private UserService userService;
@@ -385,6 +387,60 @@ class UserControllerTest extends ControllerSliceTestSupport {
 					.andExpect(status().is(status))
 					.andExpect(jsonPath("$.success").value(false))
 					.andExpect(jsonPath("$.code").value(code));
+		}
+	}
+
+	@Nested
+	@DisplayName("GET /api/v1/users/{userId}")
+	class OtherProfile {
+
+		@Test
+		@DisplayName("카운터 3종과 팔로우·차단 상태를 내려주고 성별은 싣지 않는다")
+		void getUserProfile_otherUser_returnsThreeCounters() throws Exception {
+			given(userService.getUserProfile(USER_ID, OTHER_ID)).willReturn(UserProfileResponse.builder()
+					.id(OTHER_ID)
+					.nickname(NICKNAME)
+					.profileImageUrl(IMAGE_URL)
+					.grade(UserGrade.RECORD)
+					.heightCm(168)
+					.weightKg(58)
+					.postCount(60)
+					.itemCount(16)
+					.followerCount(201)
+					.isFollowing(true)
+					.isBlocked(false)
+					.build());
+
+			mvc.perform(get(USERS_URL + "/" + OTHER_ID).with(authentication(principalOf(USER_ID))))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.data.postCount").value(60))
+					.andExpect(jsonPath("$.data.itemCount").value(16))
+					.andExpect(jsonPath("$.data.followerCount").value(201))
+					// 래퍼 타입이라야 키가 isFollowing 으로 나간다. boolean 이면 following 이 된다
+					.andExpect(jsonPath("$.data.isFollowing").value(true))
+					.andExpect(jsonPath("$.data.isBlocked").value(false))
+					.andExpect(jsonPath("$.data.gender").doesNotExist());
+		}
+
+		@Test
+		@DisplayName("없는 사용자면 404 를 반환한다")
+		void getUserProfile_unknownUser_returnsNotFound() throws Exception {
+			willThrow(new CustomException(UserErrorCode.USER_404))
+					.given(userService).getUserProfile(USER_ID, OTHER_ID);
+
+			mvc.perform(get(USERS_URL + "/" + OTHER_ID).with(authentication(principalOf(USER_ID))))
+					.andExpect(status().isNotFound())
+					.andExpect(jsonPath("$.code").value("USER_404"));
+		}
+
+		@Test
+		@DisplayName("중복 확인 경로는 타인 프로필로 해석되지 않는다")
+		void checkEmailPath_notTreatedAsUserId() throws Exception {
+			given(userService.checkEmail(EMAIL)).willReturn(available(true));
+
+			// /{userId} 와 경로가 겹치지만 리터럴이 먼저 잡힌다. 아니면 Long 변환에서 400 이 난다
+			mvc.perform(get(USERS_URL + "/check-email").param("email", EMAIL))
+					.andExpect(status().isOk());
 		}
 	}
 

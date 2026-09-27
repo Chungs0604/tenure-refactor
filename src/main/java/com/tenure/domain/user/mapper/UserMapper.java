@@ -2,6 +2,7 @@ package com.tenure.domain.user.mapper;
 
 import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.MyProfileResponse;
+import com.tenure.domain.user.dto.response.UserProfileResponse;
 import com.tenure.domain.user.entity.User;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -16,6 +17,9 @@ import org.mapstruct.ReportingPolicy;
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.ERROR)
 public interface UserMapper {
 
+	/** 탈퇴 계정의 저장값은 {@code 탈퇴한사용자_{id}} 라 화면 표시용 문구를 따로 둔다. */
+	String WITHDRAWN_NICKNAME = "탈퇴한 사용자";
+
 	AccountResponse toAccountResponse(User user);
 
 	@Mapping(target = "profileImageUrl", source = "profileImageUrl")
@@ -24,4 +28,18 @@ public interface UserMapper {
 	MyProfileResponse toMyProfileResponse(
 			User user, String profileImageUrl, Integer itemCount, Integer wishCount
 	);
+
+	@Mapping(target = "nickname", expression = "java(displayNickname(user))")
+	@Mapping(target = "profileImageUrl", source = "profileImageUrl")
+	@Mapping(target = "itemCount", source = "itemCount")
+	@Mapping(target = "isFollowing", source = "following")
+	@Mapping(target = "isBlocked", source = "blocked")
+	UserProfileResponse toUserProfileResponse(
+			User user, String profileImageUrl, Integer itemCount, Boolean following, Boolean blocked
+	);
+
+	/** 탈퇴 계정은 저장된 닉네임 대신 고정 문구를 보여준다. */
+	default String displayNickname(User user) {
+		return user.isWithdrawn() ? WITHDRAWN_NICKNAME : user.getNickname();
+	}
 }

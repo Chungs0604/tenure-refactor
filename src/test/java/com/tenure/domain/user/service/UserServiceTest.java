@@ -5,13 +5,18 @@ import com.tenure.domain.address.repository.ShippingAddressRepository;
 import com.tenure.domain.auth.enums.VerificationPurpose;
 import com.tenure.domain.auth.exception.AuthErrorCode;
 import com.tenure.domain.auth.service.AuthService;
+import com.tenure.domain.block.repository.UserBlockRepository;
+import com.tenure.domain.follow.repository.FollowRepository;
 import com.tenure.domain.item.repository.ItemRepository;
+import com.tenure.domain.search.enums.RecentViewTargetType;
+import com.tenure.domain.search.store.RecentViewStore;
 import com.tenure.domain.user.dto.request.UserCreateRequest;
 import com.tenure.domain.user.dto.request.UserUpdateRequest;
 import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.AvailabilityResponse;
 import com.tenure.domain.user.dto.response.MyProfileResponse;
 import com.tenure.domain.user.dto.response.UserCreateResponse;
+import com.tenure.domain.user.dto.response.UserProfileResponse;
 import com.tenure.domain.user.dto.response.UserUpdateResponse;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.user.entity.UserAgreement;
@@ -76,10 +81,13 @@ class UserServiceTest {
 	@Mock private ShippingAddressRepository shippingAddressRepository;
 	@Mock private ItemRepository itemRepository;
 	@Mock private WishlistRepository wishlistRepository;
+	@Mock private FollowRepository followRepository;
+	@Mock private UserBlockRepository userBlockRepository;
 	@Mock private AuthService authService;
 	@Mock private PasswordEncoder passwordEncoder;
 	@Mock private JwtTokenProvider jwtTokenProvider;
 	@Mock private RefreshTokenStore refreshTokenStore;
+	@Mock private RecentViewStore recentViewStore;
 	@Mock private FileStorage fileStorage;
 
 	/** mock 하지 않는다 — mock 하면 엔티티에 필드를 넣고 응답에 안 실어도 테스트가 통과한다. */
@@ -463,6 +471,105 @@ class UserServiceTest {
 					.isEqualTo(UserErrorCode.USER_404);
 
 			verify(userRepository, times(0)).existsOtherNickname(any(), any());
+		}
+	}
+
+	@Nested
+	@DisplayName("타인 프로필 조회")
+	class OtherProfile {
+
+		private static final Long VIEWER_ID = 2L;
+
+		@Test
+		@DisplayName("카운터 3종과 팔로우·차단 상태를 내려준다")
+		void getUserProfile_otherUser_returnsThreeCountersAndRelation() {
+			givenOtherProfile();
+			given(followRepository.existsFollow(VIEWER_ID, USER_ID)).willReturn(true);
+			given(userBlockRepository.existsBlock(VIEWER_ID, USER_ID)).willReturn(false);
+
+			UserProfileResponse response = userService.getUserProfile(VIEWER_ID, USER_ID);
+
+			assertThat(response.getPostCount()).isEqualTo(60);
+			assertThat(response.getItemCount()).isEqualTo(16);
+			assertThat(response.getFollowerCount()).isEqualTo(201);
+			assertThat(response.getIsFollowing()).isTrue();
+			assertThat(response.getIsBlocked()).isFalse();
+		}
+
+		@Test
+		@DisplayName("등급과 체형을 내려준다")
+		void getUserProfile_otherUser_includesGradeAndBody() {
+			givenOtherProfile();
+			given(followRepository.existsFollow(VIEWER_ID, USER_ID)).willReturn(false);
+			given(userBlockRepository.existsBlock(VIEWER_ID, USER_ID)).willReturn(false);
+
+			UserProfileResponse response = userService.getUserProfile(VIEWER_ID, USER_ID);
+
+			// 헤더 2행이 '레코드 사용자 | 168cm · 58kg' 다 (DEC-101)
+			assertThat(response.getGrade()).isEqualTo(UserGrade.BASIC);
+			assertThat(response.getHeightCm()).isEqualTo(168);
+			assertThat(response.getWeightKg()).isEqualTo(58);
+		}
+
+		@Test
+		@DisplayName("조회하면 최근 본 사용자에 기록한다")
+		void getUserProfile_otherUser_recordsRecentView() {
+			givenOtherProfile();
+			given(followRepository.existsFollow(VIEWER_ID, USER_ID)).willReturn(false);
+			given(userBlockRepository.existsBlock(VIEWER_ID, USER_ID)).willReturn(false);
+
+			userService.getUserProfile(VIEWER_ID, USER_ID);
+
+			verify(recentViewStore).add(VIEWER_ID, RecentViewTargetType.USER, USER_ID);
+		}
+
+		@Test
+		@DisplayName("자기 프로필이면 최근 열람에 남기지 않고 팔로우·차단도 조회하지 않는다")
+		void getUserProfile_self_skipsRecentViewAndRelation() {
+			givenOtherProfile();
+
+			UserProfileResponse response = userService.getUserProfile(USER_ID, USER_ID);
+
+			// 최근 본 사용자는 남을 찾아가는 목록이라 자신이 끼면 화면이 이상해진다.
+			// 팔로우·차단은 물어볼 필요가 없어 쿼리도 나가지 않는다
+			verifyNoInteractions(recentViewStore, followRepository, userBlockRepository);
+			assertThat(response.getIsFollowing()).isFalse();
+			assertThat(response.getIsBlocked()).isFalse();
+		}
+
+		@Test
+		@DisplayName("탈퇴 계정이면 닉네임을 '탈퇴한 사용자' 로 내려준다")
+		void getUserProfile_withdrawnUser_masksNickname() {
+			User user = profileUser();
+			ReflectionTestUtils.setField(user, "status", UserStatus.WITHDRAWN);
+			given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+			given(itemRepository.countRegisteredItem(USER_ID)).willReturn(16);
+			given(fileStorage.toUrl(IMAGE_KEY)).willReturn(IMAGE_URL);
+			given(followRepository.existsFollow(VIEWER_ID, USER_ID)).willReturn(false);
+			given(userBlockRepository.existsBlock(VIEWER_ID, USER_ID)).willReturn(false);
+
+			UserProfileResponse response = userService.getUserProfile(VIEWER_ID, USER_ID);
+
+			assertThat(response.getNickname()).isEqualTo("탈퇴한 사용자");
+		}
+
+		@Test
+		@DisplayName("없는 사용자면 USER_404 이고 최근 열람에 남기지 않는다")
+		void getUserProfile_unknownUser_throwsNotFound() {
+			given(userRepository.findById(USER_ID)).willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> userService.getUserProfile(VIEWER_ID, USER_ID))
+					.isInstanceOf(CustomException.class)
+					.extracting(UserServiceTest::errorCodeOf)
+					.isEqualTo(UserErrorCode.USER_404);
+
+			verifyNoInteractions(recentViewStore);
+		}
+
+		private void givenOtherProfile() {
+			given(userRepository.findById(USER_ID)).willReturn(Optional.of(profileUser()));
+			given(itemRepository.countRegisteredItem(USER_ID)).willReturn(16);
+			given(fileStorage.toUrl(IMAGE_KEY)).willReturn(IMAGE_URL);
 		}
 	}
 

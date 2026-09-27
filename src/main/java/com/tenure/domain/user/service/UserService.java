@@ -4,13 +4,18 @@ import com.tenure.domain.address.entity.ShippingAddress;
 import com.tenure.domain.address.repository.ShippingAddressRepository;
 import com.tenure.domain.auth.enums.VerificationPurpose;
 import com.tenure.domain.auth.service.AuthService;
+import com.tenure.domain.block.repository.UserBlockRepository;
+import com.tenure.domain.follow.repository.FollowRepository;
 import com.tenure.domain.item.repository.ItemRepository;
+import com.tenure.domain.search.enums.RecentViewTargetType;
+import com.tenure.domain.search.store.RecentViewStore;
 import com.tenure.domain.user.dto.request.UserCreateRequest;
 import com.tenure.domain.user.dto.request.UserUpdateRequest;
 import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.AvailabilityResponse;
 import com.tenure.domain.user.dto.response.MyProfileResponse;
 import com.tenure.domain.user.dto.response.UserCreateResponse;
+import com.tenure.domain.user.dto.response.UserProfileResponse;
 import com.tenure.domain.user.dto.response.UserUpdateResponse;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.user.entity.UserAgreement;
@@ -55,10 +60,13 @@ public class UserService {
 	private final ShippingAddressRepository shippingAddressRepository;
 	private final ItemRepository itemRepository;
 	private final WishlistRepository wishlistRepository;
+	private final FollowRepository followRepository;
+	private final UserBlockRepository userBlockRepository;
 	private final AuthService authService;
 	private final PasswordEncoder passwordEncoder;
 	private final JwtTokenProvider jwtTokenProvider;
 	private final RefreshTokenStore refreshTokenStore;
+	private final RecentViewStore recentViewStore;
 	private final FileStorage fileStorage;
 	private final UserMapper userMapper;
 
@@ -197,6 +205,39 @@ public class UserService {
 		return UserUpdateResponse.builder()
 				.id(user.getId())
 				.build();
+	}
+
+	/**
+	 * 타인 프로필 조회.
+	 *
+	 * 조회가 곧 '최근 본 사용자' 의 입력이다. 자기 프로필을 열었을 때는 남기지 않는다 —
+	 * 그 목록은 남을 찾아가는 용도라 자신이 끼면 화면이 이상해진다.
+	 *
+	 * {viwer = 보는사람(나), userId = 타인}
+	 */
+	@Loggable("타인 프로필 조회")
+	public UserProfileResponse getUserProfile(Long viewerId, Long userId) {
+
+		// 타인 조회
+		User user = findUser(userId);
+
+		boolean self = userId.equals(viewerId);
+
+		// 본인 조회인 경우 '최근 본 사용자'에 추가 안함
+		if (!self) {
+			recentViewStore.add(viewerId, RecentViewTargetType.USER, userId);
+		}
+
+		int itemCount = itemRepository.countRegisteredItem(userId);
+
+		// 단축 평가로 본인 조회일 때는 팔로우·차단을 조회조차 하지 않는다
+		return userMapper.toUserProfileResponse(
+				user,
+				toImageUrl(user.getProfileImageKey()),
+				itemCount,
+				!self && followRepository.existsFollow(viewerId, userId),
+				!self && userBlockRepository.existsBlock(viewerId, userId)
+		);
 	}
 
 	private User findUser(Long userId) {

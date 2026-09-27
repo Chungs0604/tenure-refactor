@@ -6,6 +6,7 @@ import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.AvailabilityResponse;
 import com.tenure.domain.user.dto.response.MyProfileResponse;
 import com.tenure.domain.user.dto.response.UserCreateResponse;
+import com.tenure.domain.user.dto.response.UserProfileResponse;
 import com.tenure.domain.user.dto.response.UserUpdateResponse;
 import com.tenure.domain.user.service.UserService;
 import com.tenure.global.response.BaseResponse;
@@ -15,6 +16,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -83,6 +85,17 @@ public class UserController implements UserApi {
 			@RequestBody UserUpdateRequest request
 	) {
 		UserUpdateResponse response = userService.updateProfile(authUser.id(), request);
+		return ResponseEntity.ok(BaseResponse.success(response));
+	}
+
+	// 타인 프로필 조회
+	@Override
+	@GetMapping("/{userId}")
+	public ResponseEntity<BaseResponse<UserProfileResponse>> getUserProfile(
+			@AuthenticationPrincipal AuthUser authUser,
+			@PathVariable Long userId
+	) {
+		UserProfileResponse response = userService.getUserProfile(authUser.id(), userId);
 		return ResponseEntity.ok(BaseResponse.success(response));
 	}
 }
