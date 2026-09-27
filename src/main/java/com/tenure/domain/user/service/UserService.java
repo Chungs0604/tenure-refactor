@@ -4,19 +4,25 @@ import com.tenure.domain.address.entity.ShippingAddress;
 import com.tenure.domain.address.repository.ShippingAddressRepository;
 import com.tenure.domain.auth.enums.VerificationPurpose;
 import com.tenure.domain.auth.service.AuthService;
+import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.user.dto.request.UserCreateRequest;
+import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.AvailabilityResponse;
+import com.tenure.domain.user.dto.response.MyProfileResponse;
 import com.tenure.domain.user.dto.response.UserCreateResponse;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.user.entity.UserAgreement;
 import com.tenure.domain.user.enums.AgreementType;
 import com.tenure.domain.user.exception.UserErrorCode;
+import com.tenure.domain.user.mapper.UserMapper;
 import com.tenure.domain.user.repository.UserAgreementRepository;
 import com.tenure.domain.user.repository.UserRepository;
+import com.tenure.domain.wishlist.repository.WishlistRepository;
 import com.tenure.global.exception.CustomException;
 import com.tenure.global.logging.Loggable;
 import com.tenure.global.security.jwt.JwtTokenProvider;
 import com.tenure.global.security.refresh.RefreshTokenStore;
+import com.tenure.global.storage.FileStorage;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -28,7 +34,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 가입과 중복 확인.
+ * 가입과 중복 확인, 계정·프로필 조회와 수정.
  *
  * 예외를 던지기 전에 판단 근거를 남긴다 — ErrorCode 자체는
  * ServiceLoggingAspect 가 찍는다.
@@ -45,10 +51,14 @@ public class UserService {
 	private final UserRepository userRepository;
 	private final UserAgreementRepository userAgreementRepository;
 	private final ShippingAddressRepository shippingAddressRepository;
+	private final ItemRepository itemRepository;
+	private final WishlistRepository wishlistRepository;
 	private final AuthService authService;
 	private final PasswordEncoder passwordEncoder;
 	private final JwtTokenProvider jwtTokenProvider;
 	private final RefreshTokenStore refreshTokenStore;
+	private final FileStorage fileStorage;
+	private final UserMapper userMapper;
 
 	/** 이메일 중복 확인. 중복이어도 예외를 던지지 않는다 — 화면이 안내 문구를 띄운다. */
 	@Loggable("이메일 중복 확인")
@@ -135,6 +145,44 @@ public class UserService {
 				.accessToken(accessToken)
 				.refreshToken(refresh.token())
 				.build();
+	}
+
+	/** 계정 정보 조회. 프로필과 달리 실명·휴대폰·이메일만 내려준다. */
+	@Loggable("계정 정보 조회")
+	public AccountResponse getMyAccount(Long userId) {
+		return userMapper.toAccountResponse(findUser(userId));
+	}
+
+	/**
+	 * 내 프로필 조회.
+	 *
+	 * 팔로워·게시물 수는 카운터 컬럼을 그대로 읽지만 아이템·위시는 COUNT 로 셈
+	 */
+	@Loggable("내 프로필 조회")
+	public MyProfileResponse getMyProfile(Long userId) {
+		User user = findUser(userId);
+
+		int itemCount = itemRepository.countRegisteredItem(userId);
+		int wishCount = wishlistRepository.countByUserId(userId);
+
+		return userMapper.toMyProfileResponse(
+				user,
+				toImageUrl(user.getProfileImageKey()),
+				itemCount, wishCount
+		);
+	}
+
+	private User findUser(Long userId) {
+		return userRepository.findById(userId)
+				.orElseThrow(() -> {
+					log.warn("존재하지 않는 사용자입니다. userId={}", userId);
+					return new CustomException(UserErrorCode.USER_404);
+				});
+	}
+
+	/** 저장소 키를 화면용 URL 로 바꾼다. 사진이 없으면 URL 도 없다 — 기본 이미지는 화면이 붙인다. */
+	private String toImageUrl(String imageKey) {
+		return imageKey == null ? null : fileStorage.toUrl(imageKey);
 	}
 
 	/** 필수 약관이 모두 포함됐는지 확인. 동의 여부(true) 자체는 DTO 가 검증. */

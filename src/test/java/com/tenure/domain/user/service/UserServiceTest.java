@@ -5,8 +5,11 @@ import com.tenure.domain.address.repository.ShippingAddressRepository;
 import com.tenure.domain.auth.enums.VerificationPurpose;
 import com.tenure.domain.auth.exception.AuthErrorCode;
 import com.tenure.domain.auth.service.AuthService;
+import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.user.dto.request.UserCreateRequest;
+import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.AvailabilityResponse;
+import com.tenure.domain.user.dto.response.MyProfileResponse;
 import com.tenure.domain.user.dto.response.UserCreateResponse;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.user.entity.UserAgreement;
@@ -15,25 +18,31 @@ import com.tenure.domain.user.enums.Gender;
 import com.tenure.domain.user.enums.UserGrade;
 import com.tenure.domain.user.enums.UserStatus;
 import com.tenure.domain.user.exception.UserErrorCode;
+import com.tenure.domain.user.mapper.UserMapper;
 import com.tenure.domain.user.repository.UserAgreementRepository;
 import com.tenure.domain.user.repository.UserRepository;
+import com.tenure.domain.wishlist.repository.WishlistRepository;
 import com.tenure.global.exception.CustomException;
 import com.tenure.global.exception.ErrorCode;
 import com.tenure.global.security.jwt.JwtTokenProvider;
 import com.tenure.global.security.refresh.RefreshTokenStore;
+import com.tenure.global.storage.FileStorage;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -57,14 +66,22 @@ class UserServiceTest {
 	private static final String RAW_PASSWORD = "password123";
 	private static final String HASHED_PASSWORD = "$2a$10$hashed";
 	private static final String TOKEN = "d4f1c0ab9e7b4c2f8a5d3e6b1c9f0a2d";
+	private static final String IMAGE_KEY = "user/2026/09/ab12.jpg";
+	private static final String IMAGE_URL = "https://cdn.tenure.app/user/2026/09/ab12.jpg";
 
 	@Mock private UserRepository userRepository;
 	@Mock private UserAgreementRepository userAgreementRepository;
 	@Mock private ShippingAddressRepository shippingAddressRepository;
+	@Mock private ItemRepository itemRepository;
+	@Mock private WishlistRepository wishlistRepository;
 	@Mock private AuthService authService;
 	@Mock private PasswordEncoder passwordEncoder;
 	@Mock private JwtTokenProvider jwtTokenProvider;
 	@Mock private RefreshTokenStore refreshTokenStore;
+	@Mock private FileStorage fileStorage;
+
+	/** mock 하지 않는다 — mock 하면 엔티티에 필드를 넣고 응답에 안 실어도 테스트가 통과한다. */
+	@Spy private UserMapper userMapper = Mappers.getMapper(UserMapper.class);
 
 	@InjectMocks private UserService userService;
 
@@ -278,6 +295,110 @@ class UserServiceTest {
 							"refresh-token", "token-id", Duration.ofDays(14)));
 			given(jwtTokenProvider.issueAccessToken(USER_ID)).willReturn("access-token");
 		}
+	}
+
+	@Nested
+	@DisplayName("계정 정보 조회")
+	class MyAccount {
+
+		@Test
+		@DisplayName("실명·휴대폰·이메일을 내려준다")
+		void getMyAccount_existingUser_returnsAccount() {
+			given(userRepository.findById(USER_ID)).willReturn(Optional.of(profileUser()));
+
+			AccountResponse response = userService.getMyAccount(USER_ID);
+
+			assertThat(response.getRealName()).isEqualTo("홍길동");
+			assertThat(response.getPhone()).isEqualTo("821012345678");
+			assertThat(response.getEmail()).isEqualTo(EMAIL);
+		}
+
+		@Test
+		@DisplayName("없는 사용자면 USER_404 예외가 발생한다")
+		void getMyAccount_unknownUser_throwsNotFound() {
+			given(userRepository.findById(USER_ID)).willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> userService.getMyAccount(USER_ID))
+					.isInstanceOf(CustomException.class)
+					.extracting(UserServiceTest::errorCodeOf)
+					.isEqualTo(UserErrorCode.USER_404);
+		}
+	}
+
+	@Nested
+	@DisplayName("내 프로필 조회")
+	class MyProfile {
+
+		@Test
+		@DisplayName("팔로워·게시물은 카운터 컬럼으로, 아이템·위시는 COUNT 로 채운다")
+		void getMyProfile_existingUser_returnsFourCounters() {
+			given(userRepository.findById(USER_ID)).willReturn(Optional.of(profileUser()));
+			given(itemRepository.countRegisteredItem(USER_ID)).willReturn(16);
+			given(wishlistRepository.countByUserId(USER_ID)).willReturn(4);
+			given(fileStorage.toUrl(IMAGE_KEY)).willReturn(IMAGE_URL);
+
+			MyProfileResponse response = userService.getMyProfile(USER_ID);
+
+			assertThat(response.getFollowerCount()).isEqualTo(201);
+			assertThat(response.getPostCount()).isEqualTo(60);
+			assertThat(response.getItemCount()).isEqualTo(16);
+			assertThat(response.getWishCount()).isEqualTo(4);
+		}
+
+		@Test
+		@DisplayName("성별과 체형을 함께 내려준다")
+		void getMyProfile_existingUser_includesGenderAndBody() {
+			givenMyProfileSucceeds();
+
+			MyProfileResponse response = userService.getMyProfile(USER_ID);
+
+			// 성별은 화면에 없지만 수정 폼의 초기값으로 필요하다 (DEC-101)
+			assertThat(response.getGender()).isEqualTo(Gender.MALE);
+			assertThat(response.getHeightCm()).isEqualTo(168);
+			assertThat(response.getWeightKg()).isEqualTo(58);
+			assertThat(response.getGrade()).isEqualTo(UserGrade.BASIC);
+		}
+
+		@Test
+		@DisplayName("저장소 키를 URL 로 바꿔 내려준다")
+		void getMyProfile_hasImage_returnsUrlNotKey() {
+			givenMyProfileSucceeds();
+
+			MyProfileResponse response = userService.getMyProfile(USER_ID);
+
+			assertThat(response.getProfileImageUrl()).isEqualTo(IMAGE_URL);
+		}
+
+		@Test
+		@DisplayName("사진이 없으면 URL 이 null 이고 저장소를 호출하지 않는다")
+		void getMyProfile_noImage_returnsNullUrl() {
+			User user = profileUser();
+			ReflectionTestUtils.setField(user, "profileImageKey", null);
+			given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+
+			MyProfileResponse response = userService.getMyProfile(USER_ID);
+
+			// toUrl(null) 은 '.../null' 을 만든다. 기본 이미지는 화면이 붙인다
+			assertThat(response.getProfileImageUrl()).isNull();
+			verifyNoInteractions(fileStorage);
+		}
+
+		private void givenMyProfileSucceeds() {
+			given(userRepository.findById(USER_ID)).willReturn(Optional.of(profileUser()));
+			given(fileStorage.toUrl(IMAGE_KEY)).willReturn(IMAGE_URL);
+		}
+	}
+
+	/** 조회용 고정 사용자. 카운터 컬럼은 가입 시 0 이라 화면 예시 값으로 채워 둔다. */
+	private static User profileUser() {
+		User user = User.signUp(
+				EMAIL, HASHED_PASSWORD, "홍길동", "821012345678",
+				NICKNAME, IMAGE_KEY, Gender.MALE, 168, 58
+		);
+		ReflectionTestUtils.setField(user, "id", USER_ID);
+		ReflectionTestUtils.setField(user, "followerCount", 201);
+		ReflectionTestUtils.setField(user, "postCount", 60);
+		return user;
 	}
 
 	private static UserCreateRequest request() {

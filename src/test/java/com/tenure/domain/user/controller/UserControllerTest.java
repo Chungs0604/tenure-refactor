@@ -2,13 +2,17 @@ package com.tenure.domain.user.controller;
 
 import com.tenure.domain.auth.exception.AuthErrorCode;
 import com.tenure.domain.user.dto.request.UserCreateRequest;
+import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.AvailabilityResponse;
+import com.tenure.domain.user.dto.response.MyProfileResponse;
 import com.tenure.domain.user.dto.response.UserCreateResponse;
 import com.tenure.domain.user.enums.AgreementType;
 import com.tenure.domain.user.enums.Gender;
+import com.tenure.domain.user.enums.UserGrade;
 import com.tenure.domain.user.exception.UserErrorCode;
 import com.tenure.domain.user.service.UserService;
 import com.tenure.global.exception.CustomException;
+import com.tenure.global.security.AuthUser;
 import com.tenure.support.ControllerSliceTestSupport;
 import java.util.Arrays;
 import java.util.List;
@@ -18,12 +22,14 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -37,6 +43,8 @@ class UserControllerTest extends ControllerSliceTestSupport {
 	private static final String USERS_URL = "/api/v1/users";
 	private static final String EMAIL = "gildong@naver.com";
 	private static final String NICKNAME = "Sujun";
+	private static final Long USER_ID = 1L;
+	private static final String IMAGE_URL = "https://cdn.tenure.app/user/2026/09/ab12.jpg";
 
 	@MockitoBean private UserService userService;
 
@@ -241,6 +249,69 @@ class UserControllerTest extends ControllerSliceTestSupport {
 	}
 
 	@Nested
+	@DisplayName("GET /api/v1/users/me/account")
+	class MyAccount {
+
+		@Test
+		@DisplayName("계정 정보를 내려준다")
+		void getMyAccount_authenticated_returnsAccount() throws Exception {
+			given(userService.getMyAccount(USER_ID)).willReturn(AccountResponse.builder()
+					.realName("홍길동")
+					.phone("821012345678")
+					.email(EMAIL)
+					.build());
+
+			mvc.perform(get(USERS_URL + "/me/account").with(authentication(principalOf(USER_ID))))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.data.realName").value("홍길동"))
+					.andExpect(jsonPath("$.data.phone").value("821012345678"))
+					.andExpect(jsonPath("$.data.email").value(EMAIL));
+		}
+
+		@Test
+		@DisplayName("토큰이 없으면 401 이다")
+		void getMyAccount_noAuth_returnsUnauthorized() throws Exception {
+			mvc.perform(get(USERS_URL + "/me/account"))
+					.andExpect(status().isUnauthorized())
+					.andExpect(jsonPath("$.code").value("COMMON_401"));
+
+			verifyNoInteractions(userService);
+		}
+	}
+
+	@Nested
+	@DisplayName("GET /api/v1/users/me")
+	class MyProfile {
+
+		@Test
+		@DisplayName("프로필과 카운터 4종을 내려준다")
+		void getMyProfile_authenticated_returnsFourCounters() throws Exception {
+			given(userService.getMyProfile(USER_ID)).willReturn(MyProfileResponse.builder()
+					.id(USER_ID)
+					.nickname(NICKNAME)
+					.profileImageUrl(IMAGE_URL)
+					.gender(Gender.MALE)
+					.heightCm(168)
+					.weightKg(58)
+					.grade(UserGrade.RECORD)
+					.followerCount(201)
+					.postCount(60)
+					.itemCount(16)
+					.wishCount(4)
+					.build());
+
+			mvc.perform(get(USERS_URL + "/me").with(authentication(principalOf(USER_ID))))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.data.nickname").value(NICKNAME))
+					.andExpect(jsonPath("$.data.gender").value("MALE"))
+					.andExpect(jsonPath("$.data.followerCount").value(201))
+					.andExpect(jsonPath("$.data.postCount").value(60))
+					.andExpect(jsonPath("$.data.itemCount").value(16))
+					.andExpect(jsonPath("$.data.wishCount").value(4));
+		}
+	}
+
+	@Nested
 	@DisplayName("공개되지 않은 경로")
 	class Protected {
 
@@ -266,6 +337,10 @@ class UserControllerTest extends ControllerSliceTestSupport {
 
 			verifyNoInteractions(userService);
 		}
+	}
+
+	private static UsernamePasswordAuthenticationToken principalOf(Long userId) {
+		return new UsernamePasswordAuthenticationToken(new AuthUser(userId), null, List.of());
 	}
 
 	private static AvailabilityResponse available(boolean available) {

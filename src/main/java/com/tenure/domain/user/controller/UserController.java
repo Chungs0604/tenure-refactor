@@ -1,12 +1,16 @@
 package com.tenure.domain.user.controller;
 
 import com.tenure.domain.user.dto.request.UserCreateRequest;
+import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.AvailabilityResponse;
+import com.tenure.domain.user.dto.response.MyProfileResponse;
 import com.tenure.domain.user.dto.response.UserCreateResponse;
 import com.tenure.domain.user.service.UserService;
 import com.tenure.global.response.BaseResponse;
+import com.tenure.global.security.AuthUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -45,6 +49,26 @@ public class UserController implements UserApi {
 			@RequestBody UserCreateRequest request
 	) {
 		UserCreateResponse response = userService.signUp(request);
+		return ResponseEntity.ok(BaseResponse.success(response));
+	}
+
+	// 계정 정보 조회
+	@Override
+	@GetMapping("/me/account")
+	public ResponseEntity<BaseResponse<AccountResponse>> getMyAccount(
+			@AuthenticationPrincipal AuthUser authUser
+	) {
+		AccountResponse response = userService.getMyAccount(authUser.id());
+		return ResponseEntity.ok(BaseResponse.success(response));
+	}
+
+	// 내 프로필 조회
+	@Override
+	@GetMapping("/me")
+	public ResponseEntity<BaseResponse<MyProfileResponse>> getMyProfile(
+			@AuthenticationPrincipal AuthUser authUser
+	) {
+		MyProfileResponse response = userService.getMyProfile(authUser.id());
 		return ResponseEntity.ok(BaseResponse.success(response));
 	}
 }
