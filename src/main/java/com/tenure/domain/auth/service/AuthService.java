@@ -3,6 +3,7 @@ package com.tenure.domain.auth.service;
 import com.tenure.domain.auth.dto.request.EmailVerificationConfirmRequest;
 import com.tenure.domain.auth.dto.request.EmailVerificationSendRequest;
 import com.tenure.domain.auth.dto.request.LoginRequest;
+import com.tenure.domain.auth.dto.request.PasswordResetRequest;
 import com.tenure.domain.auth.dto.request.TokenReissueRequest;
 import com.tenure.domain.auth.dto.response.EmailVerificationConfirmResponse;
 import com.tenure.domain.auth.dto.response.EmailVerificationSendResponse;
@@ -34,10 +35,10 @@ import static com.tenure.domain.auth.enums.VerificationPurpose.*;
 /**
  * 로그인·토큰 발급과 이메일 인증.
  *
- * <p>인증번호·토큰·refresh token 은 전부 Redis 에 있다 (DEC-009, DEC-010). RDB 는 계정 조회에만 쓴다.
+ * 인증번호·토큰·refresh token 은 전부 Redis 에 있다. RDB 는 계정 조회에만 쓴다.
  *
- * <p>예외를 던지기 전에 <b>왜 끊겼는지</b>를 남긴다. 어떤 ErrorCode 로 끊겼는지는
- * {@code ServiceLoggingAspect} 가 이미 찍으므로, 여기서는 그것만으로 알 수 없는
+ * 예외를 던지기 전에 왜 끊겼는지를 남긴다. 어떤 ErrorCode 로 끊겼는지는
+ * ServiceLoggingAspect 가 이미 찍으므로, 여기서는 그것만으로 알 수 없는
  * 판단 근거(어떤 값 때문인지)를 보탠다.
  */
 @Slf4j
@@ -55,10 +56,10 @@ public class AuthService {
 	private final FileStorage fileStorage;
 
 	/**
-	 * 로그인 (API-001).
+	 * 로그인
 	 *
-	 * <p>미가입과 비밀번호 불일치를 다른 코드로 답한다 — 화면에 `가입되지 않은 이메일입니다` 문구가
-	 * 별도로 있어 두 경우를 가려 보여준다.
+	 * 미가입과 비밀번호 불일치를 다른 코드로 답한다
+	 * 화면에 `가입되지 않은 이메일입니다` 문구가 별도로 있어 두 경우를 가려 보여준다.
 	 */
 	@Loggable("로그인")
 	public LoginResponse login(LoginRequest request) {
@@ -69,7 +70,7 @@ public class AuthService {
 					return new CustomException(AuthErrorCode.AUTH_404_EMAIL);
 				});
 
-		// 탈퇴 계정. 익명화(DEC-004)로 이메일이 치환되므로 보통은 위에서 걸리지만 파기 전 상태를 대비한다
+		// 탈퇴 계정. 익명화로 이메일이 치환되므로 보통은 위에서 걸리지만 파기 전 상태를 대비
 		if (user.isWithdrawn()) {
 			log.warn("탈퇴한 계정으로 로그인을 시도했다. userId={}", user.getId());
 			throw new CustomException(AuthErrorCode.AUTH_404_EMAIL);
@@ -81,32 +82,39 @@ public class AuthService {
 			throw new CustomException(AuthErrorCode.AUTH_401_CREDENTIAL);
 		}
 
-		// `로그인 상태 유지` 는 선택 입력이라 없으면 기본 수명을 쓴다
+		// `로그인 상태 유지` 는 선택 입력이라 없으면 기본 수명(14일)을 사용
+		// '로그인 상태 유지' = 90일
 		boolean keepLoggedIn = Boolean.TRUE.equals(request.getKeepLoggedIn());
 
+		// RefreshToken 발급
 		JwtTokenProvider.IssuedRefreshToken refresh = jwtTokenProvider
 				.issueRefreshToken(user.getId(), keepLoggedIn);
+
+		// accessToken 발급
+		String accessToken = jwtTokenProvider.issueAccessToken(user.getId());
 
 		// 발급한 tokenId 를 남긴다. 살아 있는지가 재발급·로그아웃의 판단 근거다
 		refreshTokenStore.save(user.getId(), refresh.tokenId(), refresh.ttl());
 
+		LoginResponse.UserSummary userSummary = LoginResponse.UserSummary.builder()
+				.id(user.getId())
+				.nickname(user.getNickname())
+				.profileImageUrl(toProfileImageUrl(user.getProfileImageKey()))
+				.grade(user.getGrade())
+				.build();
+
 		return LoginResponse.builder()
-				.accessToken(jwtTokenProvider.issueAccessToken(user.getId()))
+				.accessToken(accessToken)
 				.refreshToken(refresh.token())
-				.user(LoginResponse.UserSummary.builder()
-						.id(user.getId())
-						.nickname(user.getNickname())
-						.profileImageUrl(toProfileImageUrl(user.getProfileImageKey()))
-						.grade(user.getGrade())
-						.build())
+				.user(userSummary)
 				.build();
 	}
 
 	/**
-	 * 로그아웃 (API-002). 이 사용자의 refresh token 을 전부 무효화한다.
+	 * 로그아웃 - 이 사용자의 refresh token 을 전부 무효화한다.
 	 *
-	 * <p>access token 은 무효화하지 않는다 — 무상태 검증이라 저장소를 보지 않으며, 남은 수명(짧다)이
-	 * 지나면 재발급이 막혀 자연히 끊긴다.
+	 * access token 은 무효화하지 않는다 — 무상태 검증이라 저장소를 보지 않으며,
+	 * 남은 수명(짧다)이 지나면 재발급이 막혀 자연히 끊긴다.
 	 */
 	@Loggable("로그아웃")
 	public void logout(Long userId) {
@@ -114,10 +122,10 @@ public class AuthService {
 	}
 
 	/**
-	 * 액세스 토큰 재발급 (API-003).
+	 * 액세스 토큰 재발급.
 	 *
-	 * <p>서명만 보고 발급하지 않는다. 저장소에 {@code tokenId} 가 살아 있어야 한다 — 그래야
-	 * 로그아웃한 토큰으로 계속 재발급받는 것을 막을 수 있다 (DEC-010).
+	 * 서명만 보고 발급하지 않는다. 저장소에 tokenId 가 살아 있어야 함
+	 * 그래야 로그아웃한 토큰으로 계속 재발급받는 것을 막을 수 있음.
 	 */
 	@Loggable("액세스 토큰 재발급")
 	public TokenReissueResponse reissue(TokenReissueRequest request) {
@@ -130,7 +138,8 @@ public class AuthService {
 			throw new CustomException(AuthErrorCode.AUTH_401_TOKEN);
 		}
 
-		// tid 클레임이 없으면 access token 이다. 재발급 입력으로 쓸 수 없다
+		// tid 클레임이 없으면 access token 이다. 재발급 입력으로 쓸 수 없음
+		// RefreshToken에만 tid(tokenId) 존재
 		String tokenId = jwtTokenProvider.getTokenId(claims);
 
 		if (tokenId == null) {
@@ -140,7 +149,7 @@ public class AuthService {
 
 		Long userId = jwtTokenProvider.getUserId(claims);
 
-		// 로그아웃으로 이미 끊긴 토큰인지 본다
+		// 로그아웃으로 이미 끊긴 토큰인지 확인
 		if (!refreshTokenStore.isAlive(userId, tokenId)) {
 			log.warn("무효화된 refresh token 으로 재발급을 시도했다. userId={}", userId);
 			throw new CustomException(AuthErrorCode.AUTH_401_TOKEN);
@@ -152,14 +161,39 @@ public class AuthService {
 	}
 
 	/**
-	 * 인증번호를 발송한다 (API-004).
+	 * 비밀번호 재설정
 	 *
-	 * <p>기존 인증번호가 있으면 덮어써서 무효화한다.
+	 * 토큰을 먼저 소비 — 유효하지 않으면 계정을 조회하지도 않는다.
+	 * 토큰에 용도가 묶여 있어 회원가입용 토큰으로는 비밀번호를 바꿀 수 없음.
+	 */
+	@Transactional
+	@Loggable("비밀번호 재설정")
+	public void resetPassword(PasswordResetRequest request) {
+
+		// 1회용 토큰 소비 (용도·대상 이메일 검사)
+		consumeVerificationToken(request.getVerificationToken(), request.getEmail(), PASSWORD_RESET);
+
+		User user = userRepository.findByEmail(request.getEmail())
+				.orElseThrow(() -> {
+					log.warn("인증은 통과했지만 계정을 찾을 수 없다. email={}", request.getEmail());
+					return new CustomException(UserErrorCode.USER_404);
+				});
+
+		user.changePassword(passwordEncoder.encode(request.getNewPassword()));
+
+		// 기존 세션을 끊는다 — 비밀번호를 바꾼 이유가 탈취라면 남은 refresh token 으로 계속 들어올 수 있다
+		refreshTokenStore.revokeAll(user.getId());
+	}
+
+	/**
+	 * 인증번호를 발송한다.
+	 *
+	 * 기존 인증번호가 있으면 덮어써서 무효화한다.
 	 */
 	@Loggable("인증번호 발송")
 	public EmailVerificationSendResponse sendCode(EmailVerificationSendRequest request) {
 
-		// 용도에 따라 가입 여부를 반대로 본다 — 가입은 없어야 하고, 비밀번호 찾기는 있어야 한다
+		// 용도에 따라 가입 여부를 반대로 본다 — 가입은 없어야 하고, 비밀번호 찾기는 있어야 함
 		boolean alreadyJoined = userRepository.existsByEmail(request.getEmail());
 
 		if (request.getPurpose() == SIGN_UP && alreadyJoined) {
@@ -171,10 +205,10 @@ public class AuthService {
 			throw new CustomException(AuthErrorCode.AUTH_404_EMAIL);
 		}
 
-		// 인증번호 발급. 같은 (email, purpose) 의 이전 번호는 이 시점에 무효화된다
+		// 인증번호 발급. 같은 (email, purpose) 의 이전 번호는 이 시점에 무효화
 		String code = verificationStore.issueCode(request.getEmail(), request.getPurpose());
 
-		// 메일 발송. readOnly 트랜잭션이라 커넥션을 오래 잡지 않는다
+		// 메일 발송
 		emailSender.sendVerificationCode(request.getEmail(), code);
 
 		return EmailVerificationSendResponse.builder()
@@ -183,7 +217,7 @@ public class AuthService {
 	}
 
 	/**
-	 * 인증번호를 확인하고 1회용 토큰을 발급한다 (API-005).
+	 * 인증번호를 확인하고 1회용 토큰을 발급한다.
 	 */
 	@Loggable("인증번호 확인")
 	public EmailVerificationConfirmResponse confirmCode(EmailVerificationConfirmRequest request) {
@@ -202,7 +236,7 @@ public class AuthService {
 			throw new CustomException(AuthErrorCode.AUTH_400_CODE);
 		}
 
-		// 1회용 토큰 발급. 인증번호 키는 함께 지워져 같은 번호로 토큰을 또 받을 수 없다
+		// 1회용 토큰 발급. 인증번호 키는 함께 지워져 같은 번호로 토큰을 또 받을 수 없음
 		String token = verificationStore.issueToken(request.getEmail(), request.getPurpose());
 
 		return EmailVerificationConfirmResponse.builder()
@@ -215,8 +249,6 @@ public class AuthService {
 	 * 인증 토큰을 소비한다. 회원가입·비밀번호 재설정이 공유한다.
 	 *
 	 * <p>읽으면서 지우므로 두 번 쓸 수 없다.
-	 *
-	 * @throws CustomException 토큰이 없거나 용도·이메일이 맞지 않을 때
 	 */
 	@Loggable("인증 토큰 소비")
 	public void consumeVerificationToken(
@@ -226,7 +258,7 @@ public class AuthService {
 		// 회원가입 or 비밀번호 재설정을 하는 회원(예비)을 조회하면서 1회용 토큰 소비
 		EmailVerificationStore.VerifiedTarget target = verificationStore.consumeToken(token);
 
-		// 없다면 이미 쓴 것인지 만료된 것인지 가른다. 흔적 키로 구분한다
+		// 없다면 이미 쓴 것인지 만료된 것인지 가른다. 흔적 키로 구분
 		if (target == null) {
 			boolean consumed = verificationStore.wasConsumed(token);
 
@@ -238,20 +270,20 @@ public class AuthService {
 					: AuthErrorCode.AUTH_410_VERIFICATION_TOKEN);
 		}
 
-		// 용도 바인딩 검사 — 가입영 토큰으로 비밀번호를 바꾸지 못하게 막는다
+		// 용도 바인딩 검사 — 가입용 토큰으로 비밀번호를 바꾸지 못하게 막음
 		if (target.purpose() != purpose) {
 			log.warn("인증 토큰의 용도가 다릅니다. 토큰={} 요청={}", target.purpose(), purpose);
 			throw new CustomException(AuthErrorCode.AUTH_400_PURPOSE_MISMATCH);
 		}
 
-		// 대상 이메일 검사 — 남의 토큰으로 다른 이메일을 가입시키는 경로를 막는다
+		// 대상 이메일 검사 — 남의 토큰으로 다른 이메일을 가입시키는 경로를 막음
 		if (!target.email().equalsIgnoreCase(email)) {
 			log.warn("인증 토큰의 대상 이메일이 다릅니다. 토큰대상={} 요청={}", target.email(), email);
 			throw new CustomException(AuthErrorCode.AUTH_401_VERIFICATION_TOKEN);
 		}
 	}
 
-	/** 저장된 것은 키이고 화면에 필요한 것은 URL 이다 (DEC-006). 미등록이면 null 그대로 내려준다. */
+	/** 저장된 것은 키이고 화면에 필요한 것은 URL 이다. 미등록이면 null 그대로 내려준다. */
 	private String toProfileImageUrl(String profileImageKey) {
 		return profileImageKey == null ? null : fileStorage.toUrl(profileImageKey);
 	}

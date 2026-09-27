@@ -28,7 +28,7 @@ public class LoginRequest {
 	@Size(min = 8)
 	private String password;
 
-	/** 화면의 `로그인 상태 유지`. refresh token 의 Redis TTL 이 길어진다 (DEC-010). */
+	/** 화면의 `로그인 상태 유지`. refresh token 의 Redis TTL 이 길어진다. **/
 	@Schema(description = "로그인 상태 유지. 기본 false", example = "false")
 	private Boolean keepLoggedIn;
 }

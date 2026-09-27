@@ -3,6 +3,7 @@ package com.tenure.domain.auth.controller;
 import com.tenure.domain.auth.dto.request.EmailVerificationConfirmRequest;
 import com.tenure.domain.auth.dto.request.EmailVerificationSendRequest;
 import com.tenure.domain.auth.dto.request.LoginRequest;
+import com.tenure.domain.auth.dto.request.PasswordResetRequest;
 import com.tenure.domain.auth.dto.request.TokenReissueRequest;
 import com.tenure.domain.auth.dto.response.EmailVerificationConfirmResponse;
 import com.tenure.domain.auth.dto.response.EmailVerificationSendResponse;
@@ -78,4 +79,18 @@ public interface AuthApi {
 	@SecurityRequirements
 	ResponseEntity<BaseResponse<EmailVerificationConfirmResponse>> confirmCode(
 			@Valid EmailVerificationConfirmRequest request);
+
+	@Operation(summary = "비밀번호 재설정",
+			description = "인증번호 확인으로 받은 1회용 토큰으로 새 비밀번호를 설정한다. "
+					+ "토큰의 용도가 PASSWORD_RESET 이어야 하고 한 번만 쓸 수 있다. "
+					+ "재설정하면 기존 리프레시 토큰이 전부 무효화되어 모든 기기에서 다시 로그인해야 한다.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "재설정 성공"),
+			@ApiResponse(responseCode = "400", description = "USER_400_PASSWORD · AUTH_400_PURPOSE_MISMATCH"),
+			@ApiResponse(responseCode = "401", description = "AUTH_401_VERIFICATION_TOKEN — 대상이 다른 토큰"),
+			@ApiResponse(responseCode = "409", description = "AUTH_409_TOKEN_CONSUMED — 이미 사용된 토큰"),
+			@ApiResponse(responseCode = "410", description = "AUTH_410_VERIFICATION_TOKEN — 인증 토큰 만료")
+	})
+	@SecurityRequirements
+	ResponseEntity<BaseResponse<Void>> resetPassword(@Valid PasswordResetRequest request);
 }

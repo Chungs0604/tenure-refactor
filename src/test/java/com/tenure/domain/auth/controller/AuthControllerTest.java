@@ -3,6 +3,7 @@ package com.tenure.domain.auth.controller;
 import com.tenure.domain.auth.dto.request.EmailVerificationConfirmRequest;
 import com.tenure.domain.auth.dto.request.EmailVerificationSendRequest;
 import com.tenure.domain.auth.dto.request.LoginRequest;
+import com.tenure.domain.auth.dto.request.PasswordResetRequest;
 import com.tenure.domain.auth.dto.request.TokenReissueRequest;
 import com.tenure.domain.auth.dto.response.EmailVerificationConfirmResponse;
 import com.tenure.domain.auth.dto.response.EmailVerificationSendResponse;
@@ -32,6 +33,7 @@ import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -44,6 +46,7 @@ class AuthControllerTest extends ControllerSliceTestSupport {
 	private static final String LOGIN_URL = "/api/v1/auth/login";
 	private static final String LOGOUT_URL = "/api/v1/auth/logout";
 	private static final String REISSUE_URL = "/api/v1/auth/reissue";
+	private static final String PASSWORD_URL = "/api/v1/auth/password";
 	private static final String SEND_URL = "/api/v1/auth/email-verifications";
 	private static final String VERIFY_URL = "/api/v1/auth/email-verifications/verify";
 	private static final String EMAIL = "gildong@naver.com";
@@ -333,6 +336,62 @@ class AuthControllerTest extends ControllerSliceTestSupport {
 		}
 	}
 
+	@Nested
+	@DisplayName("PATCH /api/v1/auth/password")
+	class ResetPassword {
+
+		@Test
+		@DisplayName("인증 없이 호출할 수 있고 200 을 반환한다")
+		void resetPassword_noAuth_returnsOk() throws Exception {
+			mvc.perform(patch(PASSWORD_URL)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(resetRequest("newPassword123"))))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.success").value(true))
+					.andExpect(jsonPath("$.data").isEmpty());
+
+			verify(authService).resetPassword(any());
+		}
+
+		@Test
+		@DisplayName("새 비밀번호가 8자 미만이면 400 을 반환하고 서비스를 호출하지 않는다")
+		void resetPassword_shortPassword_returnsBadRequest() throws Exception {
+			mvc.perform(patch(PASSWORD_URL)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(resetRequest("1234567"))))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.code").value("COMMON_400"));
+
+			verifyNoInteractions(authService);
+		}
+
+		@Test
+		@DisplayName("가입용 토큰이면 400 AUTH_400_PURPOSE_MISMATCH 를 반환한다")
+		void resetPassword_purposeMismatch_returnsBadRequest() throws Exception {
+			willThrow(new CustomException(AuthErrorCode.AUTH_400_PURPOSE_MISMATCH))
+					.given(authService).resetPassword(any());
+
+			mvc.perform(patch(PASSWORD_URL)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(resetRequest("newPassword123"))))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.code").value("AUTH_400_PURPOSE_MISMATCH"));
+		}
+
+		@Test
+		@DisplayName("이미 사용된 토큰이면 409 AUTH_409_TOKEN_CONSUMED 를 반환한다")
+		void resetPassword_consumedToken_returnsConflict() throws Exception {
+			willThrow(new CustomException(AuthErrorCode.AUTH_409_TOKEN_CONSUMED))
+					.given(authService).resetPassword(any());
+
+			mvc.perform(patch(PASSWORD_URL)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(resetRequest("newPassword123"))))
+					.andExpect(status().isConflict())
+					.andExpect(jsonPath("$.code").value("AUTH_409_TOKEN_CONSUMED"));
+		}
+	}
+
 	private static LoginRequest loginRequest(String email, String password) {
 		return LoginRequest.builder()
 				.email(email)
@@ -343,6 +402,14 @@ class AuthControllerTest extends ControllerSliceTestSupport {
 
 	private static TokenReissueRequest reissueRequest(String refreshToken) {
 		return TokenReissueRequest.builder().refreshToken(refreshToken).build();
+	}
+
+	private static PasswordResetRequest resetRequest(String newPassword) {
+		return PasswordResetRequest.builder()
+				.email(EMAIL)
+				.verificationToken("d4f1c0ab9e7b4c2f8a5d3e6b1c9f0a2d")
+				.newPassword(newPassword)
+				.build();
 	}
 
 	/** JWT 필터가 채우는 것과 같은 형태의 인증. 이 슬라이스에서는 토큰을 만들지 않고 주체만 넣는다. */

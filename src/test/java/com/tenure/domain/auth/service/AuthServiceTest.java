@@ -3,6 +3,7 @@ package com.tenure.domain.auth.service;
 import com.tenure.domain.auth.dto.request.EmailVerificationConfirmRequest;
 import com.tenure.domain.auth.dto.request.EmailVerificationSendRequest;
 import com.tenure.domain.auth.dto.request.LoginRequest;
+import com.tenure.domain.auth.dto.request.PasswordResetRequest;
 import com.tenure.domain.auth.dto.request.TokenReissueRequest;
 import com.tenure.domain.auth.dto.response.EmailVerificationConfirmResponse;
 import com.tenure.domain.auth.dto.response.EmailVerificationSendResponse;
@@ -463,6 +464,93 @@ class AuthServiceTest {
 		private void givenToken(VerificationPurpose purpose, String email) {
 			given(verificationStore.consumeToken(TOKEN))
 					.willReturn(new EmailVerificationStore.VerifiedTarget(purpose, email));
+		}
+	}
+
+	@Nested
+	@DisplayName("비밀번호 재설정")
+	class ResetPassword {
+
+		private static final String NEW_PASSWORD = "newPassword123";
+
+		@Test
+		@DisplayName("비밀번호 찾기 토큰이 맞으면 해시로 바꿔 저장한다")
+		void resetPassword_validToken_updatesPasswordHash() {
+			givenToken(PASSWORD_RESET);
+			User user = activeUser(null);
+			given(userRepository.findByEmail(EMAIL)).willReturn(Optional.of(user));
+			given(passwordEncoder.encode(NEW_PASSWORD)).willReturn("$2a$10$newHash");
+
+			authService.resetPassword(resetRequest(NEW_PASSWORD));
+
+			// 평문이 들어가면 다음 로그인이 전부 실패한다
+			assertThat(user.getPasswordHash()).isEqualTo("$2a$10$newHash");
+		}
+
+		@Test
+		@DisplayName("재설정하면 기존 리프레시 토큰을 전부 무효화한다")
+		void resetPassword_validToken_revokesRefreshTokens() {
+			givenToken(PASSWORD_RESET);
+			given(userRepository.findByEmail(EMAIL)).willReturn(Optional.of(activeUser(null)));
+			given(passwordEncoder.encode(NEW_PASSWORD)).willReturn("$2a$10$newHash");
+
+			authService.resetPassword(resetRequest(NEW_PASSWORD));
+
+			// 세션을 남겨두면 비밀번호를 바꾼 이유(탈취)가 해소되지 않는다
+			verify(refreshTokenStore).revokeAll(USER_ID);
+		}
+
+		@Test
+		@DisplayName("가입용 토큰이면 AUTH_400_PURPOSE_MISMATCH 예외가 발생하고 비밀번호를 바꾸지 않는다")
+		void resetPassword_signUpToken_throwsBadRequest() {
+			givenToken(SIGN_UP);
+
+			assertThatThrownBy(() -> authService.resetPassword(resetRequest(NEW_PASSWORD)))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_400_PURPOSE_MISMATCH);
+
+			// 토큰이 유효하지 않으면 계정을 조회하지도 않는다
+			verifyNoInteractions(userRepository, passwordEncoder);
+		}
+
+		@Test
+		@DisplayName("이미 사용된 토큰이면 AUTH_409_TOKEN_CONSUMED 예외가 발생한다")
+		void resetPassword_consumedToken_throwsConflict() {
+			given(verificationStore.consumeToken(TOKEN)).willReturn(null);
+			given(verificationStore.wasConsumed(TOKEN)).willReturn(true);
+
+			assertThatThrownBy(() -> authService.resetPassword(resetRequest(NEW_PASSWORD)))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_409_TOKEN_CONSUMED);
+
+			verifyNoInteractions(userRepository, passwordEncoder);
+		}
+
+		@Test
+		@DisplayName("인증은 통과했지만 계정이 없으면 USER_404 예외가 발생한다")
+		void resetPassword_userGone_throwsNotFound() {
+			givenToken(PASSWORD_RESET);
+			given(userRepository.findByEmail(EMAIL)).willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> authService.resetPassword(resetRequest(NEW_PASSWORD)))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(UserErrorCode.USER_404);
+		}
+
+		private void givenToken(VerificationPurpose purpose) {
+			given(verificationStore.consumeToken(TOKEN))
+					.willReturn(new EmailVerificationStore.VerifiedTarget(purpose, EMAIL));
+		}
+
+		private PasswordResetRequest resetRequest(String newPassword) {
+			return PasswordResetRequest.builder()
+					.email(EMAIL)
+					.verificationToken(TOKEN)
+					.newPassword(newPassword)
+					.build();
 		}
 	}
 
