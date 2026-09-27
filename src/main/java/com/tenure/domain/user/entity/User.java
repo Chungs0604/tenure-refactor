@@ -138,6 +138,23 @@ public class User extends BaseEntity {
 		this.passwordHash = passwordHash;
 	}
 
+	/**
+	 * 프로필 수정.
+	 *
+	 * <p>받은 값으로 그대로 덮어쓴다 — 사진만 {@code null} 을 허용하며 그때는 기본 프로필로 돌아간다.
+	 * 닉네임 중복은 Service 가 먼저 확인한다.
+	 */
+	public void updateProfile(
+			String nickname, String profileImageKey,
+			Gender gender, Integer heightCm, Integer weightKg
+	) {
+		this.nickname = nickname;
+		this.profileImageKey = profileImageKey;
+		this.gender = gender;
+		this.heightCm = heightCm;
+		this.weightKg = weightKg;
+	}
+
 	public boolean isWithdrawn() {
 		return status == UserStatus.WITHDRAWN;
 	}
