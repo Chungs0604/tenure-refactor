@@ -25,6 +25,8 @@ import lombok.NoArgsConstructor;
  * <p>약관 3종 동의와 주소 1건을 함께 받아 화면 흐름(가입 → 약관 → 주소 → 프로필)을 한 번에 마감한다.
  *
  * <p>프로필 입력값 중 사진만 선택이다 — 수정 요청과 같은 규칙이라야 두 화면이 어긋나지 않는다.
+ *
+ * <p>길이 제약은 컬럼 길이와 맞춘다. 안 막으면 DB 에서 끊겨 500 이 되는데 그건 400 으로 돌려줄 일이다.
  */
 @Getter
 @Builder
@@ -36,6 +38,7 @@ public class UserCreateRequest {
 	@Schema(description = "이메일", example = "gildong@naver.com")
 	@NotBlank
 	@Email
+	@Size(max = 255)
 	private String email;
 
 	@Schema(description = "비밀번호 (8자 이상)")
@@ -49,17 +52,21 @@ public class UserCreateRequest {
 
 	@Schema(description = "실명", example = "홍길동")
 	@NotBlank
+	@Size(max = 50)
 	private String realName;
 
 	@Schema(description = "휴대폰번호", example = "821012345678")
 	@NotBlank
+	@Size(max = 20)
 	private String phone;
 
 	@Schema(description = "닉네임", example = "gildong")
 	@NotBlank
+	@Size(max = 30)
 	private String nickname;
 
 	@Schema(description = "프로필 사진 저장소 키. 미지정 시 기본 이미지")
+	@Size(max = 500)
 	private String profileImageKey;
 
 	@Schema(description = "성별")
@@ -120,10 +127,12 @@ public class UserCreateRequest {
 
 		@Schema(description = "수령인")
 		@NotBlank
+		@Size(max = 50)
 		private String recipientName;
 
 		@Schema(description = "연락처")
 		@NotBlank
+		@Size(max = 20)
 		private String phone;
 
 		@Schema(description = "우편번호", example = "07027")
@@ -133,12 +142,15 @@ public class UserCreateRequest {
 
 		@Schema(description = "도로명주소")
 		@NotBlank
+		@Size(max = 255)
 		private String address;
 
 		@Schema(description = "상세 주소")
+		@Size(max = 255)
 		private String addressDetail;
 
 		@Schema(description = "배송 요청사항")
+		@Size(max = 255)
 		private String deliveryRequest;
 	}
 }

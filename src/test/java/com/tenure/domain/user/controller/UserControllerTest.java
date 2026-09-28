@@ -23,6 +23,8 @@ import java.util.function.Consumer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -223,6 +225,79 @@ class UserControllerTest extends ControllerSliceTestSupport {
 			expectBadRequest(request(it -> it.address(null)));
 		}
 
+		@ParameterizedTest(name = "{0} {1}자 → {2}")
+		@CsvSource({
+				"realName, 50, 200", "realName, 51, 400",
+				"phone, 20, 200", "phone, 21, 400",
+				"nickname, 30, 200", "nickname, 31, 400"
+		})
+		@DisplayName("계정 필드는 컬럼 길이까지만 받는다")
+		void signUp_fieldLength_boundedByColumnLength(String field, int length, int status)
+				throws Exception {
+			if (status == 200) {
+				given(userService.signUp(any(UserCreateRequest.class))).willReturn(UserCreateResponse.builder()
+						.id(USER_ID)
+						.accessToken("access-token")
+						.refreshToken("refresh-token")
+						.build());
+			}
+
+			String value = "가".repeat(length);
+
+			mvc.perform(post(USERS_URL)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(request(it -> {
+								switch (field) {
+									case "realName" -> it.realName(value);
+									case "phone" -> it.phone(value);
+									case "nickname" -> it.nickname(value);
+									default -> throw new IllegalArgumentException(field);
+								}
+							}))))
+					.andExpect(status().is(status));
+		}
+
+		@ParameterizedTest(name = "address.{0} {1}자 → {2}")
+		@CsvSource({
+				"recipientName, 50, 200", "recipientName, 51, 400",
+				"address, 255, 200", "address, 256, 400",
+				"addressDetail, 255, 200", "addressDetail, 256, 400"
+		})
+		@DisplayName("배송지 필드도 컬럼 길이까지만 받는다")
+		void signUp_addressFieldLength_boundedByColumnLength(String field, int length, int status)
+				throws Exception {
+			// 같은 주소를 배송지 추가로 보내면 400 인데 가입으로 보내면 통과하는 상태였다.
+			// 막지 않으면 DB 에서 끊겨 500 이 된다
+			if (status == 200) {
+				given(userService.signUp(any(UserCreateRequest.class))).willReturn(UserCreateResponse.builder()
+						.id(USER_ID)
+						.accessToken("access-token")
+						.refreshToken("refresh-token")
+						.build());
+			}
+
+			String value = "가".repeat(length);
+			UserCreateRequest.AddressRequest.AddressRequestBuilder address =
+					UserCreateRequest.AddressRequest.builder()
+							.recipientName("홍길동")
+							.phone("010-1234-5678")
+							.zipcode("07027")
+							.address("서울특별시 동작구 상도로 369")
+							.addressDetail("104동 201호");
+
+			switch (field) {
+				case "recipientName" -> address.recipientName(value);
+				case "address" -> address.address(value);
+				case "addressDetail" -> address.addressDetail(value);
+				default -> throw new IllegalArgumentException(field);
+			}
+
+			mvc.perform(post(USERS_URL)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(request(it -> it.address(address.build())))))
+					.andExpect(status().is(status));
+		}
+
 		@Test
 		@DisplayName("배송지 우편번호가 없으면 400 을 반환한다")
 		void signUp_missingZipcode_returnsBadRequest() throws Exception {
@@ -401,6 +476,25 @@ class UserControllerTest extends ControllerSliceTestSupport {
 			expectError(updateRequest(builder -> builder.nickname(" ")), 400, "COMMON_400");
 
 			verifyNoInteractions(userService);
+		}
+
+		@ParameterizedTest(name = "닉네임 {0}자 → {1}")
+		@CsvSource({"30, 200", "31, 400"})
+		@DisplayName("닉네임은 컬럼 길이까지만 받는다")
+		void updateProfile_nicknameLength_boundedByColumnLength(int length, int status)
+				throws Exception {
+			if (status == 200) {
+				given(userService.updateProfile(eq(USER_ID), any(UserUpdateRequest.class)))
+						.willReturn(UserUpdateResponse.builder().id(USER_ID).build());
+			}
+
+			String nickname = "가".repeat(length);
+
+			mvc.perform(patch(USERS_URL + "/me")
+							.with(authentication(principalOf(USER_ID)))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(updateRequest(builder -> builder.nickname(nickname)))))
+					.andExpect(status().is(status));
 		}
 
 		@Test
