@@ -1,6 +1,7 @@
 package com.tenure.domain.user.entity;
 
 import com.tenure.domain.user.enums.Gender;
+import com.tenure.domain.user.enums.UserProvider;
 import com.tenure.domain.user.enums.UserGrade;
 import com.tenure.domain.user.enums.UserStatus;
 import com.tenure.global.entity.BaseEntity;
@@ -44,8 +45,17 @@ public class User extends BaseEntity {
 	private String email;
 
 	/** 회원가입 > 비밀번호 '(8자 이상)'. 평문 저장 불가로 해시 컬럼 */
-	@Column(name = "password_hash", nullable = false, length = 255)
+	@Column(name = "password_hash", length = 255)
 	private String passwordHash;
+
+	/** 계정 출처. 이메일 가입이면 LOCAL 이다 (DEC-017) */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "provider", nullable = false, length = 20)
+	private UserProvider provider;
+
+	/** 소셜 제공자의 고유 식별자. LOCAL 이면 NULL */
+	@Column(name = "provider_id", length = 100)
+	private String providerId;
 
 	/** 로그인 정보 > 이름 '홍길동' */
 	@Column(name = "real_name", nullable = false, length = 50)
@@ -113,9 +123,26 @@ public class User extends BaseEntity {
 			String phone, String nickname, String profileImageKey,
 			Gender gender, Integer heightCm, Integer weightKg
 	) {
+		return signUp(email, passwordHash, UserProvider.LOCAL, null, realName,
+				phone, nickname, profileImageKey, gender, heightCm, weightKg);
+	}
+
+	/**
+	 * 소셜 가입까지 받는 전체 팩토리 (DEC-017).
+	 *
+	 * <p>소셜 가입은 비밀번호가 없어 {@code passwordHash} 가 NULL 이고 제공자 식별자를 갖는다.
+	 * 이메일 가입은 그 반대다 — 어느 쪽이든 한쪽은 비어 있다.
+	 */
+	public static User signUp(
+			String email, String passwordHash, UserProvider provider, String providerId,
+			String realName, String phone, String nickname, String profileImageKey,
+			Gender gender, Integer heightCm, Integer weightKg
+	) {
 		return User.builder()
 				.email(email)
 				.passwordHash(passwordHash)
+				.provider(provider)
+				.providerId(providerId)
 				.realName(realName)
 				.phone(phone)
 				.nickname(nickname)
