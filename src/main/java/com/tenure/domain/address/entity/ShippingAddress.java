@@ -87,6 +87,23 @@ public class ShippingAddress extends BaseEntity {
 				.build();
 	}
 
+	/**
+	 * 전체 수정. 이력을 남기지 않고 값을 덮어쓴다.
+	 *
+	 * 과거 거래는 order_shipment 가 그 시점 값을 복사해 갖고 있어 영향을 받지 않는다 (DEC-013).
+	 * 기본 배송지 여부는 건드리지 않는다 — 별도 동작이다.
+	 */
+	public void update(String recipientName, String phone,
+			String zipcode, String address, String addressDetail, String deliveryRequest
+	) {
+		this.recipientName = recipientName;
+		this.phone = phone;
+		this.zipcode = zipcode;
+		this.address = address;
+		this.addressDetail = addressDetail;
+		this.deliveryRequest = deliveryRequest;
+	}
+
 	/** 기본 배송지로 올리거나 내린다. 사용자당 1건이라는 단일성은 Service 가 지킨다. */
 	public void changeDefault(boolean isDefault) {
 		this.isDefault = isDefault;

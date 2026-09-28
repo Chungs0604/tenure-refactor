@@ -1,9 +1,11 @@
 package com.tenure.domain.address.service;
 
 import com.tenure.domain.address.dto.request.ShippingAddressCreateRequest;
+import com.tenure.domain.address.dto.request.ShippingAddressUpdateRequest;
 import com.tenure.domain.address.dto.response.ShippingAddressIdResponse;
 import com.tenure.domain.address.dto.response.ShippingAddressResponse;
 import com.tenure.domain.address.entity.ShippingAddress;
+import com.tenure.domain.address.exception.AddressErrorCode;
 import com.tenure.domain.address.mapper.AddressMapper;
 import com.tenure.domain.address.repository.ShippingAddressRepository;
 import com.tenure.domain.user.entity.User;
@@ -76,6 +78,79 @@ public class AddressService {
 		return ShippingAddressIdResponse.builder()
 				.id(saveAddress.getId())
 				.build();
+	}
+
+	/** 배송지 수정. 보낸 값으로 전체를 교체한다. */
+	@Transactional
+	@Loggable("배송지 수정")
+	public ShippingAddressIdResponse update(
+			Long userId, Long addressId, ShippingAddressUpdateRequest request
+	) {
+		ShippingAddress address = findOwned(userId, addressId);
+
+		address.update(
+				request.getRecipientName(),
+				request.getPhone(),
+				request.getZipcode(),
+				request.getAddress(),
+				request.getAddressDetail(),
+				request.getDeliveryRequest()
+		);
+
+		return ShippingAddressIdResponse.builder()
+				.id(address.getId())
+				.build();
+	}
+
+	/**
+	 * 배송지 삭제. 하드 삭제다.
+	 *
+	 * 기본 배송지는 지울 수 없다 — 다른 배송지를 기본으로 지정한 뒤에 지운다.
+	 * 승격 대상을 시스템이 고르면 어느 것이 기본이 됐는지 사용자가 알 수 없다.
+	 */
+	@Transactional
+	@Loggable("배송지 삭제")
+	public void delete(Long userId, Long addressId) {
+		ShippingAddress address = findOwned(userId, addressId);
+
+		if (address.isDefaultAddress()) {
+			log.warn("기본 배송지를 삭제하려 했습니다. addressId={}", addressId);
+			throw new CustomException(AddressErrorCode.ADDRESS_409_LAST_DEFAULT);
+		}
+
+		shippingAddressRepository.delete(address);
+	}
+
+	/** 기본 배송지 지정. 기존 기본을 내리고 이 배송지를 올린다. */
+	@Transactional
+	@Loggable("기본 배송지 지정")
+	public void changeDefault(Long userId, Long addressId) {
+		ShippingAddress address = findOwned(userId, addressId);
+
+		// 이미 기본이면 내렸다 올리는 셈이라 아무것도 하지 않는다
+		if (address.isDefaultAddress()) {
+			return;
+		}
+
+		shippingAddressRepository.releaseDefault(userId);
+		address.changeDefault(true);
+	}
+
+	/** 남의 주소록을 건드리지 못하게 막는다. */
+	private ShippingAddress findOwned(Long userId, Long addressId) {
+		ShippingAddress address = shippingAddressRepository.findById(addressId)
+				.orElseThrow(() -> {
+					log.warn("존재하지 않는 배송지입니다. addressId={}", addressId);
+					return new CustomException(AddressErrorCode.ADDRESS_404);
+				});
+
+		// LAZY 프록시의 id 는 DB 를 치지 않고 읽는다
+		if (!address.getUser().getId().equals(userId)) {
+			log.warn("본인의 배송지가 아닙니다. addressId={}, userId={}", addressId, userId);
+			throw new CustomException(AddressErrorCode.ADDRESS_403);
+		}
+
+		return address;
 	}
 
 	private User findUser(Long userId) {

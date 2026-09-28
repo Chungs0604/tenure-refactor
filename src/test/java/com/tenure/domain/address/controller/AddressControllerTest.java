@@ -1,9 +1,12 @@
 package com.tenure.domain.address.controller;
 
 import com.tenure.domain.address.dto.request.ShippingAddressCreateRequest;
+import com.tenure.domain.address.dto.request.ShippingAddressUpdateRequest;
 import com.tenure.domain.address.dto.response.ShippingAddressIdResponse;
 import com.tenure.domain.address.dto.response.ShippingAddressResponse;
+import com.tenure.domain.address.exception.AddressErrorCode;
 import com.tenure.domain.address.service.AddressService;
+import com.tenure.global.exception.CustomException;
 import com.tenure.global.security.AuthUser;
 import com.tenure.support.ControllerSliceTestSupport;
 import java.util.List;
@@ -19,11 +22,15 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -158,6 +165,112 @@ class AddressControllerTest extends ControllerSliceTestSupport {
 		}
 	}
 
+	@Nested
+	@DisplayName("PUT /api/v1/shipping-addresses/{addressId}")
+	class Update {
+
+		@Test
+		@DisplayName("수정에 성공하면 id 를 내려준다")
+		void update_validRequest_returnsId() throws Exception {
+			given(addressService.update(eq(USER_ID), eq(ADDRESS_ID), any(ShippingAddressUpdateRequest.class)))
+					.willReturn(ShippingAddressIdResponse.builder().id(ADDRESS_ID).build());
+
+			mvc.perform(put(ADDRESSES_URL + "/" + ADDRESS_ID)
+							.with(authentication(principalOf(USER_ID)))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(updateRequest())))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.data.id").value(ADDRESS_ID));
+		}
+
+		@Test
+		@DisplayName("없는 배송지면 404 를 반환한다")
+		void update_unknownAddress_returnsNotFound() throws Exception {
+			willThrow(new CustomException(AddressErrorCode.ADDRESS_404))
+					.given(addressService)
+					.update(eq(USER_ID), eq(ADDRESS_ID), any(ShippingAddressUpdateRequest.class));
+
+			mvc.perform(put(ADDRESSES_URL + "/" + ADDRESS_ID)
+							.with(authentication(principalOf(USER_ID)))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(updateRequest())))
+					.andExpect(status().isNotFound())
+					.andExpect(jsonPath("$.code").value("ADDRESS_404"));
+		}
+
+		@Test
+		@DisplayName("남의 배송지면 403 을 반환한다")
+		void update_othersAddress_returnsForbidden() throws Exception {
+			willThrow(new CustomException(AddressErrorCode.ADDRESS_403))
+					.given(addressService)
+					.update(eq(USER_ID), eq(ADDRESS_ID), any(ShippingAddressUpdateRequest.class));
+
+			mvc.perform(put(ADDRESSES_URL + "/" + ADDRESS_ID)
+							.with(authentication(principalOf(USER_ID)))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(updateRequest())))
+					.andExpect(status().isForbidden())
+					.andExpect(jsonPath("$.code").value("ADDRESS_403"));
+		}
+	}
+
+	@Nested
+	@DisplayName("DELETE /api/v1/shipping-addresses/{addressId}")
+	class Delete {
+
+		@Test
+		@DisplayName("삭제에 성공하면 data 가 null 이다")
+		void delete_validRequest_returnsNullData() throws Exception {
+			mvc.perform(delete(ADDRESSES_URL + "/" + ADDRESS_ID)
+							.with(authentication(principalOf(USER_ID))))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.success").value(true))
+					.andExpect(jsonPath("$.data").doesNotExist());
+
+			verify(addressService).delete(USER_ID, ADDRESS_ID);
+		}
+
+		@Test
+		@DisplayName("기본 배송지면 409 를 반환한다")
+		void delete_defaultAddress_returnsConflict() throws Exception {
+			willThrow(new CustomException(AddressErrorCode.ADDRESS_409_LAST_DEFAULT))
+					.given(addressService).delete(USER_ID, ADDRESS_ID);
+
+			mvc.perform(delete(ADDRESSES_URL + "/" + ADDRESS_ID)
+							.with(authentication(principalOf(USER_ID))))
+					.andExpect(status().isConflict())
+					.andExpect(jsonPath("$.code").value("ADDRESS_409_LAST_DEFAULT"));
+		}
+	}
+
+	@Nested
+	@DisplayName("PATCH /api/v1/shipping-addresses/{addressId}/default")
+	class ChangeDefault {
+
+		@Test
+		@DisplayName("기본 배송지를 지정한다")
+		void changeDefault_validRequest_returnsOk() throws Exception {
+			mvc.perform(patch(ADDRESSES_URL + "/" + ADDRESS_ID + "/default")
+							.with(authentication(principalOf(USER_ID))))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.success").value(true));
+
+			verify(addressService).changeDefault(USER_ID, ADDRESS_ID);
+		}
+
+		@Test
+		@DisplayName("없는 배송지면 404 를 반환한다")
+		void changeDefault_unknownAddress_returnsNotFound() throws Exception {
+			willThrow(new CustomException(AddressErrorCode.ADDRESS_404))
+					.given(addressService).changeDefault(USER_ID, ADDRESS_ID);
+
+			mvc.perform(patch(ADDRESSES_URL + "/" + ADDRESS_ID + "/default")
+							.with(authentication(principalOf(USER_ID))))
+					.andExpect(status().isNotFound())
+					.andExpect(jsonPath("$.code").value("ADDRESS_404"));
+		}
+	}
+
 	private static UsernamePasswordAuthenticationToken principalOf(Long userId) {
 		return new UsernamePasswordAuthenticationToken(new AuthUser(userId), null, List.of());
 	}
@@ -190,5 +303,15 @@ class AddressControllerTest extends ControllerSliceTestSupport {
 
 		override.accept(builder);
 		return builder.build();
+	}
+
+	private static ShippingAddressUpdateRequest updateRequest() {
+		return ShippingAddressUpdateRequest.builder()
+				.recipientName("김유진")
+				.phone("010-9999-8888")
+				.zipcode("06158")
+				.address("서울특별시 강남구 테헤란로 1")
+				.addressDetail("3층")
+				.build();
 	}
 }

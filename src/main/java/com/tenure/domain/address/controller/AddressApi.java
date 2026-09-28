@@ -1,6 +1,7 @@
 package com.tenure.domain.address.controller;
 
 import com.tenure.domain.address.dto.request.ShippingAddressCreateRequest;
+import com.tenure.domain.address.dto.request.ShippingAddressUpdateRequest;
 import com.tenure.domain.address.dto.response.ShippingAddressIdResponse;
 import com.tenure.domain.address.dto.response.ShippingAddressResponse;
 import com.tenure.global.response.BaseResponse;
@@ -8,6 +9,7 @@ import com.tenure.global.security.AuthUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -34,4 +36,39 @@ public interface AddressApi {
 	ResponseEntity<BaseResponse<ShippingAddressIdResponse>> create(
 			@Parameter(hidden = true) AuthUser authUser,
 			@Valid ShippingAddressCreateRequest request);
+
+	@Operation(summary = "배송지 수정",
+			description = "보낸 값으로 전체를 교체한다. 이력을 남기지 않으며 과거 거래에는 영향이 없다.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "수정 성공"),
+			@ApiResponse(responseCode = "403", description = "ADDRESS_403 — 본인의 배송지가 아님"),
+			@ApiResponse(responseCode = "404", description = "ADDRESS_404 — 배송지를 찾을 수 없음")
+	})
+	ResponseEntity<BaseResponse<ShippingAddressIdResponse>> update(
+			@Parameter(hidden = true) AuthUser authUser,
+			@Parameter(description = "배송지 id", example = "1") Long addressId,
+			@Valid ShippingAddressUpdateRequest request);
+
+	@Operation(summary = "배송지 삭제",
+			description = "하드 삭제다. 기본 배송지는 다른 배송지를 기본으로 지정한 뒤에 지울 수 있다.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "삭제 성공"),
+			@ApiResponse(responseCode = "403", description = "ADDRESS_403 — 본인의 배송지가 아님"),
+			@ApiResponse(responseCode = "404", description = "ADDRESS_404 — 배송지를 찾을 수 없음"),
+			@ApiResponse(responseCode = "409", description = "ADDRESS_409_LAST_DEFAULT — 기본 배송지")
+	})
+	ResponseEntity<BaseResponse<Void>> delete(
+			@Parameter(hidden = true) AuthUser authUser,
+			@Parameter(description = "배송지 id", example = "1") Long addressId);
+
+	@Operation(summary = "기본 배송지 지정",
+			description = "기존 기본 배송지를 내리고 지정한다. 이미 기본이면 아무것도 바뀌지 않는다.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "지정 성공"),
+			@ApiResponse(responseCode = "403", description = "ADDRESS_403 — 본인의 배송지가 아님"),
+			@ApiResponse(responseCode = "404", description = "ADDRESS_404 — 배송지를 찾을 수 없음")
+	})
+	ResponseEntity<BaseResponse<Void>> changeDefault(
+			@Parameter(hidden = true) AuthUser authUser,
+			@Parameter(description = "배송지 id", example = "1") Long addressId);
 }
