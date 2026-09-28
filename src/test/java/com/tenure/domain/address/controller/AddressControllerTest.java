@@ -14,11 +14,15 @@ import java.util.function.Consumer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -154,6 +158,72 @@ class AddressControllerTest extends ControllerSliceTestSupport {
 			expectBadRequest(createRequest(builder -> builder.recipientName("가".repeat(51))));
 		}
 
+		@ParameterizedTest(name = "{0} {1}자 → {2}")
+		@CsvSource({
+				"recipientName, 50, 200", "recipientName, 51, 400",
+				"phone, 20, 200", "phone, 21, 400",
+				"zipcode, 10, 200", "zipcode, 11, 400",
+				"address, 255, 200", "address, 256, 400",
+				"addressDetail, 255, 200", "addressDetail, 256, 400",
+				"deliveryRequest, 255, 200", "deliveryRequest, 256, 400"
+		})
+		@DisplayName("각 필드는 컬럼 길이까지만 받는다")
+		void create_fieldLength_boundedByColumnLength(String field, int length, int status)
+				throws Exception {
+			// 컬럼 길이를 넘기면 DB 에서 끊겨 500 이 된다. 경계 바로 아래는 통과해야 한다
+			if (status == 200) {
+				given(addressService.create(eq(USER_ID), any(ShippingAddressCreateRequest.class)))
+						.willReturn(ShippingAddressIdResponse.builder().id(ADDRESS_ID).build());
+			}
+
+			String value = "가".repeat(length);
+
+			mvc.perform(post(ADDRESSES_URL)
+							.with(authentication(principalOf(USER_ID)))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(createRequest(builder -> {
+								switch (field) {
+									case "recipientName" -> builder.recipientName(value);
+									case "phone" -> builder.phone(value);
+									case "zipcode" -> builder.zipcode(value);
+									case "address" -> builder.address(value);
+									case "addressDetail" -> builder.addressDetail(value);
+									case "deliveryRequest" -> builder.deliveryRequest(value);
+									default -> throw new IllegalArgumentException(field);
+								}
+							}))))
+					.andExpect(status().is(status));
+		}
+
+		@Test
+		@DisplayName("선택 항목은 빈 문자열도 받는다")
+		void create_emptyOptionalFields_returnsOk() throws Exception {
+			given(addressService.create(eq(USER_ID), any(ShippingAddressCreateRequest.class)))
+					.willReturn(ShippingAddressIdResponse.builder().id(ADDRESS_ID).build());
+
+			// @Size 만 걸려 있고 @NotBlank 는 없다 — 빈 값은 '안 적었다'는 뜻이라 막지 않는다
+			mvc.perform(post(ADDRESSES_URL)
+							.with(authentication(principalOf(USER_ID)))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(createRequest(builder -> builder
+									.addressDetail("")
+									.deliveryRequest("")))))
+					.andExpect(status().isOk());
+		}
+
+		@Test
+		@DisplayName("본문이 깨져 있으면 400 이다")
+		void create_malformedJson_returnsBadRequest() throws Exception {
+			mvc.perform(post(ADDRESSES_URL)
+							.with(authentication(principalOf(USER_ID)))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content("{\"recipientName\": "))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.code").value("COMMON_400"));
+
+			verifyNoInteractions(addressService);
+		}
+
 		private void expectBadRequest(ShippingAddressCreateRequest request) throws Exception {
 			mvc.perform(post(ADDRESSES_URL)
 							.with(authentication(principalOf(USER_ID)))
@@ -181,6 +251,36 @@ class AddressControllerTest extends ControllerSliceTestSupport {
 							.content(json(updateRequest())))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.id").value(ADDRESS_ID));
+		}
+
+		@Test
+		@DisplayName("본문에 isDefault 를 실어 보내도 무시한다")
+		void update_bodyWithIsDefault_ignoresIt() throws Exception {
+			given(addressService.update(eq(USER_ID), eq(ADDRESS_ID), any(ShippingAddressUpdateRequest.class)))
+					.willReturn(ShippingAddressIdResponse.builder().id(ADDRESS_ID).build());
+
+			// 기본 지정은 PATCH /{id}/default 로 분리돼 있다. 수정 본문으로는 바꿀 수 없다
+			String body = """
+					{
+					  "recipientName": "김유진",
+					  "phone": "010-9999-8888",
+					  "zipcode": "06158",
+					  "address": "서울특별시 강남구 테헤란로 1",
+					  "addressDetail": "3층",
+					  "isDefault": true
+					}""";
+
+			mvc.perform(put(ADDRESSES_URL + "/" + ADDRESS_ID)
+							.with(authentication(principalOf(USER_ID)))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(body))
+					.andExpect(status().isOk());
+
+			// 모르는 필드라 DTO 에 담기지 않는다 — 400 도 아니고 반영도 되지 않는다
+			ArgumentCaptor<ShippingAddressUpdateRequest> captor =
+					ArgumentCaptor.forClass(ShippingAddressUpdateRequest.class);
+			verify(addressService).update(eq(USER_ID), eq(ADDRESS_ID), captor.capture());
+			assertThat(captor.getValue().getRecipientName()).isEqualTo("김유진");
 		}
 
 		@Test
@@ -228,6 +328,17 @@ class AddressControllerTest extends ControllerSliceTestSupport {
 					.andExpect(jsonPath("$.data").doesNotExist());
 
 			verify(addressService).delete(USER_ID, ADDRESS_ID);
+		}
+
+		@Test
+		@DisplayName("배송지 id 가 숫자가 아니면 400 이고 서비스를 호출하지 않는다")
+		void delete_nonNumericId_returnsBadRequest() throws Exception {
+			mvc.perform(delete(ADDRESSES_URL + "/abc")
+							.with(authentication(principalOf(USER_ID))))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.code").value("COMMON_400"));
+
+			verifyNoInteractions(addressService);
 		}
 
 		@Test
