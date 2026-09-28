@@ -135,6 +135,7 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | API-164 | `POST` | `/api/v1/orders/{orderId}/deliver` | 배송 완료 처리 | SCR-037 | TradeOrder, OrderShipment | O |
 | API-165 | `POST` | `/api/v1/orders/{orderId}/confirm` | 구매 확정 → 소유권 승계 | SCR-037 | TradeOrder, ItemOwnership, Settlement | O |
 | API-166 | `POST` | `/api/v1/orders/{orderId}/cancel` | 거래 취소 (상품 발송 전) → 환불 | SCR-037 | TradeOrder, Payment | O |
+| API-167 | `GET` | `/api/v1/orders/couriers` | 택배사 목록 (운송장 입력 드롭다운) | SCR-038 | —(CourierCode enum) | O |
 | API-180 | `GET` | `/api/v1/chat-rooms` | 채팅방 목록 (전체/구매/판매/읽지않음) | SCR-041 | ChatRoom, ChatRoomMember, ChatMessage | O |
 | API-181 | `POST` | `/api/v1/items/{itemId}/chat-rooms` | 채팅방 개설 | SCR-026 | ChatRoom, ChatRoomMember | O |
 | API-182 | `GET` | `/api/v1/chat-rooms/{roomId}` | 채팅방 헤더 (아이템·거래 단계 CTA) | SCR-042 | ChatRoom, Item, ItemListing | O |
@@ -250,7 +251,7 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | SCR-035 | 구매 제안서 (구매자 시점) | read, delete | O | API-142 API-143 |
 | SCR-036 | 구매 제안서 (판매자 시점) | read, update | O | API-030 API-142 API-144 API-145 |
 | SCR-037 | 거래 상세 | read, update | O | API-160 API-164 API-165 API-166 |
-| SCR-038 | 운송장 번호 입력 | update | O | API-163 |
+| SCR-038 | 운송장 번호 입력 | update | O | API-163 API-167 |
 | SCR-039 | 판매 내역 | read, filter, paging | O | API-161 API-146 |
 | SCR-040 | 구매 내역 | read, filter, paging | O | API-162 |
 | SCR-041 | 채팅방 목록 | read, filter, paging | O | API-180 |
@@ -1409,7 +1410,13 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `settingType` | NotificationSettingType | 위 9종 |
+| `group` | String | 그룹 헤더 — `필수` \| `활동 알림` \| `서비스 알림` |
+| `title` | String | 토글 제목 — `거래 요청` |
+| `description` | String | 토글 설명 — `새로운 거래 요청이 오면 알려드려요.` |
 | `enabled` | Boolean | — |
+
+**제목·설명·그룹을 함께 내려준다.** 값이 고정이지만 **두 줄짜리 문구 9개를 클라이언트가
+복제하면 문구 수정이 앱 배포에 묶인다**(`DEC-021`). 선택지 자체가 늘어나지 않는 것과는 다른 이유다.
 
 ```json
 {
@@ -1419,6 +1426,9 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
   "data": [
     {
       "settingType": "TRADE_REQUEST",
+      "group": "필수",
+      "title": "거래 요청",
+      "description": "새로운 거래 요청이 오면 알려드려요.",
       "enabled": true
     }
   ]
@@ -3496,6 +3506,15 @@ Guidi / 788z Boots와 비슷한 스타일
 
 응답 `OrderResponse` — `orderNo` · `status` · `statusHistory[{ status, changedAt }]` · `shipment` · `payment` · `settlement` · `buyer` · `seller` · `item`. **판매자/구매자 × 판매/미판매 4가지 뷰**로 노출 필드가 갈린다. `autoConfirmAt` 잔여 시간을 함께 내려준다.
 
+화면(`2958:63661`)에서 확인한 구성이다 — 아이템 카드 → `주문 번호`·`운송장 번호` → 단계별 CTA →
+**타임라인 5단계**(결제 완료·상품 발송·배송 완료·구매 확정·정산 완료, 각 날짜) → 구매자 정보 →
+판매자 정보 → 구매자 요청사항 → 배송지(+`배송 조회`) → 정산 정보(정산 계좌 포함).
+
+**구매자·판매자 정보가 둘 다 표시된다.** 내 역할과 무관하게 상대방만 보여주는 화면이 아니다.
+
+`배송 조회` 는 택배사 추적 페이지로 나가는 버튼이다. 택배사별 URL 패턴을 클라이언트가 갖고 있으면
+택배사를 추가할 때 앱 배포에 묶이므로 **서버가 `trackingUrl` 로 조합해 내려준다**(`DEC-021` 과 같은 기준).
+
 **경로 파라미터**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
@@ -3517,6 +3536,7 @@ Guidi / 788z Boots와 비슷한 스타일
 | `statusHistory[].changedAt` | LocalDateTime | 타임라인 날짜 |
 | `shipment.courierCode` | CourierCode | CJ_LOGISTICS \| KOREA_POST \| GS_POSTBOX \| CU_CONVENIENCE |
 | `shipment.trackingNo` | String | — |
+| `shipment.trackingUrl` | String | `배송 조회` 버튼의 이동 주소. 택배사별 추적 페이지를 **서버가 조합**해 내려준다. 운송장 입력 전에는 null 이고 버튼이 비활성이다 |
 | `shipment.recipientName` | String | — |
 | `shipment.phone` | String | — |
 | `shipment.address` | String | — |
@@ -3925,6 +3945,42 @@ Guidi / 788z Boots와 비슷한 스타일
 
 에러 — ORDER_403, ORDER_409_CANCEL_WINDOW, PAYMENT_409_REFUND
 
+#### API-167 · `GET /api/v1/orders/couriers`
+
+택배사 목록. 인증 **필요**. 관련 화면 SCR-038.
+
+운송장 입력 화면(`2958:68218`)의 `택배사` Select box 선택지다.
+`CourierCode` enum 을 코드와 표시명으로 내려준다.
+
+**왜 API 로 내리는가** — 택배사는 **앱 배포와 무관하게 늘어난다**(`DEC-021`).
+서버가 enum 에 값을 더해도 클라이언트가 문구를 하드코딩해 뒀으면 화면이 낡는다.
+은행 목록(`API-035`)과 같은 기준이다.
+
+성별·수수료 부담·결제 수단처럼 **값이 고정인 선택지는 이 방식을 쓰지 않는다** — 클라이언트가 갖는다.
+
+**응답** (`data` 배열)
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `code` | CourierCode | 저장·전송하는 값. 예 `CJ_LOGISTICS` |
+| `name` | String | 화면 표시명. 예 `CJ대한통운` |
+
+```json
+{
+  "success": true,
+  "code": "COMMON_200",
+  "message": "요청에 성공했습니다.",
+  "data": [
+    {
+      "code": "CJ_LOGISTICS",
+      "name": "CJ대한통운"
+    }
+  ]
+}
+```
+
+에러 — COMMON_401
+
 ### 채팅
 
 #### API-180 · `GET /api/v1/chat-rooms`
@@ -4028,7 +4084,22 @@ Guidi / 788z Boots와 비슷한 스타일
 
 채팅방 헤더 (아이템·거래 단계 CTA). 인증 **필요**. 관련 화면 SCR-042.
 
-응답에 아이템·가격·판매 상태와 함께 **거래 단계별 CTA** 를 내려준다 — `응답 대기 중` / `거래 진행 중` / `거래 완료 이후` 3종이며 구매자·판매자에 따라 또 갈린다. 상태는 `purchase_offer`·`trade_order` 에서 파생한다.
+응답에 아이템·가격·판매 상태와 함께 **헤더 CTA 두 개**를 내려준다.
+상태는 `purchase_offer`·`trade_order` 에서 파생한다.
+
+**CTA 는 버튼 하나가 아니라 둘이고, 라벨이 세 축으로 갈린다**(`2958:69400`·`2958:69759`·`2958:70118`).
+
+| 축 | 값 |
+|---|---|
+| 판매 상태 | 판매 중 → `상품 상세`/`상품 관리` · 미판매 → `아이템 상세`/`아이템 관리` |
+| 역할 | 구매자 → `…상세` · 판매자 → `…관리` |
+| 거래 단계 | 제안 전 → `구매하기` · 응답 대기 → `보낸 요청 보기`/`보낸 제안 보기`(구매자) `요청 확인`/`제안 확인`(판매자) · 거래 생성 후 → `거래 상세` |
+
+**비활성 상태가 있다.** `구매제안 O` 로 채팅을 열었다가 판매자가 `구매제안 X` 로 바꾸면
+`제안 확인` 이 회색으로 죽는다 — 기존 방은 유지되지만 새 제안은 못 받는다.
+
+그래서 `cta` 를 문자열 하나로 내리지 않고 **버튼 배열**로 내린다. 라벨 조합이 여덟 가지라
+클라이언트가 분기를 복제하면 어긋난다.
 
 **경로 파라미터**
 
@@ -4048,7 +4119,10 @@ Guidi / 788z Boots와 비슷한 스타일
 | `price` | String | — |
 | `saleStatus` | SaleStatus | '판매 중' |
 | `recentWornDate` | LocalDate | '최근 착용 1일 전' |
-| `cta` | String | 거래 단계별 CTA — 상품 상세 / 구매하기 / 거래 상세 |
+| `ctas[].label` | String | 버튼 문구. 위 표의 조합 |
+| `ctas[].action` | String | `ITEM_DETAIL` \| `ITEM_MANAGE` \| `PURCHASE` \| `OFFER_DETAIL` \| `ORDER_DETAIL` |
+| `ctas[].targetId` | Long | 이동 대상 id — 아이템·제안·거래 중 하나 |
+| `ctas[].enabled` | Boolean | `구매제안 X` 로 바뀐 방에서는 우측 버튼이 false |
 | `orderId` | Long | 진행 중 거래가 있으면 |
 
 ```json
