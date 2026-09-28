@@ -86,4 +86,13 @@ public class ShippingAddress extends BaseEntity {
 				.isDefault(isDefault)
 				.build();
 	}
+
+	/** 기본 배송지로 올리거나 내린다. 사용자당 1건이라는 단일성은 Service 가 지킨다. */
+	public void changeDefault(boolean isDefault) {
+		this.isDefault = isDefault;
+	}
+
+	public boolean isDefaultAddress() {
+		return Boolean.TRUE.equals(isDefault);
+	}
 }
