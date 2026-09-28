@@ -50,6 +50,10 @@ public class ShippingAddress extends BaseEntity {
 	@Column(name = "phone", nullable = false, length = 20)
 	private String phone;
 
+	/** '우편번호' 07027. 주소 검색이 도로명주소와 함께 돌려준다 */
+	@Column(name = "zipcode", nullable = false, length = 10)
+	private String zipcode;
+
 	/** '주소' 서울특별시 동작구 상도로 369. '계정 주소 검색' 프레임 존재 */
 	@Column(name = "address", nullable = false, length = 255)
 	private String address;
@@ -66,18 +70,46 @@ public class ShippingAddress extends BaseEntity {
 	@Column(name = "is_default", nullable = false)
 	private Boolean isDefault;
 
-	/** 배송지 등록. 첫 배송지는 기본으로 지정된다 (API-021). */
+	/** 배송지 등록. 첫 배송지는 기본으로 지정된다. */
 	public static ShippingAddress register(User user, String recipientName, String phone,
-			String address, String addressDetail, String deliveryRequest, boolean isDefault
+			String zipcode, String address, String addressDetail, String deliveryRequest,
+			boolean isDefault
 	) {
 		return ShippingAddress.builder()
 				.user(user)
 				.recipientName(recipientName)
 				.phone(phone)
+				.zipcode(zipcode)
 				.address(address)
 				.addressDetail(addressDetail)
 				.deliveryRequest(deliveryRequest)
 				.isDefault(isDefault)
 				.build();
+	}
+
+	/**
+	 * 전체 수정. 이력을 남기지 않고 값을 덮어쓴다.
+	 *
+	 * 과거 거래는 order_shipment 가 그 시점 값을 복사해 갖고 있어 영향을 받지 않는다 (DEC-013).
+	 * 기본 배송지 여부는 건드리지 않는다 — 별도 동작이다.
+	 */
+	public void update(String recipientName, String phone,
+			String zipcode, String address, String addressDetail, String deliveryRequest
+	) {
+		this.recipientName = recipientName;
+		this.phone = phone;
+		this.zipcode = zipcode;
+		this.address = address;
+		this.addressDetail = addressDetail;
+		this.deliveryRequest = deliveryRequest;
+	}
+
+	/** 기본 배송지로 올리거나 내린다. 사용자당 1건이라는 단일성은 Service 가 지킨다. */
+	public void changeDefault(boolean isDefault) {
+		this.isDefault = isDefault;
+	}
+
+	public boolean isDefaultAddress() {
+		return Boolean.TRUE.equals(isDefault);
 	}
 }

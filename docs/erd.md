@@ -2,7 +2,7 @@
 
 > **피그마** [Tenure UXUI 작업](https://www.figma.com/design/hnEDDkiI0V4js9JzWR2l2M/Tenure-UXUI-%EC%9E%91%EC%97%85?node-id=813-8486&m=dev)
 > **범위** 캔버스 `2. 최종 UI`(`813:8486`) 33개 섹션 전체. 보조로 `4. 랜딩페이지`(`5359:57698`)의 서비스 IA·거래 플로우
-> **생성일** 2026-09-24 · **DB** MySQL 8 · **테이블** 37개 · **컬럼** 302개
+> **생성일** 2026-09-24 · **DB** MySQL 8 · **테이블** 37개 · **컬럼** 304개
 > **정본** [`schema.yaml`](./schema.yaml) — 이 문서의 §2 관계 요약표, §4 화면 인벤토리, §5 컬럼 명세는 정본에서 생성된다
 
 ---
@@ -257,6 +257,7 @@ erDiagram
         bigint user_id
         varchar recipient_name
         varchar phone
+        varchar zipcode
         varchar address
         varchar address_detail
         varchar delivery_request
@@ -557,6 +558,7 @@ erDiagram
         bigint order_id UK
         varchar recipient_name
         varchar phone
+        varchar zipcode
         varchar address
         varchar address_detail
         varchar delivery_request
@@ -897,6 +899,7 @@ erDiagram
 | `user_id` | BIGINT | Long |  | O |  | `inferred` | 소유자 FK |
 | `recipient_name` | VARCHAR(50) | String |  | O |  | `design` | '이름' / '받는 분' / '수령인' |
 | `phone` | VARCHAR(20) | String |  | O |  | `design` | '휴대폰 번호' / '연락처' 010-1234-5678 |
+| `zipcode` | VARCHAR(10) | String |  | O |  | `design` | '우편번호' 07027. 배송지 추가 화면의 첫 입력칸이며 주소 검색이 도로명주소와 함께 돌려준다 |
 | `address` | VARCHAR(255) | String |  | O |  | `design` | '주소' 서울특별시 동작구 상도로 369. '계정 주소 검색' 프레임 존재 |
 | `address_detail` | VARCHAR(255) | String |  |  |  | `design` | '상세 주소' 104동 201호 |
 | `delivery_request` | VARCHAR(255) | String |  |  |  | `design` | '배송 요청사항(선택)' |
@@ -904,7 +907,9 @@ erDiagram
 | `created_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 감사 컬럼 관례 |
 | `updated_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | '배송지 수정' 존재 |
 
-인덱스: `ix_shipping_address_user`(user_id, is_default)
+인덱스: `ix_shipping_address_user`(user_id, is_default), `uk_shipping_address_default`((IF(is_default, user_id, NULL))) · UNIQUE
+
+> 제약 — 사용자당 기본 배송지는 정확히 1건이다. 가입이 첫 배송지를 기본으로 만들고 삭제가 기본을 거부해 0건이 되지 않으며, 2건은 함수 유니크 인덱스가 막는다 *(강제: db)*
 
 #### `payout_account` (PayoutAccount)
 
@@ -1439,6 +1444,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `order_id` | BIGINT | Long |  | O | O | `inferred` | 거래당 1건 |
 | `recipient_name` | VARCHAR(50) | String |  | O |  | `design` | '수령인' / '받는 분' 홍길동 |
 | `phone` | VARCHAR(20) | String |  | O |  | `design` | '연락처' 010-1234-5678 |
+| `zipcode` | VARCHAR(10) | String |  | O |  | `inferred` | '우편번호' 07027 — 거래 상세에 표시되지 않지만 배송지 값 전체를 스냅샷한다 |
 | `address` | VARCHAR(255) | String |  | O |  | `design` | '주소' 서울특별시 동작구 상도로 369 |
 | `address_detail` | VARCHAR(255) | String |  |  |  | `design` | '상세주소' 112동 201호 |
 | `delivery_request` | VARCHAR(255) | String |  |  |  | `design` | '요청사항' 배송 전에 미리 연락 바랍니다. |

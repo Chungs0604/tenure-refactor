@@ -619,6 +619,7 @@ class UserServiceTest {
 				.address(UserCreateRequest.AddressRequest.builder()
 						.recipientName("홍길동")
 						.phone("010-1234-5678")
+						.zipcode("07027")
 						.address("서울특별시 동작구 상도로 369")
 						.addressDetail("104동 201호")
 						.build())
