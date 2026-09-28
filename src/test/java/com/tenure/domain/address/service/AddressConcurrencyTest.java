@@ -148,7 +148,7 @@ class AddressConcurrencyTest extends IntegrationTestSupport {
 	private ShippingAddress save(String recipientName, boolean isDefault) {
 		return shippingAddressRepository.save(ShippingAddress.register(
 				owner, recipientName, "010-1234-5678", "07027",
-				"서울특별시 동작구 상도로 369", "104동 201호", null, isDefault));
+				"서울특별시 동작구 상도로 369", "104동 201호", null, null, isDefault));
 	}
 
 	private static ShippingAddressCreateRequest createRequest(String recipientName) {

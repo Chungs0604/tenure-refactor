@@ -133,7 +133,7 @@ class ShippingAddressRepositoryTest extends RepositorySliceTestSupport {
 	private ShippingAddress save(User user, String recipientName, boolean isDefault) {
 		return shippingAddressRepository.save(ShippingAddress.register(
 				user, recipientName, "010-1234-5678", "07027",
-				"서울특별시 동작구 상도로 369", "104동 201호", null, isDefault));
+				"서울특별시 동작구 상도로 369", "104동 201호", null, null, isDefault));
 	}
 
 	/** created_at 은 감사 컬럼이라 값을 고를 수 없다. 정렬 검증을 위해 네이티브로 덮어쓴다. */
