@@ -1705,6 +1705,16 @@ entities:
     - user_id
     - is_default
     unique: false
+  - name: uk_shipping_address_default
+    columns:
+    - '(IF(is_default, user_id, NULL))'
+    unique: true
+    note: 기본 배송지는 사용자당 1건. MySQL 은 부분 유니크가 없어 함수 인덱스로 건다 (DEC-016)
+  constraints:
+  - rule: 사용자당 기본 배송지는 정확히 1건이다. 가입이 첫 배송지를 기본으로 만들고 삭제가 기본을 거부하므로 0건이 되지 않으며, 2건은 uk_shipping_address_default 가 막는다
+    enforced_by: db
+    source: design
+    evidence: 배송지 관리 목록에서 기본 항목에만 삭제 버튼이 없다(4245:46650)
 - name: PayoutAccount
   table: payout_account
   domain: payout
@@ -5579,6 +5589,15 @@ design_decisions:
   decision: 90일 경과 삭제 (배치)
   rationale: 알림은 읽음 상태와 탭별 페이징이 있어 RDB 가 맞다 — 여기까지는 recent_view 와 다르다. 다만 UNIQUE 제약이 없어 거래·제안·팔로우·위시 이벤트마다 행이 쌓이고 지우는 경로가 없어 무한히 증가했다. 화면이 어제 · 10월 24일 수준의 최근성을 보여주므로 90일이면 체감 손실이 없다. 건수 상한은 거래가 몰린 날 오래된 알림이 기간과 무관하게 밀려나서 택하지 않았다
   revisit_when: 운영 데이터를 확보한 뒤 실제 조회 분포를 보고 기간을 조정한다. 알림량이 예상보다 많으면 읽은 것과 안 읽은 것의 기간을 나누는 안을 검토한다
+- id: DEC-016
+  topic: 기본 배송지 단일성을 무엇으로 지킬 것인가
+  considered:
+  - 애플리케이션 순서(해제 → 지정)만으로 지킨다
+  - 사용자 단위 비관적 락
+  - DB 유니크 제약(함수 인덱스)
+  decision: DB 유니크 제약. MySQL 은 부분 유니크가 없어 함수 인덱스로 건다
+  rationale: '순서만으로는 동시 요청에서 둘 다 기본이 될 수 있었다. 락은 앞으로 is_default 를 건드리는 모든 코드가 기억해야 하지만 제약은 잊어도 깨지지 않는다 — follow 의 CHECK 제약과 같은 기준이다. UNIQUE ((IF(is_default, user_id, NULL))) 로 걸면 유니크 인덱스가 NULL 중복을 허용하므로 비기본은 몇 개든 쌓이고 기본만 사용자당 1건으로 묶인다. (user_id, is_default) 복합 유니크는 비기본을 2개 이상 못 갖게 돼 쓸 수 없다. 해제는 즉시 실행되는 벌크 UPDATE 로 내보낸다 — Hibernate 가 flush 시 INSERT 를 UPDATE 보다 먼저 실행해 엔티티로 해제하면 새 기본이 먼저 들어가 인덱스에 걸린다. 그 벌크 UPDATE 가 현재 기본 행에 X 락을 잡아 직렬화 게이트를 겸하므로 별도 락이 필요 없다 — 동시 요청이 모두 성공하고 유니크 위반이 나지 않음을 실측으로 확인했다. 제약은 게이트가 없는 극단에서의 최후 방어다'
+  revisit_when: 정산 계좌(payout_account)도 같은 is_default 구조다. 구현할 때 같은 인덱스를 검토한다. 유니크 위반이 실제로 관측되면 DataIntegrityViolationException 핸들러를 둔다 — 지금은 전용 핸들러가 없어 500 이 된다
 - id: DEC-101
   topic: 타인에게 보이는 프로필 필드 — 등급·키·몸무게는 공개, 성별은 비공개
   considered:

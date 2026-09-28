@@ -907,7 +907,9 @@ erDiagram
 | `created_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 감사 컬럼 관례 |
 | `updated_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | '배송지 수정' 존재 |
 
-인덱스: `ix_shipping_address_user`(user_id, is_default)
+인덱스: `ix_shipping_address_user`(user_id, is_default), `uk_shipping_address_default`((IF(is_default, user_id, NULL))) · UNIQUE
+
+> 제약 — 사용자당 기본 배송지는 정확히 1건이다. 가입이 첫 배송지를 기본으로 만들고 삭제가 기본을 거부해 0건이 되지 않으며, 2건은 함수 유니크 인덱스가 막는다 *(강제: db)*
 
 #### `payout_account` (PayoutAccount)
 

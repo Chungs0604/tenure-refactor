@@ -92,6 +92,41 @@ class FlywayMigrationTest extends IntegrationTestSupport {
 	}
 
 	@Test
+	@DisplayName("기본 배송지를 두 개 만들면 유니크 인덱스가 막는다")
+	void shippingAddress_secondDefault_rejectedByUniqueIndex() throws Exception {
+		// 애플리케이션이 '기존 기본을 내리고 새 것을 올린다' 순서로 지키지만, 동시에 들어오면
+		// 둘 다 true 가 될 수 있다. MySQL 은 부분 유니크가 없어 함수 인덱스로 막는다
+		try (Connection connection = dataSource.getConnection()) {
+			connection.setAutoCommit(false);
+			try (Statement statement = connection.createStatement()) {
+				statement.execute("""
+						insert into `user` (email, password_hash, real_name, phone, nickname,
+						                    grade, status, follower_count, post_count, created_at, updated_at)
+						 values ('default-address-test@tenure.local', 'x', '홍길동', '01011112222',
+						         'default-address-test', 'BASIC', 'ACTIVE', 0, 0, now(6), now(6))""");
+				long userId = queryLong(statement, "select last_insert_id()");
+
+				statement.execute(insertAddress(userId, "07027", true));
+				// 기본이 아닌 배송지는 몇 개든 쌓인다 — 인덱스 값이 NULL 이라 중복으로 보지 않는다
+				statement.execute(insertAddress(userId, "06978", false));
+				statement.execute(insertAddress(userId, "07040", false));
+
+				assertThatInsertFails(statement, insertAddress(userId, "06158", true));
+			} finally {
+				connection.rollback();
+			}
+		}
+	}
+
+	private static String insertAddress(long userId, String zipcode, boolean isDefault) {
+		return """
+				insert into shipping_address (user_id, recipient_name, phone, zipcode, address,
+				                              is_default, created_at, updated_at)
+				 values (%d, '홍길동', '010-1234-5678', '%s', '서울특별시 동작구 상도로 369',
+				         %b, now(6), now(6))""".formatted(userId, zipcode, isDefault);
+	}
+
+	@Test
 	@DisplayName("자기 자신을 팔로우하면 CHECK 제약이 막는다")
 	void follow_selfReference_rejectedByCheckConstraint() throws Exception {
 		// 컨테이너를 재사용하므로 커밋하지 않는다 — 다른 테스트에 데이터를 남기지 않기 위해
