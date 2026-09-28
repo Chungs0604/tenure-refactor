@@ -36,7 +36,7 @@ class CategorySeedTest extends IntegrationTestSupport {
 				"select name from category where depth = 1 order by sort_order");
 
 		assertThat(majors).containsExactly(
-				"아우터", "상의", "하의", "신발", "가방", "모자", "치마", "원피스", "액세서리", "주얼리");
+				"아우터", "상의", "하의", "신발", "가방", "모자", "치마", "원피스", "액세서리", "쥬얼리");
 		assertThat(majors).hasSize(EXPECTED_MAJOR);
 	}
 
@@ -55,7 +55,7 @@ class CategorySeedTest extends IntegrationTestSupport {
 
 		assertThat(counts).containsExactly(
 				"아우터=14", "상의=12", "하의=11", "신발=8", "가방=10",
-				"모자=9", "치마=11", "원피스=9", "액세서리=9", "주얼리=9");
+				"모자=9", "치마=11", "원피스=9", "액세서리=9", "쥬얼리=9");
 	}
 
 	@Test

@@ -56,7 +56,7 @@ public class ChatMessage extends BaseCreatedEntity {
 	private ChatMessageType messageType;
 
 	/** 메시지 본문. IMAGE 면 저장소 키 (DEC-006) */
-	@Column(name = "content", nullable = false, columnDefinition = "TEXT")
+	@Column(name = "content", columnDefinition = "TEXT")
 	private String content;
 
 }

@@ -47,10 +47,6 @@ public class Post extends BaseEntity {
 	@JoinColumn(name = "author_id", nullable = false)
 	private User author;
 
-	/** 게시물 본문. 예 '안녕하세요 SSU님!' */
-	@Column(name = "content", columnDefinition = "TEXT")
-	private String content;
-
 	/** '달력 아이콘 클릭' → '날짜 선택'. 마이페이지 날짜별 캘린더와 '최근 착용'의 기준 */
 	@Column(name = "worn_date", nullable = false)
 	private LocalDate wornDate;
@@ -75,5 +71,9 @@ public class Post extends BaseEntity {
 	/** OOTD 상세 하단 '🔖 1234'. 정본은 post_save 테이블 */
 	@Column(name = "save_count", nullable = false)
 	private Integer saveCount;
+
+	/** 검색 결과의 '조회수 순' 정렬. Redis 카운터를 주기적으로 반영한다 (DEC-019) */
+	@Column(name = "view_count", nullable = false)
+	private Integer viewCount;
 
 }

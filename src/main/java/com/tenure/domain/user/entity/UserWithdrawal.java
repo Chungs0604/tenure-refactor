@@ -1,7 +1,10 @@
 package com.tenure.domain.user.entity;
 
+import com.tenure.domain.user.enums.WithdrawalReason;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -42,8 +45,9 @@ public class UserWithdrawal {
 	private User user;
 
 	/** 'Tenure를 떠나시는 이유를 알려주세요' */
-	@Column(name = "reason", length = 500)
-	private String reason;
+	@Enumerated(EnumType.STRING)
+	@Column(name = "reason", nullable = false, length = 40)
+	private WithdrawalReason reason;
 
 	/** 탈퇴 시각 */
 	@Column(name = "withdrawn_at", nullable = false)

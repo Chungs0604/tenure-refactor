@@ -169,8 +169,8 @@ class ProfileQueryRepositoryTest extends RepositorySliceTestSupport {
 
 		em.createNativeQuery("""
 						insert into item (registrant_id, name, brand_name, category_id,
-						                  cover_image_key, deleted_at, created_at, updated_at)
-						 values (?, ?, 'Levis', ?, 'item/cover.jpg', %s, now(6), now(6))"""
+						                  cover_image_key, wear_target, deleted_at, created_at, updated_at)
+						 values (?, ?, 'Levis', ?, 'item/cover.jpg', 'UNISEX', %s, now(6), now(6))"""
 						.formatted(deleted ? "now(6)" : "null"))
 				.setParameter(1, registrantId).setParameter(2, name).setParameter(3, categoryId)
 				.executeUpdate();

@@ -57,6 +57,7 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | API-004 | `POST` | `/api/v1/auth/email-verifications` | 인증번호 발송 (가입·비밀번호 찾기) | SCR-002, SCR-003 | —(Redis) | X |
 | API-005 | `POST` | `/api/v1/auth/email-verifications/verify` | 인증번호 확인 | SCR-002, SCR-003 | —(Redis) | X |
 | API-006 | `PATCH` | `/api/v1/auth/password` | 비밀번호 재설정 | SCR-003 | User | X |
+| API-007 | `POST` | `/api/v1/auth/social` | 소셜 로그인 (구글·네이버) | SCR-001 | User | X |
 | API-010 | `GET` | `/api/v1/users/check-email` | 이메일 중복 확인 | SCR-002 | User | X |
 | API-011 | `GET` | `/api/v1/users/check-nickname` | 닉네임 중복 확인 | SCR-002 | User | X |
 | API-012 | `POST` | `/api/v1/users` | 회원가입 (약관·주소·프로필 일괄) | SCR-002 | User, UserAgreement, ShippingAddress | X |
@@ -74,6 +75,8 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | API-031 | `POST` | `/api/v1/payout-accounts` | 정산 계좌 등록 | SCR-007 | PayoutAccount | O |
 | API-032 | `PUT` | `/api/v1/payout-accounts/{accountId}` | 정산 계좌 수정 | SCR-007 | PayoutAccount | O |
 | API-033 | `DELETE` | `/api/v1/payout-accounts/{accountId}` | 정산 계좌 삭제 | SCR-007 | PayoutAccount | O |
+| API-034 | `PATCH` | `/api/v1/payout-accounts/{accountId}/default` | 기본 정산 계좌 지정 | SCR-007 | PayoutAccount | O |
+| API-035 | `GET` | `/api/v1/payout-accounts/banks` | 은행 목록 (드롭다운 선택지) | SCR-007 | —(BankCode enum) | O |
 | API-040 | `GET` | `/api/v1/notification-settings` | 알림 수신 설정 조회 | SCR-008 | NotificationSetting | O |
 | API-041 | `PATCH` | `/api/v1/notification-settings` | 알림 수신 설정 변경 | SCR-008 | NotificationSetting | O |
 | API-050 | `GET` | `/api/v1/users/{userId}/followers` | 팔로워 목록 | SCR-011 | Follow, User | O |
@@ -107,6 +110,7 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | API-096 | `GET` | `/api/v1/items/{itemId}/history` | 아이템 히스토리 (등장 OOTD 그리드) | SCR-025 | ItemWearRecord, Post, PostImage | O |
 | API-097 | `GET` | `/api/v1/items/{itemId}/ownerships` | Tenure 기록 기준 (소유 구간 + 인증 횟수) | SCR-023, SCR-026 | ItemOwnership, ItemWearRecord | O |
 | API-098 | `GET` | `/api/v1/items/me/taggable` | 태그 가능한 내 아이템 (본인 보유분) | SCR-018 | Item | O |
+| API-099 | `GET` | `/api/v1/items/{itemId}/recommendations` | 아이템 기준 추천 (비슷한 스타일·함께 좋은 코디) | SCR-016 | Item, Post, Category | O |
 | API-110 | `GET` | `/api/v1/listings/{listingId}` | 상품 상세 (구매자 시점) | SCR-026, SCR-031 | ItemListing, Item, ItemOwnership, ItemWearRecord | O |
 | API-111 | `POST` | `/api/v1/items/{itemId}/listings` | 판매 전환 | SCR-027 | ItemListing, ListingFeaturedPost, ItemMeasurement, ItemCondition, PayoutAccount | O |
 | API-112 | `PATCH` | `/api/v1/listings/{listingId}` | 판매 정보 수정 (가격·배송비·수수료 부담) | SCR-027 | ItemListing | O |
@@ -123,6 +127,7 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | API-143 | `DELETE` | `/api/v1/offers/{offerId}` | 제안 취소 (구매자) | SCR-035 | PurchaseOffer, Payment | O |
 | API-144 | `POST` | `/api/v1/offers/{offerId}/accept` | 제안 수락 (판매자) → 거래 생성 | SCR-036 | PurchaseOffer, Payment, TradeOrder | O |
 | API-145 | `POST` | `/api/v1/offers/{offerId}/reject` | 제안 거절 (판매자) | SCR-036 | PurchaseOffer, Payment | O |
+| API-146 | `GET` | `/api/v1/items/{itemId}/offers` | 아이템별 받은 제안·요청 목록 (판매자) | SCR-039 | PurchaseOffer, Item, ItemListing | O |
 | API-160 | `GET` | `/api/v1/orders/{orderId}` | 거래 상세 (타임라인·배송·결제·정산) | SCR-037 | TradeOrder, OrderStatusHistory, OrderShipment, Payment, Settlement | O |
 | API-161 | `GET` | `/api/v1/orders/sales` | 판매 내역 4개 탭 (제안 + 거래 유니온) | SCR-039 | TradeOrder, PurchaseOffer, ItemListing | O |
 | API-162 | `GET` | `/api/v1/orders/purchases` | 구매 내역 4개 탭 (제안 + 거래 유니온) | SCR-040 | TradeOrder, PurchaseOffer | O |
@@ -140,6 +145,9 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | API-190 | `GET` | `/api/v1/notifications` | 알림 목록 (탭 5종) | SCR-044 | Notification | O |
 | API-191 | `PATCH` | `/api/v1/notifications/{notificationId}/read` | 알림 읽음 | SCR-044 | Notification | O |
 | API-192 | `PATCH` | `/api/v1/notifications/read-all` | 전체 읽음 | SCR-044 | Notification | O |
+| API-193 | `GET` | `/api/v1/notifications/unread-count` | 안읽은 알림 수 (헤더 벨 배지) | SCR-014, SCR-020, SCR-044 | Notification | O |
+| API-206 | `GET` | `/api/v1/search/suggested-keywords` | 추천 검색어 (인기 검색어 집계) | SCR-045 | SearchHistory | O |
+| API-207 | `GET` | `/api/v1/search/recommendations/{section}` | 추천 섹션 더보기 (페이징) | SCR-045 | Post, User | O |
 | API-200 | `GET` | `/api/v1/search/posts` | 게시물 검색 (필터 적용) | SCR-046, SCR-047 | Post, Item, ItemListing, Category, User, SearchHistory | O |
 | API-201 | `GET` | `/api/v1/search/users` | 계정 검색 | SCR-046 | User, SearchHistory | O |
 | API-202 | `GET` | `/api/v1/search/recommendations` | 추천 섹션 (유사·인기·최신·인기 사용자) | SCR-045 | Post, User, 최근 열람(Redis) | O |
@@ -164,7 +172,7 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | `user_block` | 없음(목록 화면 없음) | 없음 | API-054 | 없음 | API-055 |
 | `report` | 없음(관리자 기능 범위 밖) | 없음 | API-056 | 없음(append-only) | 없음(append-only) |
 | `shipping_address` | API-020 | 없음(목록에 전체 필드) | API-021 | API-022 API-024 | API-023 |
-| `payout_account` | API-030 | 없음(목록에 전체 필드) | API-031 | API-032 | API-033 |
+| `payout_account` | API-030 | 없음(목록에 전체 필드) | API-031 | API-032 API-034 | API-033 |
 | `notification_setting` | API-040 | 없음 | 없음(가입 시 기본값 생성) | API-041 | 없음(계정 종속) |
 | `post` | API-070 API-081 API-082 | API-071 | API-072 | API-073 | API-074 |
 | `post_image` | 없음(게시물에 중첩) | 없음 | API-072 에 포함 | API-073 에 포함 | 없음(부모 종속) |
@@ -173,7 +181,7 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | `post_save` | API-081 (저장 탭) | 없음 | API-077 | 없음 | API-078 |
 | `post_tag_edit_log` | 없음(MVP 외) | 없음 | API-083 이 자동 생성 | 없음(append-only) | 없음(append-only) |
 | `category` | API-090 | 없음(트리로 일괄) | 없음(마스터 데이터) | 없음(마스터 데이터) | 없음(마스터 데이터) |
-| `item` | API-091 API-098 | API-093 | API-092 | API-094 | API-095 |
+| `item` | API-091 API-098 API-099 (추천) | API-093 | API-092 | API-094 | API-095 |
 | `item_image` | 없음(아이템에 중첩) | API-093 에 포함 | API-092 에 포함 | API-094 에 포함 (전체 교체) | 없음(교체로 대체) |
 | `item_measurement` | 없음(아이템에 중첩) | 없음 | API-092 에 포함 | API-094 에 포함 | 없음(부모 종속) |
 | `item_condition` | 없음(아이템에 중첩) | 없음 | API-092 에 포함 | API-094 에 포함 | 없음(부모 종속) |
@@ -191,7 +199,7 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | `chat_room` | API-180 | API-182 | API-181 | 없음(상태 파생) | 없음(나가기로 대체) |
 | `chat_room_member` | 없음(방에 중첩) | 없음 | API-181 이 자동 생성 | API-185 (읽음) | API-186 (나가기) |
 | `chat_message` | API-183 | 없음 | API-184 | 없음(수정 화면 없음) | 없음(삭제 화면 없음) |
-| `notification` | API-190 | 없음(목록에 전체 필드) | 없음(시스템 발행) | API-191 API-192 | 없음(보관 정책 없음) |
+| `notification` | API-190 API-193 (안읽음 수) | 없음(목록에 전체 필드) | 없음(시스템 발행) | API-191 API-192 | 90일 경과 삭제 배치(`DEC-015`) |
 | `search_history` | API-203 | 없음 | API-200 API-201 이 부수효과로 기록 | 없음 | API-204 API-205 |
 
 > `user_grade_history` 는 어떤 응답에도 나오지 않는다. 레코드 등급 승격·강등의 **판정 근거를 남기는 감사 테이블**이며
@@ -205,22 +213,22 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 
 | 화면 | 이름 | 액션 | 인증 | 호출 API |
 |---|---|---|:--:|---|
-| SCR-001 | 온보딩 / 로그인 | read | X | API-001 |
+| SCR-001 | 온보딩 / 로그인 | read | X | API-001 API-007 |
 | SCR-002 | 회원가입 | create | X | API-004 API-005 API-010 API-011 API-012 API-021 |
 | SCR-003 | 비밀번호 찾기 | update | X | API-004 API-005 API-006 |
 | SCR-004 | 계정 정보 (로그인 정보) | read | O | API-013 |
 | SCR-005 | 프로필 수정 | read, update | O | API-014 API-015 |
 | SCR-006 | 배송지 관리 | read, create, update, delete | O | API-020 API-021 API-022 API-023 API-024 |
-| SCR-007 | 정산 계좌 관리 | read, create, update, delete | O | API-030 API-031 API-032 API-033 |
+| SCR-007 | 정산 계좌 관리 | read, create, update, delete | O | API-030 API-031 API-032 API-033 API-034 API-035 |
 | SCR-008 | 알림 설정 | read, update | O | API-040 API-041 |
 | SCR-009 | 회원탈퇴 | delete | O | API-016 |
 | SCR-010 | 로그아웃 | — | O | API-002 |
 | SCR-011 | 팔로워 · 팔로잉 목록 | read, create, delete | O | API-050 API-051 API-052 API-053 |
 | SCR-012 | 사용자 프로필 (타인) | read | O | API-017 API-052 API-053 API-082 |
 | SCR-013 | 차단 · 신고 | create, delete | O | API-054 API-055 API-056 |
-| SCR-014 | 홈 피드 | read, filter, paging | O | API-070 API-075 API-076 API-077 API-078 |
+| SCR-014 | 홈 피드 | read, filter, paging | O | API-070 API-051 API-075 API-076 API-077 API-078 API-193 |
 | SCR-015 | OOTD 상세 | read, create, delete | O | API-052 API-071 API-075 API-076 API-077 API-078 |
-| SCR-016 | 태그된 아이템 목록 | read | O | API-079 |
+| SCR-016 | 태그된 아이템 목록 | read | O | API-079 API-096 API-099 |
 | SCR-017 | OOTD 촬영 | create | O | API-060 (촬영 결과 업로드 → API-072 로 이어진다) |
 | SCR-018 | OOTD 게시물 작성 | create | O | API-060 API-072 API-080 API-092 API-098 |
 | SCR-019 | 게시물 더보기 (수정 · 삭제 · 차단 · 신고) | update, delete, create | O | API-054 API-056 API-073 API-074 |
@@ -243,13 +251,13 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | SCR-036 | 구매 제안서 (판매자 시점) | read, update | O | API-030 API-142 API-144 API-145 |
 | SCR-037 | 거래 상세 | read, update | O | API-160 API-164 API-165 API-166 |
 | SCR-038 | 운송장 번호 입력 | update | O | API-163 |
-| SCR-039 | 판매 내역 | read, filter, paging | O | API-161 |
+| SCR-039 | 판매 내역 | read, filter, paging | O | API-161 API-146 |
 | SCR-040 | 구매 내역 | read, filter, paging | O | API-162 |
 | SCR-041 | 채팅방 목록 | read, filter, paging | O | API-180 |
 | SCR-042 | 채팅방 | read, create, paging | O | API-060 API-182 API-183 API-184 API-185 |
 | SCR-043 | 채팅방 관리 (차단 · 나가기 · 신고) | update, delete, create | O | API-054 API-055 API-056 API-186 |
-| SCR-044 | 알림 | read, filter, paging | O | API-190 API-191 API-192 |
-| SCR-045 | 검색 | read, create, delete, search | O | API-200 API-201 API-202 API-203 API-204 API-205 |
+| SCR-044 | 알림 | read, filter, paging | O | API-190 API-191 API-192 API-193 |
+| SCR-045 | 검색 | read, create, delete, search | O | API-200 API-201 API-202 API-203 API-204 API-205 API-206 API-207 |
 | SCR-046 | 검색 결과 | read, search, filter, paging | O | API-200 API-201 |
 | SCR-047 | 검색 필터 | filter | O | API-090 API-200 API-201 |
 
@@ -314,6 +322,9 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | `AUTH_410_VERIFICATION_TOKEN` | 410 | 인증 토큰이 만료되었습니다. | API-012, API-006 |
 | `AUTH_409_TOKEN_CONSUMED` | 409 | 이미 사용된 인증 토큰입니다. | API-012, API-006 |
 | `AUTH_400_PURPOSE_MISMATCH` | 400 | 용도가 맞지 않는 인증 토큰입니다. | API-012, API-006 |
+| `AUTH_401_SOCIAL_TOKEN` | 401 | 소셜 로그인 토큰이 유효하지 않습니다. | API-007 |
+| `AUTH_409_EMAIL_TAKEN_BY_LOCAL` | 409 | 이미 이메일로 가입된 계정입니다. | API-007 |
+| `AUTH_401_SIGNUP_TOKEN` | 401 | 유효하지 않은 가입 토큰입니다. | API-012 |
 
 ### UserErrorCode
 
@@ -339,9 +350,10 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 
 | 코드 | HTTP | 메시지 | 발생 API |
 |---|:--:|---|---|
-| `PAYOUT_404` | 404 | 정산 계좌를 찾을 수 없습니다. | API-032, API-033 |
-| `PAYOUT_403` | 403 | 본인의 정산 계좌가 아닙니다. | API-032, API-033 |
+| `PAYOUT_404` | 404 | 정산 계좌를 찾을 수 없습니다. | API-032, API-033, API-034 |
+| `PAYOUT_403` | 403 | 본인의 정산 계좌가 아닙니다. | API-032, API-033, API-034 |
 | `PAYOUT_409_PENDING_SETTLEMENT` | 409 | 정산 대기 중인 거래가 있어 삭제할 수 없습니다. | API-033 |
+| `PAYOUT_409_LAST_DEFAULT` | 409 | 기본 정산 계좌는 삭제할 수 없습니다. | API-033 |
 | `PAYOUT_400_REQUIRED` | 400 | 판매 전환을 위해 정산 계좌를 먼저 등록해주세요. | API-111 |
 
 ### FollowErrorCode
@@ -663,6 +675,57 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 ### 사용자
 
+#### API-007 · `POST /api/v1/auth/social`
+
+소셜 로그인 (구글·네이버). 인증 **불필요**. 관련 화면 SCR-001.
+
+로그인 화면(`2791:15250`)의 `다음` 구분선 아래 구글·네이버 아이콘이 이 엔드포인트다.
+**앱이 제공자 SDK 로 받은 토큰을 서버에 넘기고 서버가 검증한다** — 웹 리다이렉트 콜백은
+앱에서 흐름이 번거롭다(`DEC-017`).
+
+두 가지로 갈린다.
+
+- **기존 회원** — `(provider, providerId)` 로 찾으면 `registered: true` 와 함께 토큰을 발급한다. `API-001` 과 같은 응답이다
+- **신규** — `registered: false` 와 `signupToken`(Redis, TTL 10분)을 돌려준다. 클라이언트는 그 토큰으로 가입 화면(약관 → 주소 → 프로필)을 이어 가고 `API-012` 에 제출한다. 제공자가 준 이메일·이름을 함께 내려주므로 폼을 미리 채울 수 있다
+
+같은 이메일이 이미 `LOCAL` 로 가입돼 있으면 `AUTH_409_EMAIL_TAKEN_BY_LOCAL` 로 거절한다 —
+계정 통합은 화면이 없어 범위 밖이다.
+
+**요청 본문**
+
+| 필드 | 타입 | 필수 | 제약 | 설명 |
+|---|---|:--:|---|---|
+| `provider` | UserProvider | O | GOOGLE \| NAVER | `LOCAL` 은 받지 않는다 |
+| `accessToken` | String | O | — | 제공자 SDK 가 발급한 토큰 |
+| `keepLoggedIn` | Boolean |  | 기본 false | refresh token 의 Redis TTL 을 늘린다(`DEC-010`) |
+
+**응답** (`data`)
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `registered` | Boolean | 기존 회원이면 true |
+| `accessToken` | String | 기존 회원일 때만 |
+| `refreshToken` | String | 기존 회원일 때만 |
+| `signupToken` | String | 신규일 때만. `API-012` 에 그대로 넘긴다 |
+| `email` | String | 신규일 때만. 제공자가 준 값 |
+| `name` | String | 신규일 때만. 제공자가 준 이름. 실명 입력의 기본값으로 쓴다 |
+
+```json
+{
+  "success": true,
+  "code": "COMMON_200",
+  "message": "요청에 성공했습니다.",
+  "data": {
+    "registered": false,
+    "signupToken": "<String>",
+    "email": "gildong@naver.com",
+    "name": "홍길동"
+  }
+}
+```
+
+에러 — AUTH_401_SOCIAL_TOKEN, AUTH_409_EMAIL_TAKEN_BY_LOCAL
+
 #### API-010 · `GET /api/v1/users/check-email`
 
 이메일 중복 확인. 인증 **불필요**. 관련 화면 SCR-002.
@@ -729,15 +792,23 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 회원가입 (약관·주소·프로필 일괄). 인증 **불필요**. 관련 화면 SCR-002.
 
-요청 `UserCreateRequest` — `email` `password` `verificationToken` `realName` `phone` `nickname` `profileImageKey?` `gender?` `heightCm?` `weightKg?` `agreements[]` `address`. 약관 3종 동의와 주소 1건을 함께 받아 화면 흐름(가입→약관→주소→프로필)을 한 번에 마감한다.
+요청 `UserCreateRequest` — `email` `password?` `verificationToken?` `signupToken?` `realName` `phone` `nickname` `profileImageKey?` `gender?` `heightCm?` `weightKg?` `agreements[]` `address`. 약관 3종 동의와 주소 1건을 함께 받아 화면 흐름(가입→약관→주소→프로필)을 한 번에 마감한다.
+
+**두 경로가 이 엔드포인트로 모인다**(`DEC-017`).
+
+- 이메일 가입 — `password` + `verificationToken` 을 보낸다. `provider` 는 `LOCAL` 이 된다
+- 소셜 가입 — `API-007` 이 돌려준 `signupToken` 을 보낸다. `password` 와 `verificationToken` 은 보내지 않으며 `password_hash` 는 NULL 로 남는다. `email` 과 `provider`·`provider_id` 는 가입 토큰에 실린 제공자 정보에서 가져온다
+
+> **실명·휴대폰은 화면에 입력란이 없다.** 가입 4단계 어디에도 없는데 컬럼은 NOT NULL 이고 로그인 정보 화면은 두 값을 표시한다. 디자인 누락으로 판단해 필수를 유지했다(`DEC-018`) — **프론트가 입력란을 추가해야 한다.** 소셜 가입은 제공자가 이름을 주므로 그 값으로 채울 수 있다.
 
 **요청 본문**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
 | `email` | String | O | UNIQUE | — |
-| `password` | String | O | 8자 이상 | — |
-| `verificationToken` | String | O | purpose=SIGN_UP | — |
+| `password` | String | △ | 8자 이상 | 이메일 가입이면 필수. 소셜 가입이면 보내지 않는다 |
+| `verificationToken` | String | △ | purpose=SIGN_UP | 이메일 가입이면 필수 |
+| `signupToken` | String | △ | TTL 10분 | 소셜 가입이면 필수. `API-007` 이 발급한다 |
 | `realName` | String | O | — | 실명 |
 | `phone` | String | O | — | 휴대폰번호 |
 | `nickname` | String | O | UNIQUE | — |
@@ -752,7 +823,8 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 | `address.address` | String | O | — | — |
 | `address.zipcode` | String | O | 10자 이내 | 우편번호 |
 | `address.addressDetail` | String |  | — | — |
-| `address.deliveryRequest` | String |  | — | — |
+| `address.deliveryRequestType` | DeliveryRequestType |  | 4종 중 하나 | 배송 요청사항 유형 |
+| `address.deliveryRequest` | String |  | 50자 이내 | `DIRECT` 일 때만 |
 
 **응답** (`data`)
 
@@ -895,13 +967,17 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 회원탈퇴 (사유 수집 + 즉시 익명화). 인증 **필요**. 관련 화면 SCR-009.
 
-요청 `{ reason? }`. **즉시 익명화**한다 — `email` 은 `withdrawn_{id}@deleted.local`, `phone`·`realName` 은 마스크, `nickname` 은 `탈퇴한사용자_{id}` 로 치환하고 배송지·정산계좌·검색기록·알림을 하드 삭제한다. `user` 행과 FK 는 유지되어 `Tenure 기록 기준`의 이전 소유자 표시가 남는다(`DEC-004`).
+요청 `{ reason }`. 사유는 화면(`3063:29262`)의 드롭다운 **4종**이며 자유 입력이 아니다 —
+`LOW_USAGE`(사용 빈도가 낮아요) · `HARD_TO_FIND_ITEM`(원하는 아이템을 찾기 어려워요) ·
+`USING_OTHER_SERVICE`(다른 서비스를 이용할 예정이에요) · `UNSATISFIED_TRADE`(거래 경험이 만족스럽지 않았어요).
+
+**즉시 익명화**한다 — `email` 은 `withdrawn_{id}@deleted.local`, `phone`·`realName` 은 마스크, `nickname` 은 `탈퇴한사용자_{id}` 로 치환하고 배송지·정산계좌·검색기록·알림을 하드 삭제한다. `user` 행과 FK 는 유지되어 `Tenure 기록 기준`의 이전 소유자 표시가 남는다(`DEC-004`).
 
 **요청 본문**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `reason` | String |  | 500자 이내 | 탈퇴 사유 |
+| `reason` | WithdrawalReason | O | 4종 중 하나 | 탈퇴 사유 드롭다운 |
 
 **응답** `data` 는 `null` 이다.
 
@@ -973,7 +1049,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 배송지 목록. 인증 **필요**. 관련 화면 SCR-006.
 
-응답 `ShippingAddressResponse[]` — `{ id, recipientName, phone, zipcode, address, addressDetail, deliveryRequest, isDefault }`. 개수가 적어 페이징하지 않는다(기본 배송지 우선 정렬).
+응답 `ShippingAddressResponse[]` — `{ id, recipientName, phone, zipcode, address, addressDetail, deliveryRequestType, deliveryRequest, isDefault }`. 개수가 적어 페이징하지 않는다(기본 배송지 우선 정렬).
 
 **응답** (`data` 배열)
 
@@ -985,7 +1061,8 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 | `address` | String | — |
 | `zipcode` | String | 우편번호 |
 | `addressDetail` | String | — |
-| `deliveryRequest` | String | — |
+| `deliveryRequestType` | DeliveryRequestType | 요청사항 유형. 미선택이면 null |
+| `deliveryRequest` | String | `DIRECT` 일 때의 입력값. 아니면 null |
 | `isDefault` | Boolean | — |
 
 ```json
@@ -1001,7 +1078,8 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
       "address": "<String>",
       "zipcode": "07027",
       "addressDetail": "<String>",
-      "deliveryRequest": "<String>",
+      "deliveryRequestType": "AT_DOOR",
+      "deliveryRequest": null,
       "isDefault": true
     }
   ]
@@ -1014,7 +1092,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 배송지 추가. 인증 **필요**. 관련 화면 SCR-006, SCR-002.
 
-요청 `ShippingAddressCreateRequest` — `recipientName` `phone` `zipcode` `address` `addressDetail?` `deliveryRequest?` `isDefault?`. 첫 배송지는 자동으로 기본이 된다. 회원가입(API-012)에서도 같은 스키마를 재사용한다.
+요청 `ShippingAddressCreateRequest` — `recipientName` `phone` `zipcode` `address` `addressDetail?` `deliveryRequestType?` `deliveryRequest?` `isDefault?`. 첫 배송지는 자동으로 기본이 된다. 회원가입(API-012)에서도 같은 스키마를 재사용한다.
 
 **요청 본문**
 
@@ -1025,7 +1103,8 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 | `zipcode` | String | O | 10자 이내 | 우편번호 |
 | `address` | String | O | — | 도로명주소 |
 | `addressDetail` | String |  | — | — |
-| `deliveryRequest` | String |  | — | — |
+| `deliveryRequestType` | DeliveryRequestType |  | 4종 중 하나 | `AT_DOOR`(문 앞에 놓아주세요) · `SECURITY_OFFICE`(경비실에 맡겨주세요) · `PARCEL_BOX`(택배함에 넣어주세요) · `DIRECT`(직접 입력) |
+| `deliveryRequest` | String |  | 50자 이내 | `DIRECT` 일 때만 보낸다. 화면에 '최대 50자까지 입력 가능' |
 | `isDefault` | Boolean |  | 첫 배송지는 자동 true | — |
 
 **응답** (`data`)
@@ -1062,7 +1141,8 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 | `zipcode` | String | O | 10자 이내 | 우편번호 |
 | `address` | String | O | — | 도로명주소 |
 | `addressDetail` | String |  | — | — |
-| `deliveryRequest` | String |  | — | — |
+| `deliveryRequestType` | DeliveryRequestType |  | 4종 중 하나 | `AT_DOOR`(문 앞에 놓아주세요) · `SECURITY_OFFICE`(경비실에 맡겨주세요) · `PARCEL_BOX`(택배함에 넣어주세요) · `DIRECT`(직접 입력) |
+| `deliveryRequest` | String |  | 50자 이내 | `DIRECT` 일 때만 보낸다. 화면에 '최대 50자까지 입력 가능' |
 
 **응답** (`data`)
 
@@ -1121,17 +1201,22 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 정산 계좌 목록. 인증 **필요**. 관련 화면 SCR-007.
 
-응답 `PayoutAccountResponse[]` — `{ id, bankCode, accountNumber, accountHolder, isDefault }`. 계좌번호는 마스킹해서 내려준다.
+응답 `PayoutAccountResponse[]` — `{ id, bankCode, bankName, accountNumber, accountHolder, isDefault }`.
+기본 계좌가 맨 위, 그다음 최근 등록 순이다.
+
+**계좌번호는 마스킹하지 않는다.** 수정 화면(`4684:54658`)이 기존 값으로 채워진 폼을 띄우는데 단건 조회 API가 없어
+이 목록 응답이 폼의 입력값이 된다. 마스킹하면 수정이 깨진다. 본인 계좌만 내려주므로 가릴 대상도 아니다.
 
 **응답** (`data` 배열)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `id` | Long | — |
-| `bankCode` | String | 은행 |
-| `accountNumber` | String | 마스킹해서 내려준다 |
+| `bankCode` | BankCode | 은행 enum 값. 예 `TOSS_BANK` |
+| `bankName` | String | 화면 표시명. 예 `토스뱅크` |
+| `accountNumber` | String | 원문 |
 | `accountHolder` | String | 예금주 |
-| `isDefault` | Boolean | — |
+| `isDefault` | Boolean | 기본 계좌면 true. 화면의 `기본` 배지 |
 
 ```json
 {
@@ -1141,9 +1226,10 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
   "data": [
     {
       "id": 1,
-      "bankCode": "<String>",
-      "accountNumber": "<String>",
-      "accountHolder": "<String>",
+      "bankCode": "TOSS_BANK",
+      "bankName": "토스뱅크",
+      "accountNumber": "123456-789012",
+      "accountHolder": "홍길동",
       "isDefault": true
     }
   ]
@@ -1156,16 +1242,19 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 정산 계좌 등록. 인증 **필요**. 관련 화면 SCR-007.
 
-요청 `{ bankCode, accountNumber, accountHolder, isDefault? }`. **판매 전환의 선행 조건**이라 판매를 시작하려면 최소 1건이 필요하다.
+요청 `{ bankCode, accountHolder, accountNumber }`. **판매 전환의 선행 조건**이라 판매를 시작하려면 최소 1건이 필요하다.
+
+**`isDefault` 를 받지 않는다.** 추가 화면(`4684:54402`)의 입력 필드는 은행·예금주·계좌 번호 3개뿐이고
+기본 설정 체크박스가 없다 — 배송지 추가와 다른 점이다. 첫 계좌만 자동으로 기본이 되고,
+이후 기본 변경은 목록 화면의 라디오 + `변경하기`(API-034)로 한다.
 
 **요청 본문**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `bankCode` | String | O | — | — |
-| `accountNumber` | String | O | — | — |
-| `accountHolder` | String | O | — | — |
-| `isDefault` | Boolean |  | — | — |
+| `bankCode` | BankCode | O | enum 20종 | 드롭다운 선택. 선택지는 API-035 |
+| `accountHolder` | String | O | 최대 50자 | 예금주 |
+| `accountNumber` | String | O | 최대 50자 | 계좌 번호 |
 
 **응답** (`data`)
 
@@ -1191,14 +1280,15 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 정산 계좌 수정. 인증 **필요**. 관련 화면 SCR-007.
 
 전체 수정(PUT). 과거 정산은 `settlement` 스냅샷을 쓰므로 영향이 없다.
+`isDefault` 는 이 API로 바꾸지 않는다 — 수정 화면에 기본 설정 UI가 없다.
 
 **요청 본문**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `bankCode` | String | O | — | — |
-| `accountNumber` | String | O | — | — |
-| `accountHolder` | String | O | — | — |
+| `bankCode` | BankCode | O | enum 20종 | — |
+| `accountHolder` | String | O | 최대 50자 | — |
+| `accountNumber` | String | O | 최대 50자 | — |
 
 **응답** (`data`)
 
@@ -1223,7 +1313,11 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 정산 계좌 삭제. 인증 **필요**. 관련 화면 SCR-007.
 
-하드 삭제. **정산 미완료 거래가 있으면 거부한다** — 입금할 계좌가 사라지기 때문이다.
+하드 삭제. 거부하는 경우가 둘이다.
+
+- **기본 계좌** — 화면에서 기본 계좌에만 삭제 버튼이 없다(`4684:54428`). 다른 계좌를 기본으로 지정한 뒤에 지운다.
+  승격 대상을 시스템이 고르면 어느 계좌가 기본이 됐는지 사용자가 알 수 없다 — 배송지와 같은 규칙이다
+- **정산 미완료 거래** — `settlement.settled_at IS NULL` 인 건이 있으면 거부한다. 입금할 계좌가 사라지기 때문이다
 
 **경로 파라미터**
 
@@ -1233,7 +1327,58 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 **응답** `data` 는 `null` 이다.
 
-에러 — PAYOUT_404, PAYOUT_403, PAYOUT_409_PENDING_SETTLEMENT
+에러 — PAYOUT_404, PAYOUT_403, PAYOUT_409_LAST_DEFAULT, PAYOUT_409_PENDING_SETTLEMENT
+
+#### API-034 · `PATCH /api/v1/payout-accounts/{accountId}/default`
+
+기본 정산 계좌 지정. 인증 **필요**. 관련 화면 SCR-007.
+
+목록 화면에서 라디오로 계좌를 고르고 하단 `변경하기` 를 누르면 호출한다 — 배송지(API-024)와 달리
+라디오 클릭 즉시가 아니라 CTA 로 확정한다. 요청 횟수는 1회로 같다.
+기존 기본을 내리고 이 계좌를 올린다. 이미 기본이면 아무것도 바뀌지 않는다.
+
+정산은 구매 확정 시점에 계좌 값을 `settlement` 로 스냅샷하므로(`DEC-013`), 기본 계좌를 바꿔도
+이미 확정된 정산의 입금처는 달라지지 않는다.
+
+**경로 파라미터**
+
+| 필드 | 타입 | 필수 | 제약 | 설명 |
+|---|---|:--:|---|---|
+| `accountId` | Long | O | — | — |
+
+**응답** `data` 는 `null` 이다.
+
+에러 — PAYOUT_404, PAYOUT_403
+
+#### API-035 · `GET /api/v1/payout-accounts/banks`
+
+은행 목록. 인증 **필요**. 관련 화면 SCR-007.
+
+정산 계좌 추가·수정 화면의 은행 드롭다운 선택지다. `BankCode` enum 20종을 코드와 표시명으로 내려준다.
+클라이언트가 한글 표시명을 하드코딩하면 서버가 은행을 추가했을 때 따라오지 못한다.
+
+**응답** (`data` 배열)
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `code` | BankCode | 저장·전송 값. 예 `TOSS_BANK` |
+| `name` | String | 화면 표시명. 예 `토스뱅크` |
+
+```json
+{
+  "success": true,
+  "code": "COMMON_200",
+  "message": "요청에 성공했습니다.",
+  "data": [
+    {
+      "code": "KOOKMIN",
+      "name": "KB국민은행"
+    }
+  ]
+}
+```
+
+에러 — COMMON_401
 
 ### 알림
 
@@ -1241,13 +1386,29 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 알림 수신 설정 조회. 인증 **필요**. 관련 화면 SCR-008.
 
-응답 `{ settings[{ category, enabled }] }` — `ACTION_REQUIRED` · `ITEM_NEWS` · `TRADE_STATUS` · `WISHLIST` 4종. 가입 시 전부 `true` 로 생성된다.
+응답 `{ settings[{ settingType, enabled }] }` — 화면(`3063:28457`)의 토글 **9종**이다.
+알림 목록 화면의 탭(`NotificationCategory`)과는 **축이 다르다** — 설정은 '무엇을 받을지',
+탭은 '무엇을 모아볼지'다. 그래서 enum 을 나눴다(`NotificationSettingType`).
+
+가입 시 9종을 모두 만들고, **기본값은 항목마다 다르다.**
+
+| 그룹 | settingType | 화면 문구 | 기본값 |
+|---|---|---|:--:|
+| 필수 | `TRADE_REQUEST` | 거래 요청 — 새로운 거래 요청이 오면 알려드려요. | ON |
+| 필수 | `REQUEST_STATUS` | 요청 상태 — 보낸 거래 요청의 진행 상태를 전해드려요. | ON |
+| 필수 | `REQUEST_AUTO_CANCEL` | 요청 자동 취소 — 대기 중인 요청이 자동으로 취소되면 알려드려요. | ON |
+| 필수 | `TRADE_STATUS` | 거래 상태 — 결제부터 정산까지 거래 진행 상황을 전해드려요. | ON |
+| 활동 알림 | `CHAT` | 채팅 알림 — 상대방에게 새 채팅이 오면 알림을 받아요. | ON |
+| 활동 알림 | `WISHLIST_ITEM` | 관심 아이템 — 관심 등록한 아이템의 가격 변동이나 거래 상태를 알려드려요. | ON |
+| 활동 알림 | `FOLLOW` | 팔로우 알림 — 누군가 나를 팔로우하면 알림을 받아요. | **OFF** |
+| 서비스 알림 | `SERVICE_NEWS` | 서비스 소식 — 공지사항과 서비스 운영 관련 소식을 받아요. | **OFF** |
+| 서비스 알림 | `MARKETING` | 혜택 및 마케팅 — 이벤트와 혜택 등 광고성 정보를 받아요. | **OFF** |
 
 **응답** (`data` 배열)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
-| `category` | NotificationCategory | ACTION_REQUIRED \| ITEM_NEWS \| TRADE_STATUS \| WISHLIST |
+| `settingType` | NotificationSettingType | 위 9종 |
 | `enabled` | Boolean | — |
 
 ```json
@@ -1257,7 +1418,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
   "message": "요청에 성공했습니다.",
   "data": [
     {
-      "category": "<NotificationCategory>",
+      "settingType": "TRADE_REQUEST",
       "enabled": true
     }
   ]
@@ -1270,13 +1431,13 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 알림 수신 설정 변경. 인증 **필요**. 관련 화면 SCR-008.
 
-요청 `{ settings[{ category, enabled }] }` — 부분 갱신. 활성화할 때마다 토스트를 띄운다.
+요청 `{ settings[{ settingType, enabled }] }` — 부분 갱신. 활성화할 때마다 토스트를 띄운다.
 
 **요청 본문**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `settings[].category` | NotificationCategory | O | 4종 중 하나 | — |
+| `settings[].settingType` | NotificationSettingType | O | 9종 중 하나 | API-040 의 표 참고 |
 | `settings[].enabled` | Boolean | O | — | — |
 
 **응답** `data` 는 `null` 이다.
@@ -1453,13 +1614,22 @@ API-050 과 동일한 스키마. 방향만 다르다.
 
 신고 (게시물·상품·사용자). 인증 **필요**. 관련 화면 SCR-013, SCR-019, SCR-026, SCR-043.
 
-요청 `{ targetType: POST|ITEM|USER, targetId, reason, detail? }`. 사유 10종은 `ReportReason` enum 이다. **접수까지만 담는다** — 운영자 처리 흐름은 이번 범위 밖이다.
+요청 `{ targetType: POST|ITEM, targetId, reason, detail? }`. **접수까지만 담는다** — 운영자 처리 흐름은 이번 범위 밖이다.
+
+**대상별로 고를 수 있는 사유가 다르다.** 드롭다운을 펼쳐 확인한 목록이다.
+
+| 대상 | 사유 |
+|---|---|
+| `POST` | `NOT_WORN_OOTD`(사람이 직접 착용한 OOTD가 아님) · `INAPPROPRIATE`(부적절하거나 유해한 이미지) · `STOLEN_PHOTO`(도용한 사진 또는 권리 침해) · `SPAM`(광고 또는 반복 게시물) · `PRIVACY_EXPOSURE`(개인정보 노출) · `IRRELEVANT`(서비스와 관련 없는 게시물) |
+| `ITEM` | `COUNTERFEIT`(가품 또는 정품 의심) · `INFO_MISMATCH`(상품 정보가 실제와 다름) · `STOLEN_PHOTO` · `FRAUD_EXTERNAL_TRADE`(사기 또는 외부 거래 유도) · `PROHIBITED_ITEM`(거래 금지 품목) · `INAPPROPRIATE`(부적절한 이미지 또는 내용) |
+
+`USER` 는 **뺐다.** 채팅방 더보기 모달(`2958:71180`)은 `차단하기`·`채팅방 나가기`·`닫기` 뿐이고 신고가 없다.
 
 **요청 본문**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `targetType` | ReportTargetType | O | POST \| ITEM \| USER | — |
+| `targetType` | ReportTargetType | O | POST \| ITEM | 대상에 맞는 `reason` 만 허용한다 |
 | `targetId` | Long | O | — | — |
 | `reason` | ReportReason | O | COUNTERFEIT \| INFO_MISMATCH \| STOLEN_PHOTO \| FRAUD_EXTERNAL_TRADE \| PROHIBITED_ITEM \| INAPPROPRIATE \| NOT_WORN_OOTD \| SPAM \| PRIVACY_EXPOSURE \| IRRELEVANT | — |
 | `detail` | String |  | 500자 이내 | — |
@@ -1525,7 +1695,12 @@ API-050 과 동일한 스키마. 방향만 다르다.
 
 홈 피드 (모두 / 팔로우 탭). 인증 **필요**. 관련 화면 SCR-014.
 
-쿼리 `tab=ALL|FOLLOWING` + 페이징. 정렬 `createdAt,desc` 고정. 차단한 사용자와 `deletedAt IS NOT NULL` 은 제외한다.
+쿼리 `tab=ALL|FOLLOWING` + 페이징. 정렬 `createdAt,desc` 고정.
+
+> `FOLLOWING` 탭은 상단에 **팔로잉 사용자 프로필 가로 목록**을 함께 그린다. 그 목록은 이 응답이 아니라
+> `API-051`(팔로잉 목록)로 채운다 — 피드와 갱신 주기도 페이징 단위도 다르기 때문이다.
+> 특정 사용자를 고르면 `API-082`(타인 게시물)로 넘어간다.
+ 차단한 사용자와 `deletedAt IS NOT NULL` 은 제외한다.
 응답은 `PostSummaryResponse` — `{ id, imageUrl, aspectRatio, author{id, nickname, profileImageUrl}, likeCount, saveCount, isLiked, isSaved }`.
 카드는 **대표 사진 1장**만 싣는다(나머지는 상세에서). `likeCount`·`saveCount` 는 카운터 컬럼을 그대로 읽는다 — 피드에서 게시물마다 집계하지 않으려고 둔 컬럼이다(§6-3 파생 컬럼 대장).
 
@@ -1589,7 +1764,7 @@ API-050 과 동일한 스키마. 방향만 다르다.
 
 OOTD 상세. 인증 **필요**. 관련 화면 SCR-015.
 
-응답 `PostResponse` — `content` · `images[].tags[{itemId, itemName, brandName, saleStatus, posX, posY}]` · `author{id, nickname, profileImageUrl, followerCount, postCount}` · `isFollowing` · `isLiked` · `isSaved`.
+응답 `PostResponse` — `images[].tags[{itemId, itemName, brandName, saleStatus, posX, posY}]` · `author{id, nickname, profileImageUrl, followerCount, postCount}` · `isFollowing` · `isLiked` · `isSaved`.
 
 태그 말풍선은 **2행**이다 — 피그마 `OOTD 상세 페이지`(`2791:27177`) 의 말풍선(`2791:27203`) 이 `Levis LVC 1955` 아래에 `#판매중` 을 붙이고 있다. 그래서 `saleStatus` 를 함께 내려준다. `ON_SALE` 일 때만 해시태그를 그리고 그 외에는 1행으로 접는다 — 같은 화면의 다른 말풍선(`Our Legacy / Third Cut`)에는 2행이 없다. 판매 등록이 없는 아이템은 `null` 이다.
 
@@ -1608,7 +1783,6 @@ OOTD 상세. 인증 **필요**. 관련 화면 SCR-015.
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `id` | Long | — |
-| `content` | String | — |
 | `wornDate` | LocalDate | — |
 | `aspectRatio` | AspectRatio | — |
 | `images[].id` | Long | `API-079` 의 입력 키 |
@@ -1638,7 +1812,6 @@ OOTD 상세. 인증 **필요**. 관련 화면 SCR-015.
   "message": "요청에 성공했습니다.",
   "data": {
     "id": 1,
-    "content": "<String>",
     "wornDate": "2026-06-21",
     "aspectRatio": "<AspectRatio>",
     "images": [
@@ -1680,14 +1853,13 @@ OOTD 상세. 인증 **필요**. 관련 화면 SCR-015.
 
 OOTD 게시. 인증 **필요**. 관련 화면 SCR-018.
 
-요청 `PostCreateRequest` — `content?` `wornDate` `aspectRatio` `quickPosted` `images[{imageKey, sortOrder, isCover, tags[{itemId, posX, posY}]}]`. 태그 대상은 **본인이 보유한 아이템**만 허용한다. 게시와 동시에 `item_wear_record` 를 적립하고, 직전 30일 유효 OOTD 가 20개가 되면 그 자리에서 `RECORD` 로 승격한다(`user` 제약 — 레코드 승격).
+요청 `PostCreateRequest` — `wornDate` `aspectRatio` `quickPosted` `images[{imageKey, sortOrder, isCover, tags[{itemId, posX, posY}]}]`. 태그 대상은 **본인이 보유한 아이템**만 허용한다. 게시와 동시에 `item_wear_record` 를 적립하고, 직전 30일 유효 OOTD 가 20개가 되면 그 자리에서 `RECORD` 로 승격한다(`user` 제약 — 레코드 승격).
 같은 트랜잭션에서 `user.post_count` 를 +1 한다(§6-3 파생 컬럼 대장).
 
 **요청 본문**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `content` | String |  | — | 본문 |
 | `wornDate` | LocalDate | O | — | 착용일 — 달력에서 선택 |
 | `aspectRatio` | AspectRatio | O | RATIO_3_4 \| RATIO_4_5 \| RATIO_1_1 | — |
 | `quickPosted` | Boolean |  | 기본 false | 바로 게시 여부 |
@@ -1723,13 +1895,12 @@ OOTD 게시. 인증 **필요**. 관련 화면 SCR-018.
 
 게시물 수정 (본문·태그). 인증 **필요**. 관련 화면 SCR-019.
 
-요청 `PostUpdateRequest` — `content?` `tags?`. 태그를 A→B 로 바꾸면 A 의 `item_wear_record` 를 `voided_at` + `TAG_CHANGED` 로 무효화하고 B 에 새 행을 적립한다. 태그를 지우면 `TAG_DELETED` 다. 이미 판매돼 **종료된 소유 구간**의 태그는 수정할 수 없다.
+요청 `PostUpdateRequest` — `tags`. 태그를 A→B 로 바꾸면 A 의 `item_wear_record` 를 `voided_at` + `TAG_CHANGED` 로 무효화하고 B 에 새 행을 적립한다. 태그를 지우면 `TAG_DELETED` 다. 이미 판매돼 **종료된 소유 구간**의 태그는 수정할 수 없다.
 
 **요청 본문**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `content` | String |  | — | — |
 | `tags[].postItemTagId` | Long |  | — | — |
 | `tags[].itemId` | Long |  | 본인 보유 아이템만 | — |
 
@@ -1901,7 +2072,7 @@ soft delete (`deleted_at`). 판매 중인 상품의 대표 OOTD 로 걸려 있�
 `사진 속에서 태그된 것만 모아봅니다` 이므로 경로 키는 `post_image_id` 다. `imageId` 는 `API-071` 의
 `images[].id` 로 받는다.
 
-응답 `{ items[{ itemId, listingId?, brandName, name, coverImageUrl, status: ON_SALE|NOT_FOR_SALE|SOLD|DELETED, price?, offerAllowed }] }`.
+응답 `{ items[{ itemId, listingId?, brandName, name, coverImageUrl, status: ON_SALE|NOT_FOR_SALE|SOLD|DELETED, price?, offerAllowed, isWished }] }`.
 삭제된 아이템은 `DELETED` 로 내려가고 화면에서 회색 처리된다. `listingId` 가 `null` 이면 판매 등록이
 한 번도 없었던 아이템이라 **CTA 버튼을 띄우지 않는다**(`구매제안 불가능 제품에 관하여는 CTA 버튼이 없다`).
 
@@ -1922,6 +2093,7 @@ soft delete (`deleted_at`). 판매 중인 상품의 대표 OOTD 로 걸려 있�
 | `coverImageUrl` | String | — |
 | `status` | String | ON_SALE \| NOT_FOR_SALE \| SOLD \| DELETED |
 | `price` | String | 금액은 문자열 |
+| `isWished` | Boolean | 행 우측 위시 아이콘 상태 |
 | `offerAllowed` | Boolean | — |
 
 ```json
@@ -2046,7 +2218,8 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 
 타인 게시물 목록. 인증 **필요**. 관련 화면 SCR-012.
 
-페이징. 차단 관계면 빈 목록을 돌려준다.
+페이징. 차단 관계면 빈 목록을 돌려준다. 정렬은 `wornDate,desc` 다 — 타인 프로필도 본인 마이페이지처럼
+`6월`·`5월` **월 헤더**로 묶이므로 클라이언트가 `wornDate` 로 그룹을 만든다(`API-081` 과 동일).
 
 **경로 파라미터**
 
@@ -2163,10 +2336,14 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 
 페이징. 응답에 `listing { id, saleStatus, price, offerAllowed, wishCount }` 를 중첩한다.
 
+화면(`4765:53893`)에는 **검색창**이 있고 행마다 `미판매 · 최근 착용 1일 전` 처럼 **최근 착용일**이 붙는다.
+미판매 행에만 우측에 `판매 전환` 버튼이 뜬다 — `listing` 이 `null` 이거나 `saleStatus=NOT_FOR_SALE` 일 때다.
+
 **쿼리 파라미터**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
+| `keyword` | String |  | 2자 이상 | 브랜드명·아이템명 부분 일치. 소유자 기준이라 `ix_item_registrant` 가 받는다(`IDX-003`) |
 | `page` | Integer |  | — | — |
 | `size` | Integer |  | — | — |
 
@@ -2180,6 +2357,7 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `coverImageUrl` | String | — |
 | `listing.id` | Long | — |
 | `listing.saleStatus` | SaleStatus | NOT_FOR_SALE \| ON_SALE \| SOLD |
+| `lastWornDate` | LocalDate | `최근 착용 N일 전` 계산 기준. `item_wear_record` 의 최신 `worn_date`(`voided_at IS NULL`) |
 | `listing.price` | String | — |
 | `listing.offerAllowed` | Boolean | — |
 | `listing.wishCount` | Integer | — |
@@ -2567,6 +2745,47 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 
 에러 — COMMON_401
 
+#### API-099 · `GET /api/v1/items/{itemId}/recommendations`
+
+아이템 기준 추천. 인증 **필요**. 관련 화면 SCR-016.
+
+태그된 아이템 목록(`API-079`) 아래에 붙는 추천 블록이다. 화면에는 네 종류가 있다.
+
+```
+비슷한 무드 모아보기            지금 본 옷차림과 어울리는 스타일을 추천해요.
+Levis / LVC 1955 501과 비슷한 스타일   비슷한 디테일의 스타일을 모아봤어요.
+Guidi / 788z Boots와 비슷한 스타일
+함께 참고하기 좋은 코디          지금 스타일과 어울리기 좋은 코디예요.
+```
+
+**유사도 모델을 쓰지 않는다.** AI 아이템 인식을 범위 밖으로 둔 것과 같은 기준이며,
+블록마다 아래 규칙으로 최근 게시물을 모아 내려준다.
+
+| block | 뜻 | 선정 규칙 |
+|---|---|---|
+| `SIMILAR_MOOD` | 비슷한 무드 모아보기 | 같은 사진에 태그된 아이템들과 **대분류가 겹치는** 아이템이 태그된 최근 게시물 |
+| `SIMILAR_ITEM` | `{브랜드} / {아이템명}과 비슷한 스타일` | 같은 **세부 카테고리**(`category_id`)의 다른 아이템이 태그된 최근 게시물. 아이템마다 한 블록 |
+| `GOOD_COORDI` | 함께 참고하기 좋은 코디 | 이 아이템이 태그된 게시물에 **함께 태그된** 아이템들이 등장하는 최근 게시물 |
+
+차단 사용자와 `deleted_at IS NOT NULL` 은 제외한다. 블록별 최대 10건이다.
+
+**경로 파라미터**
+
+| 필드 | 타입 | 필수 | 제약 | 설명 |
+|---|---|:--:|---|---|
+| `itemId` | Long | O | — | 기준 아이템 |
+
+**응답** (`data` 배열)
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `block` | String | SIMILAR_MOOD \| SIMILAR_ITEM \| GOOD_COORDI |
+| `title` | String | 화면에 그대로 쓰는 제목 |
+| `description` | String | 부제 |
+| `posts[]` | PostSummaryResponse | `API-070` 과 같은 카드 형식 |
+
+에러 — ITEM_404
+
 ### 판매·위시리스트
 
 #### API-110 · `GET /api/v1/listings/{listingId}`
@@ -2858,12 +3077,15 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 위시리스트. 인증 **필요**. 관련 화면 SCR-030.
 
 페이징. 항목마다 `saleStatus` 배지와 `alarmEnabled` 를 함께 내려준다.
+화면 상단에 **탭 3종**이 있다 — `전체` · `판매중` · `거래중`.
+`거래중` 은 그 아이템에 진행 중인 거래(`trade_order.status` 가 `COMPLETED`·`CANCELED` 가 아닌 것)가 있는 경우다.
 `listingId` 는 **nullable** 이다 — 위시는 아이템 기준이라 판매 등록이 없는 아이템도 담긴다. 값이 있으면 항목 탭 시 상품 상세(`API-110`)로 이동하고, `null` 이면 이동할 상세가 없다.
 
 **쿼리 파라미터**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
+| `tab` | String |  | ALL \| ON_SALE \| IN_TRADE | 기본 ALL |
 | `page` | Integer |  | — | — |
 | `size` | Integer |  | — | — |
 
@@ -3225,6 +3447,49 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 
 ### 거래
 
+#### API-146 · `GET /api/v1/items/{itemId}/offers`
+
+아이템별 받은 제안·요청 목록 (판매자). 인증 **필요**. 관련 화면 SCR-039.
+
+판매 내역 카드의 `확인하기` 를 누르면 열리는 화면이다. 피그마 주석이 근거다 —
+`'제안 받음' CTA 클릭 시 받은 제안에 대하여 정리되어 나타나도록 만들었습니다`.
+
+화면은 상품 상태에 따라 제목만 다르고 구조는 같다.
+
+| 화면 | 대상 | 헤더 | 행 문구 |
+|---|---|---|---|
+| `받은 요청` | 판매 중 상품 | `상품 정보` + `판매 상품 · 320,000원` + `거래 의사 총 4건` | `거래 의사를 보냈어요.` |
+| `받은 제안` | 미판매 아이템 | `아이템 정보` + `미판매 아이템` + `구매 제안 총 3건` | `360,000원 구매 제안` |
+
+**경로 키가 `listingId` 가 아니라 `itemId` 인 이유** — 미판매 아이템은 판매 등록이 없어서
+`listingId` 로는 `받은 제안` 화면을 열 수 없다. 두 화면을 한 경로로 덮으려면 아이템 기준이어야 한다.
+
+행마다 남은 시간(`23시간 18분 남음`)을 내려준다. 만료된 제안은 목록에서 빠진다.
+
+**경로 파라미터**
+
+| 필드 | 타입 | 필수 | 제약 | 설명 |
+|---|---|:--:|---|---|
+| `itemId` | Long | O | 본인 아이템 | 남의 아이템이면 `ITEM_403` |
+
+**응답** (`data`)
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `item.brandName` | String | 헤더 |
+| `item.name` | String | 헤더 |
+| `item.coverImageUrl` | String | 헤더 |
+| `item.saleStatus` | SaleStatus | `판매 상품` / `미판매 아이템` 표기 분기 |
+| `item.price` | String | 판매 중일 때만 |
+| `offerType` | OfferType | PURCHASE_OFFER \| TRADE_INTENT — 헤더 문구를 가른다 |
+| `totalCount` | Integer | `구매 제안 총 3건` |
+| `offers[].offerId` | Long | 탭 시 `API-142` 로 이동 |
+| `offers[].buyer` | UserSummary | 프로필 사진 · 닉네임 |
+| `offers[].offerPrice` | String | `TRADE_INTENT` 면 판매가와 같다 |
+| `offers[].expiresAt` | LocalDateTime | `23시간 18분 남음` 계산 기준 |
+
+에러 — ITEM_404, ITEM_403
+
 #### API-160 · `GET /api/v1/orders/{orderId}`
 
 거래 상세 (타임라인·배송·결제·정산). 인증 **필요**. 관련 화면 SCR-037.
@@ -3256,7 +3521,8 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 | `shipment.phone` | String | — |
 | `shipment.address` | String | — |
 | `shipment.addressDetail` | String | — |
-| `shipment.deliveryRequest` | String | 요청사항 |
+| `shipment.deliveryRequestType` | DeliveryRequestType | 요청사항 유형 스냅샷 |
+| `shipment.deliveryRequest` | String | `DIRECT` 일 때의 입력값 스냅샷 |
 | `itemPrice` | String | 상품 금액 |
 | `shippingFee` | String | 배송비 |
 | `feeAmount` | String | 수수료 |
@@ -3297,7 +3563,8 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
       "phone": "<String>",
       "address": "<String>",
       "addressDetail": "<String>",
-      "deliveryRequest": "<String>"
+      "deliveryRequestType": "AT_DOOR",
+      "deliveryRequest": null
     },
     "itemPrice": "360000",
     "shippingFee": "360000",
@@ -3324,9 +3591,11 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 
 #### API-161 · `GET /api/v1/orders/sales`
 
-판매 내역 (전체/제안받음/거래중/거래완료). 인증 **필요**. 관련 화면 SCR-039.
+판매 내역 (전체/대기중/거래중/거래완료). 인증 **필요**. 관련 화면 SCR-039.
 
-쿼리 `tab=ALL|OFFERED|IN_PROGRESS|DONE` + 페이징. 정렬 `createdAt,desc`.
+쿼리 `tab=ALL|PENDING|IN_PROGRESS|DONE` + 페이징. 정렬 `createdAt,desc`.
+화면 탭은 `전체`·`대기중`·`거래중`·`거래완료` 이고 **2열 카드 그리드**다. 카드마다 상태 배지와 버튼이 붙는다 —
+대기중은 `확인하기`(→ `API-146`), 거래중은 `거래 상세`, 거래완료는 `거래 내역` 이다.
 
 **화면의 탭 4개를 이 엔드포인트 하나가 전부 담당한다.** 판매 내역에는 아직 거래가 아닌 `제안받음`과
 이미 거래가 된 `거래중`·`거래완료`가 **한 화면에 섞여** 있고 `전체` 탭은 둘을 시간순으로 함께 보여준다.
@@ -3336,7 +3605,7 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 | tab | 담는 것 |
 |---|---|
 | `ALL` | `OFFER`(PENDING) + `ORDER` 전부 — `createdAt` 내림차순으로 섞는다 |
-| `OFFERED` | `OFFER` 중 `PENDING` 만 |
+| `PENDING` | `OFFER` 중 `PENDING` 만. **아이템 단위로 묶어** 한 행으로 내리고 `pendingOfferCount` 에 건수를 담는다 |
 | `IN_PROGRESS` | `ORDER` 중 `PAYMENT_COMPLETED` ~ `SETTLED` |
 | `DONE` | `ORDER` 중 `COMPLETED` · `CANCELED` |
 
@@ -3347,7 +3616,7 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `tab` | String |  | ALL \| OFFERED \| IN_PROGRESS \| DONE | 기본 ALL |
+| `tab` | String |  | ALL \| PENDING \| IN_PROGRESS \| DONE | 기본 ALL |
 | `page` | Integer |  | — | — |
 | `size` | Integer |  | — | — |
 
@@ -3437,19 +3706,21 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 
 #### API-162 · `GET /api/v1/orders/purchases`
 
-구매 내역 (전체/제안중/거래중/거래완료). 인증 **필요**. 관련 화면 SCR-040.
+구매 내역 (전체/대기중/거래중/거래완료). 인증 **필요**. 관련 화면 SCR-040.
 
-쿼리 `tab=ALL|OFFERING|IN_PROGRESS|DONE` + 페이징. 정렬 `createdAt,desc`.
+쿼리 `tab=ALL|PENDING|IN_PROGRESS|DONE` + 페이징. 정렬 `createdAt,desc`.
+화면(`2825:44982`)은 판매 내역과 같은 **2열 카드 그리드**다. 대기중 카드의 버튼은 `취소하기`(→ `API-143`),
+거래중은 `거래 상세`, 거래완료는 `거래 내역` 이다.
 
 `API-161` 과 대칭이다 — 같은 유니온 행이고 방향(`buyer_id` 기준)과 금액 필드만 다르다.
-`OFFERING` 탭은 내가 보낸 `PENDING` 제안이고, 금액은 `payoutAmount` 대신 `totalPaymentAmount` 다.
+`PENDING` 탭은 내가 보낸 `PENDING` 제안이고, 금액은 `payoutAmount` 대신 `totalPaymentAmount` 다.
 `offerStatus` 는 여기서 **PENDING 외 값도 실린다** — 구매자는 자기 제안이 거절·만료됐다는 사실을
 `ALL` 탭에서 확인해야 하기 때문이다(`제안 기회는 복구되지 않아요`).
 
 | tab | 담는 것 |
 |---|---|
 | `ALL` | `OFFER` 전부(상태 무관) + `ORDER` 전부 — `createdAt` 내림차순 |
-| `OFFERING` | `OFFER` 중 `PENDING` 만 |
+| `PENDING` | `OFFER` 중 `PENDING` 만. 구매자는 아이템당 1회라 집계 없이 1건 = 1행이다 |
 | `IN_PROGRESS` | `ORDER` 중 `PAYMENT_COMPLETED` ~ `SETTLED` |
 | `DONE` | `ORDER` 중 `COMPLETED` · `CANCELED` |
 
@@ -3457,7 +3728,7 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `tab` | String |  | ALL \| OFFERING \| IN_PROGRESS \| DONE | 기본 ALL |
+| `tab` | String |  | ALL \| PENDING \| IN_PROGRESS \| DONE | 기본 ALL |
 | `page` | Integer |  | — | — |
 | `size` | Integer |  | — | — |
 
@@ -3660,7 +3931,9 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 
 채팅방 목록 (전체/구매/판매/읽지않음). 인증 **필요**. 관련 화면 SCR-041.
 
-쿼리 `tab=ALL|BUYING|SELLING|UNREAD` + 페이징. 정렬 `lastMessageAt,desc`. 항목마다 `unreadCount` 와 아이템 요약(`최근 착용 N일 전` 포함)을 내려준다.
+쿼리 `tab=ALL|BUYING|SELLING|UNREAD` + `keyword?` + 페이징. 정렬 `lastMessageAt,desc`.
+항목마다 `unreadCount` 와 아이템 요약(`최근 착용 N일 전` 포함)을 내려준다.
+헤더에 **검색 아이콘**이 있다(`2958:68949`) — 상대 닉네임·아이템명으로 방을 찾는다.
 
 **쿼리 파라미터**
 
@@ -3850,14 +4123,20 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 
 메시지 전송 (텍스트 / 이미지). 인증 **필요**. 관련 화면 SCR-042.
 
-요청 `{ messageType: TEXT|IMAGE, content }`. `IMAGE` 면 `content` 에 API-060 이 돌려준 저장소 키를 넣는다. 전송과 같은 트랜잭션에서 `chat_room.last_message_at` 을 갱신한다.
+요청 `{ messageType: TEXT|IMAGE, content?, imageKeys[]? }`. 전송과 같은 트랜잭션에서
+`chat_room.last_message_at` 을 갱신한다.
+
+**이미지는 한 메시지에 여러 장이 들어간다.** 화면(`2958:71180`)에서 사진 3장이 **한 말풍선**으로 묶여
+있고 시각·읽음 표시도 하나다. 그래서 `chat_message_image` 에 장수만큼 행을 쌓고 `content` 는 비운다.
+메시지를 장수만큼 쪼개면 전송 중 일부만 실패했을 때 묶음이 깨진다.
 
 **요청 본문**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
 | `messageType` | ChatMessageType | O | TEXT \| IMAGE | — |
-| `content` | String | O | IMAGE 면 API-060 의 키 | — |
+| `content` | String | △ | TEXT 면 필수 | 본문. IMAGE 면 보내지 않는다 |
+| `imageKeys` | String[] | △ | IMAGE 면 1장 이상 | `API-060` 이 돌려준 저장소 키. 배열 순서가 말풍선 안의 노출 순서다 |
 
 **응답** (`data`)
 
@@ -3918,7 +4197,12 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 
 알림 목록 (탭 5종). 인증 **필요**. 관련 화면 SCR-044.
 
-쿼리 `category=ALL|ACTION_REQUIRED|ITEM_NEWS|TRADE_STATUS|WISHLIST` + 페이징. 정렬 `createdAt,desc`. 대상이 삭제된 알림은 딥링크 진입 시 `삭제된 게시물입니다` 를 표시한다.
+쿼리 `category=ALL|ACTION_REQUIRED|ITEM_NEWS|TRADE_STATUS|WISHLIST` + 페이징. 정렬 `createdAt,desc`.
+대상이 삭제된 알림은 딥링크 진입 시 `삭제된 게시물입니다` 를 표시한다.
+
+화면(`2958:68634`)은 `어제`·`10월 24일` 같은 **날짜 헤더로 묶어** 보여준다 — 클라이언트가 `createdAt` 으로 그룹을 만든다.
+행마다 **아이템 썸네일**이 붙는데 다형 참조라 대상 테이블과 조인할 수 없다. 발행 시점에 `image_key` 를 스냅샷해
+`imageUrl` 로 내려준다. 제목은 아이템명(`Levis / LVC 1955 501`), 본문이 사건(`가격이 128,000원으로 변경됐어요.`)이다.
 
 **쿼리 파라미터**
 
@@ -3934,8 +4218,9 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 |---|---|---|
 | `id` | Long | — |
 | `category` | NotificationCategory | — |
-| `title` | String | 'GilDong 님이 구매 제안을 보냈습니다!' |
-| `body` | String | — |
+| `imageUrl` | String | 행 썸네일. 없으면 null |
+| `title` | String | 아이템명 — `Levis / LVC 1955 501` |
+| `body` | String | 사건 — `가격이 128,000원으로 변경됐어요.` |
 | `targetType` | NotificationTargetType | POST \| ITEM \| ORDER \| OFFER \| CHAT_ROOM |
 | `targetId` | Long | — |
 | `targetDeleted` | Boolean | true 면 '삭제된 게시물입니다' |
@@ -4017,13 +4302,55 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 
 에러 — COMMON_401
 
+#### API-193 · `GET /api/v1/notifications/unread-count`
+
+안읽은 알림 수. 인증 **필요**. 관련 화면 SCR-014, SCR-020, SCR-044.
+
+홈과 마이페이지 헤더의 **벨 아이콘 배지**가 이 값이다. 목록(`API-190`)을 통째로 받아 세면
+홈에 들어올 때마다 페이지를 읽게 되므로 전용 엔드포인트를 둔다.
+`ix_notification_unread(user_id, read_at)` 가 이 조회를 받는다.
+
+화면은 숫자를 쓰지 않고 **빨간 점**만 찍지만, 개수를 내려주면 알림 화면에서 그대로 재사용할 수 있다.
+
+**응답** (`data`)
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `unreadCount` | Integer | `read_at IS NULL` 인 알림 수 |
+
+```json
+{
+  "success": true,
+  "code": "COMMON_200",
+  "message": "요청에 성공했습니다.",
+  "data": {
+    "unreadCount": 3
+  }
+}
+```
+
+에러 — COMMON_401
+
 ### 검색
 
 #### API-200 · `GET /api/v1/search/posts`
 
 게시물 검색 (필터 적용). 인증 **필요**. 관련 화면 SCR-046, SCR-047.
 
-쿼리 `keyword?` `saleStatus=ALL|INCLUDE_ON_SALE|ONLY_ON_SALE` `authorGender=ALL|MALE|FEMALE` `categoryIds[]` `heightMin` `heightMax` `weightMin` `weightMax` + 페이징. 판매 상태는 **3모드**이고 키·몸무게는 범위 슬라이더(0~200cm / 0~150kg)다. 검색 시 `search_history` 에 기록한다.
+쿼리 `keyword?` `saleStatus=ALL|INCLUDE_ON_SALE|ONLY_ON_SALE` `authorGender=ALL|MALE|FEMALE` `categoryIds[]` `heightMin` `heightMax` `weightMin` `weightMax` `sort` + 페이징. 판매 상태는 **3모드**이고 키·몸무게는 범위 슬라이더(0~200cm / 0~150kg)다. 검색 시 `search_history` 에 기록한다.
+
+**정렬은 5종이다**(`2825:39649` 의 드롭다운). 기본은 `추천 순` 이다.
+
+| sort | 화면 | 기준 |
+|---|---|---|
+| `RECOMMENDED` | 추천 순 | 기본값. 키워드 관련도 + 최신순 보정 |
+| `LATEST` | 최신 순 | `created_at desc` |
+| `LIKE` | 좋아요 순 | `like_count desc` |
+| `VIEW` | 조회수 순 | `view_count desc`. Redis 카운터를 주기 반영한 값이다(`DEC-019`) |
+| `SAVE` | 저장 순 | `save_count desc` |
+
+화면 상단에는 적용된 필터가 **칩으로 나열되고 X 로 개별 해제**된다. 그때마다 이 엔드포인트를 다시 호출한다.
+결과 수(`총 게시물 80개`)는 `PageResponse.totalElements` 다.
 
 **쿼리 파라미터**
 
@@ -4185,6 +4512,52 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 ```
 
 에러 — COMMON_401
+
+#### API-206 · `GET /api/v1/search/suggested-keywords`
+
+추천 검색어. 인증 **필요**. 관련 화면 SCR-045.
+
+검색창을 누르면 최근 검색·최근 본 사용자 위에 뜨는 칩이다 —
+`데님 팬츠` · `나이키 신발` · `Levis 501` · `가죽 자켓`(`2820:34830`).
+
+**`search_history` 를 집계한 인기 검색어다**(`DEC-020`). 운영이 관리하는 고정 목록을 두지 않았다 —
+관리자 기능이 범위 밖이라 값을 넣을 화면이 없고 DB 직접 입력이 되기 때문이다.
+최근 N일 `keyword` 별 건수 상위를 뽑아 Redis 에 캐시하고 TTL 을 건다. 매 요청 집계하면
+`search_history` 전체를 스캔한다.
+
+초기에는 검색 기록이 없어 **빈 배열**이 내려간다. 클라이언트는 칩 영역을 그리지 않는다.
+
+**응답** (`data` 배열)
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `keyword` | String | 칩에 그대로 쓴다. 탭하면 `API-200` 을 호출한다 |
+
+에러 — COMMON_401
+
+#### API-207 · `GET /api/v1/search/recommendations/{section}`
+
+추천 섹션 더보기. 인증 **필요**. 관련 화면 SCR-045.
+
+`API-202` 가 내려준 섹션의 **오른쪽 화살표**를 누르면 열리는 전체 목록이다.
+`API-202` 는 섹션마다 앞부분만 싣고, 이 엔드포인트가 그 섹션 하나를 페이징으로 준다.
+
+| section | 화면 제목 | 내용 |
+|---|---|---|
+| `SIMILAR_TO_RECENT` | 방금 보신 OOTD와 유사한 게시물 | Redis `recent-view` 의 최근 게시물과 태그 카테고리가 겹치는 것(`DEC-014`) |
+| `POPULAR_STYLE` | 지금 인기 있는 스타일 | 최근 기간 `like_count` 상위 |
+| `NEW_OOTD` | 새로 올라온 OOTD | `created_at desc` |
+| `POPULAR_USER` | 인기 사용자 | `follower_count` 상위. 응답이 `posts[]` 가 아니라 `users[]` 다 |
+
+**경로 파라미터**
+
+| 필드 | 타입 | 필수 | 제약 | 설명 |
+|---|---|:--:|---|---|
+| `section` | String | O | 위 4종 | — |
+
+**응답** (`data` — PageResponse) — `POPULAR_USER` 는 `UserSummaryResponse`, 나머지는 `PostSummaryResponse` 다.
+
+에러 — COMMON_400
 
 #### API-203 · `GET /api/v1/search/histories`
 

@@ -1,7 +1,8 @@
-# Tenure DB 스키마 정본 (machine-readable) — v3
+# Tenure DB 스키마 정본 (machine-readable) — v5
+# v5: 47개 화면을 전수 재판독해 30건을 바로잡았다. 경위는 docs/design-audit.md
 # 생성: figma-to-erd 규격. docs/erd.md 의 관계 요약표·화면 인벤토리·컬럼 명세 표는 이 파일에서 생성된다.
 
-version: 3
+version: 5
 generated_from:
   figma_url: https://www.figma.com/design/hnEDDkiI0V4js9JzWR2l2M/Tenure-UXUI-%EC%9E%91%EC%97%85?node-id=813-8486&m=dev
   file_key: hnEDDkiI0V4js9JzWR2l2M
@@ -785,6 +786,78 @@ screens:
   - 몸무게 범위 0~150kg
   sort: —
 enums:
+- name: UserProvider
+  domain: user
+  values:
+  - LOCAL
+  - GOOGLE
+  - NAVER
+  labels:
+    LOCAL: 이메일 가입
+    GOOGLE: 구글
+    NAVER: 네이버
+  source: design
+  evidence: 로그인 화면(2791:15250)의 '다음' 구분선 아래 구글·네이버 아이콘 2종. 이메일·비밀번호 가입이 LOCAL 이다
+  value_evidence_table: user
+- name: WithdrawalReason
+  domain: user
+  values:
+  - LOW_USAGE
+  - HARD_TO_FIND_ITEM
+  - USING_OTHER_SERVICE
+  - UNSATISFIED_TRADE
+  labels:
+    LOW_USAGE: 사용 빈도가 낮아요.
+    HARD_TO_FIND_ITEM: 원하는 아이템을 찾기 어려워요.
+    USING_OTHER_SERVICE: 다른 서비스를 이용할 예정이에요.
+    UNSATISFIED_TRADE: 거래 경험이 만족스럽지 않았어요.
+  source: design
+  evidence: 회원탈퇴 화면(3063:29262)의 드롭다운 4종. '기타(직접 입력)'은 화면에 없다
+  value_evidence_table: user_withdrawal
+- name: DeliveryRequestType
+  domain: address
+  values:
+  - AT_DOOR
+  - SECURITY_OFFICE
+  - PARCEL_BOX
+  - DIRECT
+  labels:
+    AT_DOOR: 문 앞에 놓아주세요.
+    SECURITY_OFFICE: 경비실에 맡겨주세요.
+    PARCEL_BOX: 택배함에 넣어주세요.
+    DIRECT: 직접 입력
+  source: design
+  evidence: 배송지 추가 화면(4245:46588)의 '배송 요청사항(선택)' 드롭다운. DIRECT 를 고르면 최대 50자 텍스트 필드가 열린다
+  value_evidence_table: shipping_address
+- name: NotificationSettingType
+  domain: notification
+  values:
+  - TRADE_REQUEST
+  - REQUEST_STATUS
+  - REQUEST_AUTO_CANCEL
+  - TRADE_STATUS
+  - CHAT
+  - WISHLIST_ITEM
+  - FOLLOW
+  - SERVICE_NEWS
+  - MARKETING
+  labels:
+    TRADE_REQUEST: 거래 요청 — 새로운 거래 요청이 오면 알려드려요. (기본 ON)
+    REQUEST_STATUS: 요청 상태 — 보낸 거래 요청의 진행 상태를 전해드려요. (기본 ON)
+    REQUEST_AUTO_CANCEL: 요청 자동 취소 — 대기 중인 요청이 자동으로 취소되면 알려드려요. (기본 ON)
+    TRADE_STATUS: 거래 상태 — 결제부터 정산까지 거래 진행 상황을 전해드려요. (기본 ON)
+    CHAT: 채팅 알림 — 상대방에게 새 채팅이 오면 알림을 받아요. (기본 ON)
+    WISHLIST_ITEM: 관심 아이템 — 관심 등록한 아이템의 가격 변동이나 거래 상태를 알려드려요. (기본 ON)
+    FOLLOW: 팔로우 알림 — 누군가 나를 팔로우하면 알림을 받아요. (기본 OFF)
+    SERVICE_NEWS: 서비스 소식 — 공지사항과 서비스 운영 관련 소식을 받아요. (기본 OFF)
+    MARKETING: 혜택 및 마케팅 — 이벤트와 혜택 등 광고성 정보를 받아요. (기본 OFF)
+  groups:
+    필수: [TRADE_REQUEST, REQUEST_STATUS, REQUEST_AUTO_CANCEL, TRADE_STATUS]
+    활동 알림: [CHAT, WISHLIST_ITEM, FOLLOW]
+    서비스 알림: [SERVICE_NEWS, MARKETING]
+  source: design
+  evidence: 알림 설정 화면(3063:28457)의 토글 9종과 3개 그룹 헤더. 알림 목록 화면의 탭(NotificationCategory)과 축이 다르다 — 설정은 '무엇을 받을지', 탭은 '무엇을 모아볼지'다
+  value_evidence_table: notification_setting
 - name: Gender
   values:
   - MALE
@@ -825,9 +898,8 @@ enums:
   values:
   - POST
   - ITEM
-  - USER
   source: design
-  evidence: '신고 진입점 3곳: OOTD 게시물 더보기, 상품 상세페이지, 채팅(상대 사용자)'
+  evidence: '신고 진입점 2곳 — OOTD 게시물 더보기, 상품 상세페이지. v3 는 채팅에서 상대 사용자를 신고한다고 보고 USER 를 넣었으나, 채팅방 더보기 모달(2958:71180)은 [차단하기]·[채팅방 나가기]·[닫기] 뿐이고 신고가 없다. 사용자 신고 화면이 생기면 값을 도로 넣는다'
 - name: ReportReason
   values:
   - COUNTERFEIT
@@ -909,7 +981,7 @@ enums:
   - BUYER
   - SPLIT
   source: design
-  evidence: 판매 전환 화면 '수수료 부담' 선택. 레코드 사용자만 3종 중 고를 수 있고 기본 사용자는 SELLER 고정. SPLIT 은 확정 사양에서 추가된 값이라 피그마 화면에는 없다
+  evidence: 판매 전환 화면(3342:32943)의 '수수료 부담' 칩 3종 — '판매자 부담'·'구매자 부담'·'반반 부담'. 레코드 사용자만 고를 수 있고 기본 사용자는 SELLER 고정이다. v3 는 SPLIT 이 화면에 없다고 적었으나 실제로는 '반반 부담'으로 존재한다
   value_evidence_table: item_listing
   labels:
     SELLER: 판매자 부담
@@ -985,6 +1057,53 @@ enums:
     CAPTURED: captured_at
     RELEASED: released_at
     REFUNDED: refunded_at
+- name: BankCode
+  domain: payout
+  values:
+  - KOOKMIN
+  - SHINHAN
+  - HANA
+  - WOORI
+  - SC_FIRST
+  - NONGHYUP
+  - SUHYUP
+  - IBK
+  - KDB
+  - POST_OFFICE
+  - KAKAO_BANK
+  - TOSS_BANK
+  - K_BANK
+  - SAEMAUL
+  - SHINHYUP
+  - BUSAN
+  - IM
+  - KYONGNAM
+  - GWANGJU
+  - JEONBUK
+  labels:
+    KOOKMIN: KB국민은행
+    SHINHAN: 신한은행
+    HANA: 하나은행
+    WOORI: 우리은행
+    SC_FIRST: SC제일은행
+    NONGHYUP: NH농협은행
+    SUHYUP: Suhyup수협
+    IBK: IBK기업은행
+    KDB: KDB산업은행
+    POST_OFFICE: 우체국
+    KAKAO_BANK: 카카오뱅크
+    TOSS_BANK: 토스뱅크
+    K_BANK: 케이뱅크
+    SAEMAUL: 새마을금고
+    SHINHYUP: 신협
+    BUSAN: 부산은행
+    IM: 대구(iM)은행
+    KYONGNAM: 경남은행
+    GWANGJU: 광주은행
+    JEONBUK: 전북은행
+  source: design
+  evidence: 정산 계좌 추가 화면의 '은행' 입력. 화면 예시는 '토스뱅크' 하나뿐이라 목록은 국내 주요 은행 20종으로 확정했다. 금융결제원 3자리 코드는 enum 필드로 함께 들고 있다가 송금 연동 시 넘긴다
+  value_evidence_table: payout_account
 - name: CourierCode
   values:
   - CJ_LOGISTICS
@@ -1081,9 +1200,25 @@ entities:
     column: password_hash
     db_type: VARCHAR(255)
     java_type: String
-    nullable: false
+    nullable: true
     source: design
-    evidence: 회원가입 > 비밀번호 '(8자 이상)'. 평문 저장 불가로 해시 컬럼
+    evidence: 회원가입 > 비밀번호 '(8자 이상)'. 평문 저장 불가로 해시 컬럼. 소셜 가입은 비밀번호가 없어 NULL 이다 (DEC-017)
+  - name: provider
+    column: provider
+    db_type: VARCHAR(20)
+    java_type: UserProvider
+    nullable: false
+    default: LOCAL
+    enum: UserProvider
+    source: design
+    evidence: 로그인 화면(2791:15250)의 '다음' 구분선 아래 구글·네이버 아이콘. 이메일 가입은 LOCAL
+  - name: providerId
+    column: provider_id
+    db_type: VARCHAR(100)
+    java_type: String
+    nullable: true
+    source: design
+    evidence: 소셜 제공자가 주는 고유 식별자. LOCAL 이면 NULL 이다
   - name: realName
     column: real_name
     db_type: VARCHAR(50)
@@ -1206,6 +1341,12 @@ entities:
     columns:
     - nickname
     unique: true
+  - name: uk_user_provider
+    columns:
+    - provider
+    - provider_id
+    unique: true
+    note: 같은 소셜 계정으로 두 번 가입하지 못하게 막는다. LOCAL 은 provider_id 가 NULL 이라 중복이 허용된다
   - name: ix_user_body
     columns:
     - height_cm
@@ -1401,11 +1542,12 @@ entities:
     evidence: 사용자당 1건
   - name: reason
     column: reason
-    db_type: VARCHAR(500)
-    java_type: String
-    nullable: true
+    db_type: VARCHAR(40)
+    java_type: WithdrawalReason
+    nullable: false
+    enum: WithdrawalReason
     source: design
-    evidence: '''Tenure를 떠나시는 이유를 알려주세요'''
+    evidence: 회원탈퇴 화면(3063:29262)의 '골라주세요.' 드롭다운 4종. 자유 입력이 아니다
   - name: withdrawnAt
     column: withdrawn_at
     db_type: DATETIME(6)
@@ -1603,8 +1745,13 @@ entities:
     columns:
     - reporter_id
     unique: false
+  constraints:
+  - rule: 'target_type 별로 고를 수 있는 reason 이 다르다. POST — NOT_WORN_OOTD·INAPPROPRIATE·STOLEN_PHOTO·SPAM·PRIVACY_EXPOSURE·IRRELEVANT 6종. ITEM — COUNTERFEIT·INFO_MISMATCH·STOLEN_PHOTO·FRAUD_EXTERNAL_TRADE·PROHIBITED_ITEM·INAPPROPRIATE 6종. USER 는 화면을 확인하지 못했다'
+    enforced_by: application
+    source: design
+    evidence: 게시물 더보기의 '신고 이유는 무엇인가요?' 드롭다운과 상품 상세의 '신고 사유를 선택해주세요.' 드롭다운을 펼쳐 확인했다. ReportReason 10종은 두 목록의 합집합이라 값은 맞지만 아무 사유나 붙일 수 있는 상태였다
   pattern: 다형 참조 (polymorphic)
-  pattern_note: target_type + target_id 로 POST / ITEM / USER 를 가리킨다. FK 를 걸 수 없다
+  pattern_note: target_type + target_id 로 POST / ITEM 을 가리킨다. FK 를 걸 수 없다
   polymorphic_delete_handling: 대상(post·item)이 soft delete 라 참조가 유지된다. 삭제된 게시물·아이템도 신고 검토가 가능하다
   correction_path: 정정 경로 없음 — 신고 취소 화면이 없고 운영자 처리는 범위 밖이다. 잘못된 신고는 접수 상태로 남는다
 - name: ShippingAddress
@@ -1670,13 +1817,21 @@ entities:
     nullable: true
     source: design
     evidence: '''상세 주소'' 104동 201호'
+  - name: deliveryRequestType
+    column: delivery_request_type
+    db_type: VARCHAR(30)
+    java_type: DeliveryRequestType
+    nullable: true
+    enum: DeliveryRequestType
+    source: design
+    evidence: 배송지 추가 화면(4245:46588)의 '배송 요청사항(선택)' 드롭다운 4종. 선택하지 않으면 NULL
   - name: deliveryRequest
     column: delivery_request
-    db_type: VARCHAR(255)
+    db_type: VARCHAR(50)
     java_type: String
     nullable: true
     source: design
-    evidence: '''배송 요청사항(선택)'''
+    evidence: 드롭다운에서 '직접 입력'을 고르면 열리는 텍스트 필드. 화면에 '최대 50자까지 입력 가능'이 뜬다. DIRECT 일 때만 채운다
   - name: isDefault
     column: is_default
     db_type: BOOLEAN
@@ -1745,10 +1900,11 @@ entities:
   - name: bankCode
     column: bank_code
     db_type: VARCHAR(20)
-    java_type: String
+    java_type: BankCode
     nullable: false
+    enum: BankCode
     source: design
-    evidence: '''은행'' 드롭다운. 예 ''토스뱅크'''
+    evidence: 정산 계좌 추가 화면의 '은행' 입력. 예 '토스뱅크'. 화면은 텍스트 필드지만 자유 입력을 받으면 같은 은행이 여러 표기로 쌓여 송금 연동 때 정리할 수 없다 — 드롭다운으로 확정했다
   - name: accountNumber
     column: account_number
     db_type: VARCHAR(50)
@@ -1769,8 +1925,8 @@ entities:
     java_type: Boolean
     nullable: false
     default: false
-    source: inferred
-    evidence: 복수 계좌 등록 가능한 목록 화면('정산계좌 관리')
+    source: design
+    evidence: 정산 계좌 관리 목록(4684:54428)의 라디오 버튼과 '기본' 배지. 기본 계좌에만 삭제 버튼이 없고 하단 CTA 가 '변경하기' 다
   - name: createdAt
     column: created_at
     db_type: DATETIME(6)
@@ -1790,11 +1946,28 @@ entities:
     columns:
     - user_id
     unique: false
+  - name: uk_payout_account_default
+    columns:
+    - '(IF(is_default, user_id, NULL))'
+    unique: true
+    note: 기본 계좌는 사용자당 최대 1건. 배송지와 같은 함수 인덱스다 (DEC-016)
   constraints:
   - rule: 정산 미완료(settlement.settled_at IS NULL) 거래가 있으면 삭제 불가
     enforced_by: application
     source: design
     evidence: '''삭제할때마다 오버레이 모달이 뜹니다!'''
+  - rule: 사용자당 기본 계좌는 최대 1건이다. 배송지와 달리 0건이 정상이다 — 가입은 계좌를 만들지 않고 판매 전환 때 처음 등록한다
+    enforced_by: db
+    source: design
+    evidence: 정산 계좌 관리 목록의 라디오 버튼과 '기본' 배지. 선택은 하나뿐이다
+  - rule: 첫 계좌는 자동으로 기본이 된다. 등록 요청은 is_default 를 받지 않는다
+    enforced_by: application
+    source: design
+    evidence: 정산 계좌 추가 화면의 입력 필드가 은행·예금주·계좌 번호 3개뿐이고 기본 설정 체크박스가 없다
+  - rule: 기본 계좌는 삭제할 수 없다. 다른 계좌를 기본으로 지정한 뒤에 지운다
+    enforced_by: application
+    source: design
+    evidence: 목록에서 기본 계좌에만 삭제 버튼이 없다
 - name: NotificationSetting
   table: notification_setting
   domain: notification
@@ -1823,14 +1996,14 @@ entities:
     nullable: false
     source: inferred
     evidence: 소유자 FK
-  - name: category
-    column: category
-    db_type: VARCHAR(30)
-    java_type: NotificationCategory
+  - name: settingType
+    column: setting_type
+    db_type: VARCHAR(40)
+    java_type: NotificationSettingType
     nullable: false
-    enum: NotificationCategory
+    enum: NotificationSettingType
     source: design
-    evidence: 알림 화면 탭 4종
+    evidence: 알림 설정 화면(3063:28457)의 토글 9종. 알림 목록 화면의 탭(NotificationCategory)과는 다른 축이라 enum 을 나눈다
   - name: enabled
     column: enabled
     db_type: BOOLEAN
@@ -1838,7 +2011,7 @@ entities:
     nullable: false
     default: true
     source: design
-    evidence: '''알림 활성화시킬 때마다 토스트 메시지'''
+    evidence: 토글. 기본값은 항목마다 다르다 — NotificationSettingType 의 labels 참고
   - name: updatedAt
     column: updated_at
     db_type: DATETIME(6)
@@ -1850,8 +2023,13 @@ entities:
   - name: uk_notification_setting
     columns:
     - user_id
-    - category
+    - setting_type
     unique: true
+  constraints:
+  - rule: 가입 시 9종을 모두 만든다. 기본값은 항목마다 다르다 — 팔로우 알림·서비스 소식·혜택 및 마케팅만 OFF 이고 나머지는 ON
+    enforced_by: application
+    source: design
+    evidence: 알림 설정 화면의 토글 상태. '필수' 그룹 4종과 채팅 알림·관심 아이템은 켜진 채로 그려져 있다
 - name: Post
   table: post
   domain: post
@@ -1882,13 +2060,6 @@ entities:
     nullable: false
     source: design
     evidence: 게시물 작성자. OOTD 상세 상단 프로필
-  - name: content
-    column: content
-    db_type: TEXT
-    java_type: String
-    nullable: true
-    source: design
-    evidence: 게시물 본문. 예 '안녕하세요 SSU님!'
   - name: wornDate
     column: worn_date
     db_type: DATE
@@ -1935,6 +2106,14 @@ entities:
     default: 0
     source: design
     evidence: OOTD 상세 하단 '🔖 1234'. 정본은 post_save 테이블
+  - name: viewCount
+    column: view_count
+    db_type: INT
+    java_type: Integer
+    nullable: false
+    default: 0
+    source: design
+    evidence: 검색 결과(2825:39649)의 정렬 드롭다운에 '조회수 순'이 있다. 조회는 Redis 카운터로 받고 주기적으로 이 컬럼에 반영한다 — 읽기 경로에 DB 쓰기를 붙이지 않는다 (DEC-019)
   - name: createdAt
     column: created_at
     db_type: DATETIME(6)
@@ -1971,6 +2150,10 @@ entities:
     unique: false
     note: 레코드 승격 판정 — 직전 30일 유효 OOTD 카운트. 게시일 기준이라 worn_date 인덱스와 별개
   constraints:
+  - rule: 본문(캡션) 컬럼을 두지 않는다. 작성 플로우(촬영 → 비율 → 날짜 → 태그 → 미리보기 → 게시하기)에 입력란이 없고 OOTD 상세에도 표시 영역이 없다
+    enforced_by: application
+    source: design
+    evidence: 게시물 미리보기(3380:33759)의 버튼은 '태그 수정'과 '게시하기' 둘뿐이다. v3 의 content 컬럼은 홈 헤더 인사말 '안녕하세요 SSU님!'을 본문 예시로 잘못 인용해 생긴 것이라 v5 에서 제거했다
   - rule: 판매 중(item_listing.sale_status=ON_SALE)인 상품의 대표 OOTD로 걸린 게시물은 삭제 불가
     enforced_by: application
     source: inferred
@@ -2346,7 +2529,7 @@ entities:
     java_type: String
     nullable: true
     source: design
-    evidence: '''아이템 상세 정보 수정 (카테고리마다 세부 카테고리, 사이즈 다름)'' — 카테고리별 사이즈 체계가 다르다(→ Q6)'
+    evidence: 아이템 등록(2825:47795)·판매 전환(3342:32943)의 '사이즈' 칩에서 체계 4종을 확인했다 — ALPHA(XS·S·M·L·XL·2XL·3XL) / KR_NUMERIC(85~115) / EU_NUMERIC(36~50) / FREE_NUMBER(0~6). 어느 대분류가 어느 체계를 쓰는지는 화면이 전 체계를 한 번에 펼쳐 보여줘 확정하지 못했다(→ Q6)
   - name: sortOrder
     column: sort_order
     db_type: INT
@@ -2424,10 +2607,10 @@ entities:
     column: wear_target
     db_type: VARCHAR(10)
     java_type: WearTarget
-    nullable: true
+    nullable: false
     enum: WearTarget
     source: design
-    evidence: '''착용 대상''. 예 ''남성복'''
+    evidence: 아이템 등록(2825:47795)과 판매 전환(3342:32943) 모두 '착용 대상'에 필수 표시(*)가 붙어 있다. 칩 라벨은 화면마다 다르다 — 등록은 '남자/여자/공용', 판매 전환은 '남성복/여성복/공용'
   - name: coverImageKey
     column: cover_image_key
     db_type: VARCHAR(500)
@@ -3501,6 +3684,13 @@ entities:
     nullable: false
     source: design
     evidence: '''최종 결제 금액'' / ''결제 금액'''
+  - name: methodDetail
+    column: method_detail
+    db_type: VARCHAR(100)
+    java_type: String
+    nullable: true
+    source: design
+    evidence: 제안서·거래 상세의 '결제 수단'이 '토스뱅크 1234-1234-1234' 로 표시된다(2958:63207). method enum 만으로는 그릴 수 없어 PG 가 준 표시 문자열을 스냅샷한다. 승인 전에는 NULL
   - name: pgTransactionId
     column: pg_transaction_id
     db_type: VARCHAR(100)
@@ -3846,13 +4036,21 @@ entities:
     nullable: true
     source: design
     evidence: '''상세주소'' 112동 201호'
+  - name: deliveryRequestType
+    column: delivery_request_type
+    db_type: VARCHAR(30)
+    java_type: DeliveryRequestType
+    nullable: true
+    enum: DeliveryRequestType
+    source: design
+    evidence: 배송지의 요청사항 유형을 스냅샷한다 (DEC-013)
   - name: deliveryRequest
     column: delivery_request
-    db_type: VARCHAR(255)
+    db_type: VARCHAR(50)
     java_type: String
     nullable: true
     source: design
-    evidence: '''요청사항'' 배송 전에 미리 연락 바랍니다.'
+    evidence: '''요청사항'' 배송 전에 미리 연락 바랍니다. DIRECT 일 때만 채워지며 값을 스냅샷한다 (DEC-013)'
   - name: courierCode
     column: courier_code
     db_type: VARCHAR(30)
@@ -4265,9 +4463,9 @@ entities:
     column: content
     db_type: TEXT
     java_type: String
-    nullable: false
+    nullable: true
     source: design
-    evidence: 메시지 본문. IMAGE 면 저장소 키 (DEC-006)
+    evidence: 메시지 본문. TEXT 일 때만 채운다 — IMAGE 는 chat_message_image 에 여러 장을 담는다
   - name: createdAt
     column: created_at
     db_type: DATETIME(6)
@@ -4287,6 +4485,58 @@ entities:
     - sender_id
     unique: false
     note: FK 인덱스 (쓰기 빈발 테이블 — 스킬 5-2 ⑥ 경계 대상, 아래 주석 참고)
+- name: ChatMessageImage
+  table: chat_message_image
+  domain: chat
+  description: 이미지 메시지의 사진. 한 말풍선에 여러 장이 묶여 나가므로 메시지와 1:N 이다.
+  soft_delete: false
+  delete_policy: C
+  delete_rationale: ChatMessage 에 종속. 메시지가 사라지면 의미 없음
+  source: design
+  evidence:
+  - 채팅방(2958:71180)의 이미지 메시지가 한 말풍선에 3장으로 묶여 있고 시각·읽음 표시도 하나다
+  fields:
+  - name: id
+    column: id
+    db_type: BIGINT
+    java_type: Long
+    pk: true
+    auto_increment: true
+    nullable: false
+    source: inferred
+    evidence: PK 관례
+  - name: chatMessageId
+    column: chat_message_id
+    db_type: BIGINT
+    java_type: Long
+    nullable: false
+    source: inferred
+    evidence: 부모 FK
+  - name: imageKey
+    column: image_key
+    db_type: VARCHAR(500)
+    java_type: String
+    nullable: false
+    source: design
+    evidence: 저장소 키를 넣는다 (DEC-006)
+  - name: sortOrder
+    column: sort_order
+    db_type: INT
+    java_type: Integer
+    nullable: false
+    source: design
+    evidence: 말풍선 안의 노출 순서
+  indexes:
+  - name: uk_chat_message_image_order
+    columns:
+    - chat_message_id
+    - sort_order
+    unique: true
+  constraints:
+  - rule: message_type=IMAGE 면 1장 이상, TEXT 면 0장이다. TEXT 는 content 를, IMAGE 는 이 테이블을 쓴다
+    enforced_by: application
+    source: design
+    evidence: 한 말풍선에 3장이 묶인 화면
 - name: Notification
   table: notification
   domain: notification
@@ -4336,6 +4586,13 @@ entities:
     nullable: true
     source: design
     evidence: 알림 본문
+  - name: imageKey
+    column: image_key
+    db_type: VARCHAR(500)
+    java_type: String
+    nullable: true
+    source: design
+    evidence: 알림 목록(2958:68634)의 행마다 아이템 사진 썸네일이 붙는다. 다형 참조라 대상 테이블과 조인할 수 없어 발행 시점에 키를 스냅샷한다. 썸네일이 없는 알림은 NULL
   - name: targetType
     column: target_type
     db_type: VARCHAR(30)
@@ -5418,6 +5675,21 @@ relations:
     inverse_field: null
   source: design
   evidence: 사람 FK
+- from: ChatMessageImage
+  to: ChatMessage
+  type: many_to_one
+  fk_column: chat_message_id
+  nullable: false
+  on_delete: CASCADE
+  relation_kind: 소유
+  zero_priority: false
+  jpa:
+    owning_side: ChatMessageImage
+    field: chatMessage
+    fetch: LAZY
+    inverse_field: images
+  source: design
+  evidence: 말풍선 밖에서 사진은 의미가 없다. ChatMessage 는 C분류(하드 삭제 가능)라 CASCADE 가 유효하게 동작한다
 - from: Notification
   to: User
   type: many_to_one
@@ -5469,6 +5741,10 @@ derived_columns:
   master: wishlist
   update: 관심 등록·해제 트랜잭션 내 증감
   reason: 상품 상세의 '관심 14명'
+- column: post.view_count
+  master: Redis post-view:{postId}
+  update: 조회 시 Redis INCR, 주기 배치가 컬럼에 더한다
+  reason: 검색 결과의 '조회수 순' 정렬. 조회마다 UPDATE 하면 인기 게시물에 쓰기가 몰린다 (DEC-019)
 - column: chat_room.last_message_at
   master: MAX(chat_message.created_at)
   update: 메시지 쓰기 트랜잭션 내 동기 갱신
@@ -5521,7 +5797,7 @@ design_decisions:
   - 이번 범위에서 제외
   decision: 이번 범위에서 제외
   rationale: user.default_shipping_fee 컬럼을 만들지 않는다. 그 결과 미판매 아이템 구매 제안의 배송비는 항상 0원(판매자 부담)이 된다
-  revisit_when: 설정 화면이 디자인되면 컬럼을 추가한다
+  revisit_when: 설정 화면은 이미 디자인돼 있다(3063:28991·2958:72226). '거래' 섹션에 기본 배송비·수수료 부담 기본값·구매 제안 받기 기본값 메뉴 3종이 있고 상세 화면만 없는 상태다. 이 결정의 전제가 사실과 달랐으므로 listing·offer 도메인 설계 전에 다시 정한다
 - id: DEC-006
   topic: 이미지 저장소
   considered:
@@ -5597,7 +5873,43 @@ design_decisions:
   - DB 유니크 제약(함수 인덱스)
   decision: DB 유니크 제약. MySQL 은 부분 유니크가 없어 함수 인덱스로 건다
   rationale: '순서만으로는 동시 요청에서 둘 다 기본이 될 수 있었다. 락은 앞으로 is_default 를 건드리는 모든 코드가 기억해야 하지만 제약은 잊어도 깨지지 않는다 — follow 의 CHECK 제약과 같은 기준이다. UNIQUE ((IF(is_default, user_id, NULL))) 로 걸면 유니크 인덱스가 NULL 중복을 허용하므로 비기본은 몇 개든 쌓이고 기본만 사용자당 1건으로 묶인다. (user_id, is_default) 복합 유니크는 비기본을 2개 이상 못 갖게 돼 쓸 수 없다. 해제는 즉시 실행되는 벌크 UPDATE 로 내보낸다 — Hibernate 가 flush 시 INSERT 를 UPDATE 보다 먼저 실행해 엔티티로 해제하면 새 기본이 먼저 들어가 인덱스에 걸린다. 그 벌크 UPDATE 가 현재 기본 행에 X 락을 잡아 직렬화 게이트를 겸하므로 별도 락이 필요 없다 — 동시 요청이 모두 성공하고 유니크 위반이 나지 않음을 실측으로 확인했다. 제약은 게이트가 없는 극단에서의 최후 방어다'
-  revisit_when: 정산 계좌(payout_account)도 같은 is_default 구조다. 구현할 때 같은 인덱스를 검토한다. 유니크 위반이 실제로 관측되면 DataIntegrityViolationException 핸들러를 둔다 — 지금은 전용 핸들러가 없어 500 이 된다
+  revisit_when: 정산 계좌(payout_account)에도 같은 함수 인덱스를 적용했다(uk_payout_account_default). 다른 점은 0건이 정상이라 '최대 1건'이라는 것뿐이다. 유니크 위반이 실제로 관측되면 DataIntegrityViolationException 핸들러를 둔다 — 지금은 전용 핸들러가 없어 500 이 된다
+- id: DEC-017
+  topic: 소셜 로그인(구글·네이버)
+  considered:
+  - 범위 밖으로 두고 아이콘을 무시한다
+  - provider 컬럼만 열어두고 구현은 나중에
+  - 설계에 포함한다
+  decision: 설계에 포함한다
+  rationale: 로그인 화면(2791:15250)에 구글·네이버 아이콘이 실재하는데 스키마·명세·제외 근거 어디에도 없었다 — 누락이다. user 에 provider(LOCAL|GOOGLE|NAVER)·provider_id 를 두고 uk_user_provider 로 같은 소셜 계정의 중복 가입을 막는다. 소셜 가입은 비밀번호가 없으므로 password_hash 를 nullable 로 바꾼다. 모바일 앱이 제공자 SDK 로 받은 토큰을 서버에 넘기고 서버가 검증하는 방식을 쓴다 — 웹 리다이렉트 콜백은 앱에서 흐름이 번거롭다
+  revisit_when: 애플 로그인이 추가되면 enum 에 APPLE 을 더한다. iOS 심사는 소셜 로그인이 있으면 애플 로그인을 함께 요구한다
+- id: DEC-018
+  topic: 가입 플로우에 실명·휴대폰 입력 화면이 없는 문제
+  considered:
+  - 화면 누락으로 보고 NOT NULL 을 유지한다
+  - nullable 로 바꾸고 첫 거래 때 채운다
+  - 휴대폰 본인인증을 가입 단계에 넣는다
+  decision: 화면 누락으로 보고 NOT NULL 을 유지한다
+  rationale: 회원가입 4단계(계정 생성 → 동의 → 주소 등록 → 프로필 작성) 어디에도 실명·휴대폰 입력란이 없는데 로그인 정보 화면(3063:28514)은 두 값을 표시한다. 가입 중 주소 등록도 주소·상세주소만 받아 shipping_address 의 수령인·연락처·우편번호를 채울 수 없다. 디자인이 덜 그려진 것으로 판단하고 스키마를 유지한다 — 값을 nullable 로 열면 로그인 정보 화면이 빈칸을 보여주고 배송에 필요한 연락처가 없는 주문이 생긴다. **프론트가 가입 단계에 입력란을 추가해야 한다**
+  revisit_when: 디자인이 갱신되면 그 화면에 맞춰 다시 본다. 소셜 로그인(DEC-017)은 제공자가 실명·이메일을 주므로 그 경로에서는 입력이 줄어든다
+- id: DEC-019
+  topic: 게시물 조회수를 어디에 쌓을 것인가
+  considered:
+  - post.view_count 에 조회할 때마다 직접 UPDATE
+  - Redis 카운터로 받고 주기적으로 post.view_count 에 반영
+  - 조회수 순 정렬을 빼고 컬럼을 두지 않는다
+  decision: Redis 카운터 + 주기적 반영. 정렬은 post.view_count 로 한다
+  rationale: 검색 결과(2825:39649)의 정렬이 5종이고 그중 '조회수 순'이 있어 컬럼 없이는 구현할 수 없다. 다만 조회할 때마다 UPDATE 하면 인기 게시물 한 행에 쓰기가 몰리고 읽기 경로에 락 경합이 생긴다. 키 `post-view:{postId}` 에 INCR 로 모았다가 배치가 컬럼에 더한다 — DEC-014 가 최근 열람을 Redis 로 옮긴 것과 같은 기준이다(읽기 경로에 DB 쓰기를 붙이지 않는다). 정렬은 컬럼을 읽으므로 인덱스를 태울 수 있고, 값이 몇 분 늦는 것은 조회수 정렬에서 문제가 되지 않는다
+  revisit_when: 실시간성이 필요해지면 반영 주기를 줄인다. 어뷰징(같은 사용자의 반복 조회)이 관측되면 Redis 키에 사용자 구분을 더한다
+- id: DEC-020
+  topic: 검색창의 '추천 검색어'를 무엇으로 채울 것인가
+  considered:
+  - search_history 를 집계한 인기 검색어
+  - 운영이 관리하는 고정 목록 테이블
+  - 애플리케이션 상수
+  decision: search_history 집계 (인기 검색어)
+  rationale: 검색창을 누르면 '데님 팬츠'·'나이키 신발'·'Levis 501'·'가죽 자켓' 칩이 뜬다(2820:34830). 고정 목록 테이블은 관리자 기능을 범위 밖으로 둔 것과 충돌한다 — 값을 넣을 화면이 없어 DB 직접 입력이 된다. 집계는 운영 손이 들지 않고 데이터가 쌓일수록 좋아진다. 최근 N일 keyword 별 건수 상위를 뽑아 Redis 에 캐시하고 TTL 을 건다 — 매 요청 집계하면 search_history 전체를 스캔한다
+  revisit_when: 초기에는 검색 기록이 없어 칸이 빈다. 서비스 초반에 노출이 필요하면 상수 목록을 폴백으로 두는 안을 검토한다
 - id: DEC-101
   topic: 타인에게 보이는 프로필 필드 — 등급·키·몸무게는 공개, 성별은 비공개
   considered:
@@ -5623,6 +5935,7 @@ design_decisions:
   decision: rowType 유니온. API-161·API-162 가 4개 탭을 전부 담는다
   rationale: 화면의 전체 탭은 아직 거래가 아닌 제안받음과 이미 거래가 된 거래중·거래완료를 시간순으로 함께 보여준다. 엔드포인트를 둘로 쪼개면 전체 탭에서 두 응답을 클라이언트가 합쳐야 하고 그 순간 페이징이 깨진다. rowType 으로 행을 구분하고 반대쪽 필드는 null 로 둔다
   supersedes: 초기 명세는 API-146(받은 제안)·API-147(보낸 제안)을 따로 뒀고 API-161·162 의 tab 에도 OFFERED 가 있어 정본이 둘이었다
+  revisit_when: 화면을 다시 보고 두 가지를 바로잡았다(v5). (1) 탭 라벨이 '제안받음'·'제안중'이 아니라 양쪽 다 '대기중'이다. (2) 판매 내역의 대기중 카드는 제안 1건이 아니라 아이템 1개이고, '확인하기'를 누르면 그 아이템의 받은 제안 목록이 따로 열린다 — 그 화면을 API-146(GET /items/{itemId}/offers)으로 되살렸다. 유니온 자체는 유지한다
 - id: DEC-104
   topic: 태그된 아이템 목록의 조회 단위
   considered:
@@ -5665,9 +5978,12 @@ design_decisions:
   rationale: 두 인덱스는 아이템 키워드 검색과 판매 중 상품 둘러보기를 전제로 만들었는데, 확정된 화면 인벤토리에 그런 화면이 없다. 검색 결과(SCR-046)의 탭은 게시물과 계정 2종뿐이고 아이템은 게시물의 태그를 통해서만 도달한다. API 명세 97개 중 두 인덱스를 쓰는 엔드포인트가 하나도 없다. 쓰지 않는 인덱스는 쓰기 비용만 남기므로 스킬 5-2 ⑥(과도한 인덱스 경계)을 따라 제거한다. 아이템 키워드 조회는 API-098(태그 가능한 내 아이템)뿐이고 이것은 소유자 기준이라 ix_item_registrant 가 받는다. 판매 상태 필터(API-200)는 게시물에서 아이템으로 내려가는 방향이라 ix_item_listing_item 이 받는다
   revisit_when: 아이템/상품 검색 탭이나 판매 중 상품 둘러보기 화면이 디자인되면 그때 다시 추가한다. 컬럼 구성은 위 정의를 그대로 쓰면 된다
 open_questions:
+- id: Q7
+  topic: 인증번호 재전송 정책
+  detail: 회원가입과 비밀번호 찾기 모두 인증번호 입력 옆에 '재전송' 버튼이 있다(2791:17054·2791:21343). 쿨다운(몇 초 후 다시 누를 수 있는지)과 1일 발송 한도가 정해지지 않았다. DEC-009 는 Redis 키를 SET 으로 덮어쓰므로 재전송 자체는 동작하지만, 제한이 없으면 메일 발송이 그대로 어뷰징 통로가 된다
 - id: Q6
-  topic: 카테고리별 사이즈 체계
-  detail: 대분류 10종과 세부 카테고리 102종을 검색 필터 화면(2825:38923)에서 전량 확보해 V2__seed_category.sql 로 넣었다 — 아우터 14 / 상의 12 / 하의 11 / 신발 8 / 가방 10 / 모자 9 / 치마 11 / 원피스 9 / 액세서리 9 / 주얼리 9. 남은 것은 category.size_scheme 값 목록뿐이다 — '아이템 상세 정보 수정 (카테고리마다 세부 카테고리, 사이즈 다름)' 문구는 있으나 사이즈 선택지가 펼쳐진 화면을 찾지 못했다
+  topic: 카테고리별 사이즈 체계의 매핑
+  detail: '사이즈 선택지가 펼쳐진 화면을 아이템 등록(2825:47795)과 판매 전환(3342:32943)에서 찾았다. 체계는 4종이다 — ALPHA(XS·S·M·L·XL·2XL·3XL) / KR_NUMERIC(85·90·95·100·105·110·115) / EU_NUMERIC(36·38·40·42·44·46·48·50) / FREE_NUMBER(0~6). 남은 것은 대분류 10종이 각각 어느 체계를 쓰는지다 — 화면이 카테고리와 무관하게 네 체계를 한 번에 펼쳐 놓아 매핑을 읽을 수 없었다. 그때까지 size_scheme 은 NULL 로 둔다'
 design_exclusions:
 - topic: email_verification 테이블
   detail: ERD 에 테이블을 두지 않는다. 인증번호와 토큰은 Redis 로 관리하며 근거는 DEC-009 에 있다
@@ -5677,6 +5993,8 @@ design_exclusions:
   detail: post_tag_edit_log 는 정의만 하고 MVP 외로 표시했다. '태그 수정 - 핵심 MVP X', '핵심 MVP 구현 이후 구현 확정 시 자세히 작성될 예정입니다'
 - topic: 로그아웃·공유하기
   detail: 저장 대상이 없다. 로그아웃은 세션, 공유하기는 읽기 전용 모달
+- topic: 공지사항·문의하기
+  detail: 설정 > 서비스 메뉴에 '공지사항'·'문의하기'가 있으나 테이블을 두지 않는다. 관리자 기능을 이미 범위 밖으로 뒀기 때문에 공지를 쓸 주체도, 문의에 답할 주체도 없다. 약관·개인정보 처리방침·버전 정보와 함께 정적 페이지나 외부 링크로 처리한다
 - topic: 관리자 기능
   detail: 신고 접수 후 운영자가 게시물·아이템을 내리는 흐름을 이번 범위에서 제외한다. report 는 접수까지만 담고 처리 상태·운영자 계정은 두지 않는다. 관리자 화면이 디자인되면 그때 설계한다
 - topic: 탈퇴 후 재가입으로 인한 제안 기회 초기화

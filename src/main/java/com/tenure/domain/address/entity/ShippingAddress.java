@@ -1,9 +1,12 @@
 package com.tenure.domain.address.entity;
 
+import com.tenure.domain.address.enums.DeliveryRequestType;
 import com.tenure.domain.user.entity.User;
 import com.tenure.global.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -62,8 +65,13 @@ public class ShippingAddress extends BaseEntity {
 	@Column(name = "address_detail", length = 255)
 	private String addressDetail;
 
-	/** '배송 요청사항(선택)' */
-	@Column(name = "delivery_request", length = 255)
+	/** '배송 요청사항(선택)' 드롭다운 4종. 고르지 않으면 NULL */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "delivery_request_type", length = 30)
+	private DeliveryRequestType deliveryRequestType;
+
+	/** 드롭다운에서 '직접 입력'을 고르면 열리는 텍스트 필드. DIRECT 일 때만 채운다 */
+	@Column(name = "delivery_request", length = 50)
 	private String deliveryRequest;
 
 	/** '기본 배송지로 설정', '클릭으로 기본 배송지 변경' */
@@ -72,7 +80,8 @@ public class ShippingAddress extends BaseEntity {
 
 	/** 배송지 등록. 첫 배송지는 기본으로 지정된다. */
 	public static ShippingAddress register(User user, String recipientName, String phone,
-			String zipcode, String address, String addressDetail, String deliveryRequest,
+			String zipcode, String address, String addressDetail,
+			DeliveryRequestType deliveryRequestType, String deliveryRequest,
 			boolean isDefault
 	) {
 		return ShippingAddress.builder()
@@ -82,7 +91,8 @@ public class ShippingAddress extends BaseEntity {
 				.zipcode(zipcode)
 				.address(address)
 				.addressDetail(addressDetail)
-				.deliveryRequest(deliveryRequest)
+				.deliveryRequestType(deliveryRequestType)
+				.deliveryRequest(normalizeRequest(deliveryRequestType, deliveryRequest))
 				.isDefault(isDefault)
 				.build();
 	}
@@ -94,14 +104,26 @@ public class ShippingAddress extends BaseEntity {
 	 * 기본 배송지 여부는 건드리지 않는다 — 별도 동작이다.
 	 */
 	public void update(String recipientName, String phone,
-			String zipcode, String address, String addressDetail, String deliveryRequest
+			String zipcode, String address, String addressDetail,
+			DeliveryRequestType deliveryRequestType, String deliveryRequest
 	) {
 		this.recipientName = recipientName;
 		this.phone = phone;
 		this.zipcode = zipcode;
 		this.address = address;
 		this.addressDetail = addressDetail;
-		this.deliveryRequest = deliveryRequest;
+		this.deliveryRequestType = deliveryRequestType;
+		this.deliveryRequest = normalizeRequest(deliveryRequestType, deliveryRequest);
+	}
+
+	/**
+	 * 고정 문구를 고른 요청사항은 직접 입력값을 버린다.
+	 *
+	 * 남겨두면 유형은 '문 앞에 놓아주세요'인데 본문은 이전에 쓴 문장인 행이 생긴다 —
+	 * 주문 시 order_shipment 로 그대로 복사되므로 배송 기사에게 잘못된 문구가 간다.
+	 */
+	private static String normalizeRequest(DeliveryRequestType type, String deliveryRequest) {
+		return type != null && type.isDirect() ? deliveryRequest : null;
 	}
 
 	/** 기본 배송지로 올리거나 내린다. 사용자당 1건이라는 단일성은 Service 가 지킨다. */

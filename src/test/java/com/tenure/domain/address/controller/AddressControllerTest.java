@@ -4,6 +4,7 @@ import com.tenure.domain.address.dto.request.ShippingAddressCreateRequest;
 import com.tenure.domain.address.dto.request.ShippingAddressUpdateRequest;
 import com.tenure.domain.address.dto.response.ShippingAddressIdResponse;
 import com.tenure.domain.address.dto.response.ShippingAddressResponse;
+import com.tenure.domain.address.enums.DeliveryRequestType;
 import com.tenure.domain.address.exception.AddressErrorCode;
 import com.tenure.domain.address.service.AddressService;
 import com.tenure.global.exception.CustomException;
@@ -119,6 +120,7 @@ class AddressControllerTest extends ControllerSliceTestSupport {
 							.contentType(MediaType.APPLICATION_JSON)
 							.content(json(createRequest(builder -> builder
 									.addressDetail(null)
+									.deliveryRequestType(null)
 									.deliveryRequest(null)
 									.isDefault(null)))))
 					.andExpect(status().isOk());
@@ -165,7 +167,7 @@ class AddressControllerTest extends ControllerSliceTestSupport {
 				"zipcode, 10, 200", "zipcode, 11, 400",
 				"address, 255, 200", "address, 256, 400",
 				"addressDetail, 255, 200", "addressDetail, 256, 400",
-				"deliveryRequest, 255, 200", "deliveryRequest, 256, 400"
+				"deliveryRequest, 50, 200", "deliveryRequest, 51, 400"
 		})
 		@DisplayName("각 필드는 컬럼 길이까지만 받는다")
 		void create_fieldLength_boundedByColumnLength(String field, int length, int status)
@@ -394,6 +396,7 @@ class AddressControllerTest extends ControllerSliceTestSupport {
 				.zipcode("07027")
 				.address("서울특별시 동작구 상도로 369")
 				.addressDetail("104동 201호")
+				.deliveryRequestType(DeliveryRequestType.AT_DOOR)
 				.isDefault(isDefault)
 				.build();
 	}
@@ -409,6 +412,7 @@ class AddressControllerTest extends ControllerSliceTestSupport {
 						.zipcode("07027")
 						.address("서울특별시 동작구 상도로 369")
 						.addressDetail("104동 201호")
+						.deliveryRequestType(DeliveryRequestType.DIRECT)
 						.deliveryRequest("부재 시 문 앞")
 						.isDefault(false);
 

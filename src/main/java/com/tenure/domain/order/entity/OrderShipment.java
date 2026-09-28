@@ -1,5 +1,6 @@
 package com.tenure.domain.order.entity;
 
+import com.tenure.domain.address.enums.DeliveryRequestType;
 import com.tenure.domain.order.enums.CourierCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -64,8 +65,13 @@ public class OrderShipment {
 	@Column(name = "address_detail", length = 255)
 	private String addressDetail;
 
-	/** '요청사항' 배송 전에 미리 연락 바랍니다. */
-	@Column(name = "delivery_request", length = 255)
+	/** 배송지의 요청사항 유형을 스냅샷한다 (DEC-013) */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "delivery_request_type", length = 30)
+	private DeliveryRequestType deliveryRequestType;
+
+	/** '요청사항' 배송 전에 미리 연락 바랍니다. DIRECT 일 때만 채워진다 */
+	@Column(name = "delivery_request", length = 50)
 	private String deliveryRequest;
 
 	/** '택배사' CJ 택배 */

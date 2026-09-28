@@ -1,5 +1,6 @@
 package com.tenure.domain.address.dto.response;
 
+import com.tenure.domain.address.enums.DeliveryRequestType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -31,7 +32,10 @@ public class ShippingAddressResponse {
 	@Schema(description = "상세 주소", example = "104동 201호")
 	private final String addressDetail;
 
-	@Schema(description = "배송 요청사항")
+	@Schema(description = "배송 요청사항 유형. 미선택이면 null")
+	private final DeliveryRequestType deliveryRequestType;
+
+	@Schema(description = "직접 입력값. DIRECT 가 아니면 null")
 	private final String deliveryRequest;
 
 	@Schema(description = "기본 배송지면 true")

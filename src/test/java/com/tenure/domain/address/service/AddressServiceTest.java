@@ -5,6 +5,7 @@ import com.tenure.domain.address.dto.request.ShippingAddressUpdateRequest;
 import com.tenure.domain.address.dto.response.ShippingAddressIdResponse;
 import com.tenure.domain.address.dto.response.ShippingAddressResponse;
 import com.tenure.domain.address.entity.ShippingAddress;
+import com.tenure.domain.address.enums.DeliveryRequestType;
 import com.tenure.domain.address.exception.AddressErrorCode;
 import com.tenure.domain.address.mapper.AddressMapper;
 import com.tenure.domain.address.repository.ShippingAddressRepository;
@@ -157,6 +158,7 @@ class AddressServiceTest {
 			assertThat(address.getZipcode()).isEqualTo("06158");
 			assertThat(address.getAddress()).isEqualTo("서울특별시 강남구 테헤란로 1");
 			assertThat(address.getAddressDetail()).isEqualTo("3층");
+			assertThat(address.getDeliveryRequestType()).isEqualTo(DeliveryRequestType.DIRECT);
 			assertThat(address.getDeliveryRequest()).isEqualTo("부재 시 문 앞");
 		}
 
@@ -195,6 +197,50 @@ class AddressServiceTest {
 					.isEqualTo(AddressErrorCode.ADDRESS_403);
 
 			assertThat(address.getRecipientName()).isEqualTo("홍길동");
+		}
+	}
+
+	@Nested
+	@DisplayName("배송 요청사항")
+	class DeliveryRequest {
+
+		@Test
+		@DisplayName("고정 문구를 고르면 직접 입력값을 버린다")
+		void update_fixedType_dropsFreeText() {
+			ShippingAddress address = address(false);
+			given(shippingAddressRepository.findById(ADDRESS_ID)).willReturn(Optional.of(address));
+
+			addressService.update(USER_ID, ADDRESS_ID, updateRequest(
+					DeliveryRequestType.AT_DOOR, "이전에 쓴 문장"));
+
+			// 유형은 '문 앞에 놓아주세요'인데 본문이 남아 있으면 order_shipment 로 그대로 복사돼
+			// 배송 기사에게 잘못된 문구가 간다
+			assertThat(address.getDeliveryRequestType()).isEqualTo(DeliveryRequestType.AT_DOOR);
+			assertThat(address.getDeliveryRequest()).isNull();
+		}
+
+		@Test
+		@DisplayName("직접 입력이면 본문을 그대로 둔다")
+		void update_directType_keepsFreeText() {
+			ShippingAddress address = address(false);
+			given(shippingAddressRepository.findById(ADDRESS_ID)).willReturn(Optional.of(address));
+
+			addressService.update(USER_ID, ADDRESS_ID, updateRequest(
+					DeliveryRequestType.DIRECT, "배송 전에 미리 연락 바랍니다."));
+
+			assertThat(address.getDeliveryRequest()).isEqualTo("배송 전에 미리 연락 바랍니다.");
+		}
+
+		@Test
+		@DisplayName("유형을 고르지 않으면 둘 다 비운다")
+		void update_noType_clearsBoth() {
+			ShippingAddress address = address(false);
+			given(shippingAddressRepository.findById(ADDRESS_ID)).willReturn(Optional.of(address));
+
+			addressService.update(USER_ID, ADDRESS_ID, updateRequest(null, "버려질 문장"));
+
+			assertThat(address.getDeliveryRequestType()).isNull();
+			assertThat(address.getDeliveryRequest()).isNull();
 		}
 	}
 
@@ -311,7 +357,7 @@ class AddressServiceTest {
 
 	private static ShippingAddress address(boolean isDefault) {
 		ShippingAddress address = ShippingAddress.register(owner(), "홍길동", "010-1234-5678",
-				"07027", "서울특별시 동작구 상도로 369", "104동 201호", null, isDefault);
+				"07027", "서울특별시 동작구 상도로 369", "104동 201호", null, null, isDefault);
 		ReflectionTestUtils.setField(address, "id", ADDRESS_ID);
 		return address;
 	}
@@ -334,7 +380,22 @@ class AddressServiceTest {
 				.zipcode("06158")
 				.address("서울특별시 강남구 테헤란로 1")
 				.addressDetail("3층")
+				.deliveryRequestType(DeliveryRequestType.DIRECT)
 				.deliveryRequest("부재 시 문 앞")
+				.build();
+	}
+
+	private static ShippingAddressUpdateRequest updateRequest(
+			DeliveryRequestType type, String deliveryRequest
+	) {
+		return ShippingAddressUpdateRequest.builder()
+				.recipientName("김유진")
+				.phone("010-9999-8888")
+				.zipcode("06158")
+				.address("서울특별시 강남구 테헤란로 1")
+				.addressDetail("3층")
+				.deliveryRequestType(type)
+				.deliveryRequest(deliveryRequest)
 				.build();
 	}
 

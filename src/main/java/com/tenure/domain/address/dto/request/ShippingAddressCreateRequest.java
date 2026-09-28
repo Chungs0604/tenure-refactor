@@ -1,5 +1,6 @@
 package com.tenure.domain.address.dto.request;
 
+import com.tenure.domain.address.enums.DeliveryRequestType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -45,8 +46,12 @@ public class ShippingAddressCreateRequest {
 	@Size(max = 255)
 	private String addressDetail;
 
-	@Schema(description = "배송 요청사항")
-	@Size(max = 255)
+	@Schema(description = "배송 요청사항 유형. 고르지 않으면 null")
+	private DeliveryRequestType deliveryRequestType;
+
+	@Schema(description = "직접 입력한 요청사항. deliveryRequestType 이 DIRECT 일 때만 보낸다",
+			example = "배송 전에 미리 연락 바랍니다.")
+	@Size(max = 50)
 	private String deliveryRequest;
 
 	/** 첫 배송지는 고를 여지가 없어 이 값과 무관하게 기본이 된다. */

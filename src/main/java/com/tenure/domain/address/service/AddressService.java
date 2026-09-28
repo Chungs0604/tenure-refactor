@@ -69,6 +69,7 @@ public class AddressService {
 				request.getZipcode(),
 				request.getAddress(),
 				request.getAddressDetail(),
+				request.getDeliveryRequestType(),
 				request.getDeliveryRequest(),
 				asDefault
 		);
@@ -94,6 +95,7 @@ public class AddressService {
 				request.getZipcode(),
 				request.getAddress(),
 				request.getAddressDetail(),
+				request.getDeliveryRequestType(),
 				request.getDeliveryRequest()
 		);
 

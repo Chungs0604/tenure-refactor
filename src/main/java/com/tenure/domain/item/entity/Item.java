@@ -67,7 +67,7 @@ public class Item extends BaseEntity {
 
 	/** '착용 대상'. 예 '남성복' */
 	@Enumerated(EnumType.STRING)
-	@Column(name = "wear_target", length = 10)
+	@Column(name = "wear_target", nullable = false, length = 10)
 	private WearTarget wearTarget;
 
 	/** '대표 사진' (필수 표시 *). 저장소 키를 넣는다 (DEC-006) */

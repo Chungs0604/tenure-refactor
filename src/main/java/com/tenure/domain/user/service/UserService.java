@@ -137,7 +137,8 @@ public class UserService {
 
 		ShippingAddress shippingAddress = ShippingAddress.register(
 				user, address.getRecipientName(), address.getPhone(), address.getZipcode(),
-				address.getAddress(), address.getAddressDetail(), address.getDeliveryRequest(), true
+				address.getAddress(), address.getAddressDetail(),
+				address.getDeliveryRequestType(), address.getDeliveryRequest(), true
 		);
 
 		shippingAddressRepository.save(shippingAddress);
