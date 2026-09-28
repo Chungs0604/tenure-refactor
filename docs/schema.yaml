@@ -1649,6 +1649,13 @@ entities:
     nullable: false
     source: design
     evidence: '''휴대폰 번호'' / ''연락처'' 010-1234-5678'
+  - name: zipcode
+    column: zipcode
+    db_type: VARCHAR(10)
+    java_type: String
+    nullable: false
+    source: design
+    evidence: '''우편번호'' 07027. 배송지 추가 화면(4245:46172)의 첫 입력칸이며 주소 검색이 도로명주소와 함께 돌려준다'
   - name: address
     column: address
     db_type: VARCHAR(255)
@@ -3808,6 +3815,13 @@ entities:
     nullable: false
     source: design
     evidence: '''연락처'' 010-1234-5678'
+  - name: zipcode
+    column: zipcode
+    db_type: VARCHAR(10)
+    java_type: String
+    nullable: false
+    source: inferred
+    evidence: 거래 상세에는 표시되지 않지만 배송지 값 전체를 스냅샷해야 한다(DEC-013). 택배 접수에 필요하다
   - name: address
     column: address
     db_type: VARCHAR(255)

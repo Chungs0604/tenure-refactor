@@ -40,6 +40,7 @@ class UserCreateRequestBindingTest {
 				  "address": {
 				    "recipientName": "홍길동",
 				    "phone": "010-1234-5678",
+				    "zipcode": "07027",
 				    "address": "서울특별시 동작구 상도로 369"
 				  }
 				}""";

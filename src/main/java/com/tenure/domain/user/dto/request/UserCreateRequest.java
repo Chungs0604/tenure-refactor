@@ -126,7 +126,12 @@ public class UserCreateRequest {
 		@NotBlank
 		private String phone;
 
-		@Schema(description = "주소")
+		@Schema(description = "우편번호", example = "07027")
+		@NotBlank
+		@Size(max = 10)
+		private String zipcode;
+
+		@Schema(description = "도로명주소")
 		@NotBlank
 		private String address;
 

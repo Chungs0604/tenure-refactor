@@ -50,6 +50,10 @@ public class ShippingAddress extends BaseEntity {
 	@Column(name = "phone", nullable = false, length = 20)
 	private String phone;
 
+	/** '우편번호' 07027. 주소 검색이 도로명주소와 함께 돌려준다 */
+	@Column(name = "zipcode", nullable = false, length = 10)
+	private String zipcode;
+
 	/** '주소' 서울특별시 동작구 상도로 369. '계정 주소 검색' 프레임 존재 */
 	@Column(name = "address", nullable = false, length = 255)
 	private String address;
@@ -66,14 +70,16 @@ public class ShippingAddress extends BaseEntity {
 	@Column(name = "is_default", nullable = false)
 	private Boolean isDefault;
 
-	/** 배송지 등록. 첫 배송지는 기본으로 지정된다 (API-021). */
+	/** 배송지 등록. 첫 배송지는 기본으로 지정된다. */
 	public static ShippingAddress register(User user, String recipientName, String phone,
-			String address, String addressDetail, String deliveryRequest, boolean isDefault
+			String zipcode, String address, String addressDetail, String deliveryRequest,
+			boolean isDefault
 	) {
 		return ShippingAddress.builder()
 				.user(user)
 				.recipientName(recipientName)
 				.phone(phone)
+				.zipcode(zipcode)
 				.address(address)
 				.addressDetail(addressDetail)
 				.deliveryRequest(deliveryRequest)

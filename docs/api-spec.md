@@ -750,6 +750,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 | `address.recipientName` | String | O | — | — |
 | `address.phone` | String | O | — | — |
 | `address.address` | String | O | — | — |
+| `address.zipcode` | String | O | 10자 이내 | 우편번호 |
 | `address.addressDetail` | String |  | — | — |
 | `address.deliveryRequest` | String |  | — | — |
 
@@ -972,7 +973,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 배송지 목록. 인증 **필요**. 관련 화면 SCR-006.
 
-응답 `ShippingAddressResponse[]` — `{ id, recipientName, phone, address, addressDetail, deliveryRequest, isDefault }`. 개수가 적어 페이징하지 않는다(기본 배송지 우선 정렬).
+응답 `ShippingAddressResponse[]` — `{ id, recipientName, phone, zipcode, address, addressDetail, deliveryRequest, isDefault }`. 개수가 적어 페이징하지 않는다(기본 배송지 우선 정렬).
 
 **응답** (`data` 배열)
 
@@ -982,6 +983,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 | `recipientName` | String | 수령인 |
 | `phone` | String | — |
 | `address` | String | — |
+| `zipcode` | String | 우편번호 |
 | `addressDetail` | String | — |
 | `deliveryRequest` | String | — |
 | `isDefault` | Boolean | — |
@@ -997,6 +999,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
       "recipientName": "<String>",
       "phone": "<String>",
       "address": "<String>",
+      "zipcode": "07027",
       "addressDetail": "<String>",
       "deliveryRequest": "<String>",
       "isDefault": true
@@ -1011,7 +1014,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 배송지 추가. 인증 **필요**. 관련 화면 SCR-006, SCR-002.
 
-요청 `ShippingAddressCreateRequest` — `recipientName` `phone` `address` `addressDetail?` `deliveryRequest?` `isDefault?`. 첫 배송지는 자동으로 기본이 된다. 회원가입(API-012)에서도 같은 스키마를 재사용한다.
+요청 `ShippingAddressCreateRequest` — `recipientName` `phone` `zipcode` `address` `addressDetail?` `deliveryRequest?` `isDefault?`. 첫 배송지는 자동으로 기본이 된다. 회원가입(API-012)에서도 같은 스키마를 재사용한다.
 
 **요청 본문**
 
@@ -1019,7 +1022,8 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 |---|---|:--:|---|---|
 | `recipientName` | String | O | — | — |
 | `phone` | String | O | — | — |
-| `address` | String | O | — | — |
+| `zipcode` | String | O | 10자 이내 | 우편번호 |
+| `address` | String | O | — | 도로명주소 |
 | `addressDetail` | String |  | — | — |
 | `deliveryRequest` | String |  | — | — |
 | `isDefault` | Boolean |  | 첫 배송지는 자동 true | — |
@@ -1055,7 +1059,8 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 |---|---|:--:|---|---|
 | `recipientName` | String | O | — | — |
 | `phone` | String | O | — | — |
-| `address` | String | O | — | — |
+| `zipcode` | String | O | 10자 이내 | 우편번호 |
+| `address` | String | O | — | 도로명주소 |
 | `addressDetail` | String |  | — | — |
 | `deliveryRequest` | String |  | — | — |
 

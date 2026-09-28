@@ -136,8 +136,8 @@ public class UserService {
 		UserCreateRequest.AddressRequest address = request.getAddress();
 
 		ShippingAddress shippingAddress = ShippingAddress.register(
-				user, address.getRecipientName(), address.getPhone(), address.getAddress(),
-				address.getAddressDetail(), address.getDeliveryRequest(), true
+				user, address.getRecipientName(), address.getPhone(), address.getZipcode(),
+				address.getAddress(), address.getAddressDetail(), address.getDeliveryRequest(), true
 		);
 
 		shippingAddressRepository.save(shippingAddress);

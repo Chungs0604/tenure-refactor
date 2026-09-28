@@ -52,6 +52,10 @@ public class OrderShipment {
 	@Column(name = "phone", nullable = false, length = 20)
 	private String phone;
 
+	/** '우편번호' 07027 — 거래 시점 스냅샷 */
+	@Column(name = "zipcode", nullable = false, length = 10)
+	private String zipcode;
+
 	/** '주소' 서울특별시 동작구 상도로 369 */
 	@Column(name = "address", nullable = false, length = 255)
 	private String address;

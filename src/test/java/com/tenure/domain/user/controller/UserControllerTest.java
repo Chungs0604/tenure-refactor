@@ -224,6 +224,18 @@ class UserControllerTest extends ControllerSliceTestSupport {
 		}
 
 		@Test
+		@DisplayName("배송지 우편번호가 없으면 400 을 반환한다")
+		void signUp_missingZipcode_returnsBadRequest() throws Exception {
+			// 가입 화면에는 우편번호 칸이 없지만 주소 검색 결과에 들어 있어 보낼 수 있다.
+			// 배송지 추가와 같은 규칙이라야 데이터가 한 종류로 유지된다
+			expectBadRequest(request(it -> it.address(UserCreateRequest.AddressRequest.builder()
+					.recipientName("홍길동")
+					.phone("010-1234-5678")
+					.address("서울특별시 동작구 상도로 369")
+					.build())));
+		}
+
+		@Test
 		@DisplayName("배송지의 필수 항목이 비어 있으면 400 을 반환한다")
 		void signUp_blankAddressField_returnsBadRequest() throws Exception {
 			// 중첩 DTO 는 @Valid 가 전파되어야 걸린다 — 빠뜨리면 조용히 통과한다
@@ -552,6 +564,7 @@ class UserControllerTest extends ControllerSliceTestSupport {
 				.address(UserCreateRequest.AddressRequest.builder()
 						.recipientName("홍길동")
 						.phone("010-1234-5678")
+						.zipcode("07027")
 						.address("서울특별시 동작구 상도로 369")
 						.addressDetail("104동 201호")
 						.build());
