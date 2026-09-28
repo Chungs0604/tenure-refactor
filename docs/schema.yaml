@@ -985,6 +985,53 @@ enums:
     CAPTURED: captured_at
     RELEASED: released_at
     REFUNDED: refunded_at
+- name: BankCode
+  domain: payout
+  values:
+  - KOOKMIN
+  - SHINHAN
+  - HANA
+  - WOORI
+  - SC_FIRST
+  - NONGHYUP
+  - SUHYUP
+  - IBK
+  - KDB
+  - POST_OFFICE
+  - KAKAO_BANK
+  - TOSS_BANK
+  - K_BANK
+  - SAEMAUL
+  - SHINHYUP
+  - BUSAN
+  - IM
+  - KYONGNAM
+  - GWANGJU
+  - JEONBUK
+  labels:
+    KOOKMIN: KB국민은행
+    SHINHAN: 신한은행
+    HANA: 하나은행
+    WOORI: 우리은행
+    SC_FIRST: SC제일은행
+    NONGHYUP: NH농협은행
+    SUHYUP: Suhyup수협
+    IBK: IBK기업은행
+    KDB: KDB산업은행
+    POST_OFFICE: 우체국
+    KAKAO_BANK: 카카오뱅크
+    TOSS_BANK: 토스뱅크
+    K_BANK: 케이뱅크
+    SAEMAUL: 새마을금고
+    SHINHYUP: 신협
+    BUSAN: 부산은행
+    IM: 대구(iM)은행
+    KYONGNAM: 경남은행
+    GWANGJU: 광주은행
+    JEONBUK: 전북은행
+  source: design
+  evidence: 정산 계좌 추가 화면의 '은행' 입력. 화면 예시는 '토스뱅크' 하나뿐이라 목록은 국내 주요 은행 20종으로 확정했다. 금융결제원 3자리 코드는 enum 필드로 함께 들고 있다가 송금 연동 시 넘긴다
+  value_evidence_table: payout_account
 - name: CourierCode
   values:
   - CJ_LOGISTICS
@@ -1745,10 +1792,11 @@ entities:
   - name: bankCode
     column: bank_code
     db_type: VARCHAR(20)
-    java_type: String
+    java_type: BankCode
     nullable: false
+    enum: BankCode
     source: design
-    evidence: '''은행'' 드롭다운. 예 ''토스뱅크'''
+    evidence: 정산 계좌 추가 화면의 '은행' 입력. 예 '토스뱅크'. 화면은 텍스트 필드지만 자유 입력을 받으면 같은 은행이 여러 표기로 쌓여 송금 연동 때 정리할 수 없다 — 드롭다운으로 확정했다
   - name: accountNumber
     column: account_number
     db_type: VARCHAR(50)
@@ -1769,8 +1817,8 @@ entities:
     java_type: Boolean
     nullable: false
     default: false
-    source: inferred
-    evidence: 복수 계좌 등록 가능한 목록 화면('정산계좌 관리')
+    source: design
+    evidence: 정산 계좌 관리 목록(4684:54428)의 라디오 버튼과 '기본' 배지. 기본 계좌에만 삭제 버튼이 없고 하단 CTA 가 '변경하기' 다
   - name: createdAt
     column: created_at
     db_type: DATETIME(6)
@@ -1790,11 +1838,28 @@ entities:
     columns:
     - user_id
     unique: false
+  - name: uk_payout_account_default
+    columns:
+    - '(IF(is_default, user_id, NULL))'
+    unique: true
+    note: 기본 계좌는 사용자당 최대 1건. 배송지와 같은 함수 인덱스다 (DEC-016)
   constraints:
   - rule: 정산 미완료(settlement.settled_at IS NULL) 거래가 있으면 삭제 불가
     enforced_by: application
     source: design
     evidence: '''삭제할때마다 오버레이 모달이 뜹니다!'''
+  - rule: 사용자당 기본 계좌는 최대 1건이다. 배송지와 달리 0건이 정상이다 — 가입은 계좌를 만들지 않고 판매 전환 때 처음 등록한다
+    enforced_by: db
+    source: design
+    evidence: 정산 계좌 관리 목록의 라디오 버튼과 '기본' 배지. 선택은 하나뿐이다
+  - rule: 첫 계좌는 자동으로 기본이 된다. 등록 요청은 is_default 를 받지 않는다
+    enforced_by: application
+    source: design
+    evidence: 정산 계좌 추가 화면의 입력 필드가 은행·예금주·계좌 번호 3개뿐이고 기본 설정 체크박스가 없다
+  - rule: 기본 계좌는 삭제할 수 없다. 다른 계좌를 기본으로 지정한 뒤에 지운다
+    enforced_by: application
+    source: design
+    evidence: 목록에서 기본 계좌에만 삭제 버튼이 없다
 - name: NotificationSetting
   table: notification_setting
   domain: notification
@@ -5597,7 +5662,7 @@ design_decisions:
   - DB 유니크 제약(함수 인덱스)
   decision: DB 유니크 제약. MySQL 은 부분 유니크가 없어 함수 인덱스로 건다
   rationale: '순서만으로는 동시 요청에서 둘 다 기본이 될 수 있었다. 락은 앞으로 is_default 를 건드리는 모든 코드가 기억해야 하지만 제약은 잊어도 깨지지 않는다 — follow 의 CHECK 제약과 같은 기준이다. UNIQUE ((IF(is_default, user_id, NULL))) 로 걸면 유니크 인덱스가 NULL 중복을 허용하므로 비기본은 몇 개든 쌓이고 기본만 사용자당 1건으로 묶인다. (user_id, is_default) 복합 유니크는 비기본을 2개 이상 못 갖게 돼 쓸 수 없다. 해제는 즉시 실행되는 벌크 UPDATE 로 내보낸다 — Hibernate 가 flush 시 INSERT 를 UPDATE 보다 먼저 실행해 엔티티로 해제하면 새 기본이 먼저 들어가 인덱스에 걸린다. 그 벌크 UPDATE 가 현재 기본 행에 X 락을 잡아 직렬화 게이트를 겸하므로 별도 락이 필요 없다 — 동시 요청이 모두 성공하고 유니크 위반이 나지 않음을 실측으로 확인했다. 제약은 게이트가 없는 극단에서의 최후 방어다'
-  revisit_when: 정산 계좌(payout_account)도 같은 is_default 구조다. 구현할 때 같은 인덱스를 검토한다. 유니크 위반이 실제로 관측되면 DataIntegrityViolationException 핸들러를 둔다 — 지금은 전용 핸들러가 없어 500 이 된다
+  revisit_when: 정산 계좌(payout_account)에도 같은 함수 인덱스를 적용했다(uk_payout_account_default). 다른 점은 0건이 정상이라 '최대 1건'이라는 것뿐이다. 유니크 위반이 실제로 관측되면 DataIntegrityViolationException 핸들러를 둔다 — 지금은 전용 핸들러가 없어 500 이 된다
 - id: DEC-101
   topic: 타인에게 보이는 프로필 필드 — 등급·키·몸무게는 공개, 성별은 비공개
   considered:

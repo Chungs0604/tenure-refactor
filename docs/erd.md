@@ -268,7 +268,7 @@ erDiagram
     payout_account {
         bigint id PK
         bigint user_id
-        varchar bank_code
+        varchar bank_code "BankCode"
         varchar account_number
         varchar account_holder
         boolean is_default
@@ -923,16 +923,19 @@ erDiagram
 |---|---|---|:--:|:--:|:--:|---|---|
 | `id` | BIGINT | Long | O | O |  | `inferred` | PK 관례 |
 | `user_id` | BIGINT | Long |  | O |  | `inferred` | 소유자 FK |
-| `bank_code` | VARCHAR(20) | String |  | O |  | `design` | '은행' 드롭다운. 예 '토스뱅크' |
+| `bank_code` | VARCHAR(20) | BankCode |  | O |  | `design` | '은행' 드롭다운. 예 '토스뱅크'. 자유 입력을 받으면 같은 은행이 여러 표기로 쌓여 송금 연동 때 정리할 수 없다 |
 | `account_number` | VARCHAR(50) | String |  | O |  | `design` | '계좌 번호' 1111-1111-1111 |
 | `account_holder` | VARCHAR(50) | String |  | O |  | `design` | '예금주' 김유진 |
-| `is_default` | BOOLEAN | Boolean |  | O |  | `inferred` | 복수 계좌 등록 가능한 목록 화면('정산계좌 관리') |
+| `is_default` | BOOLEAN | Boolean |  | O |  | `design` | 목록의 라디오 버튼과 '기본' 배지. 기본 계좌에는 삭제 버튼이 없다 |
 | `created_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 감사 컬럼 관례 |
 | `updated_at` | DATETIME(6) | LocalDateTime |  | O |  | `design` | '정산계좌 수정하기' |
 
-인덱스: `ix_payout_account_user`(user_id)
+인덱스: `ix_payout_account_user`(user_id), `uk_payout_account_default`((IF(is_default, user_id, NULL))) · UNIQUE
 
 > 제약 — 정산 미완료(settlement.settled_at IS NULL) 거래가 있으면 삭제 불가 *(강제: application)*
+> 제약 — 사용자당 기본 계좌는 최대 1건이다. 배송지와 달리 0건이 정상이다 — 가입은 계좌를 만들지 않고 판매 전환 때 처음 등록한다 *(강제: db)*
+> 제약 — 첫 계좌는 자동으로 기본이 된다. 등록 요청은 is_default 를 받지 않는다 *(강제: application)*
+> 제약 — 기본 계좌는 삭제할 수 없다. 다른 계좌를 기본으로 지정한 뒤에 지운다 *(강제: application)*
 
 #### `notification_setting` (NotificationSetting)
 
@@ -1965,6 +1968,7 @@ INSERT 대신 `voided_at` 을 `NULL` 로 되돌리는 규칙을 제약으로 두
 | 운송장 재입력 | 배송 완료(`DELIVERED`) 전까지만. 이전 번호는 남기지 않는다 | 애플리케이션 |
 | 판매 중 대표 OOTD 게시물 삭제 불가 | 판매 화면이 중간에 비지 않도록 | 애플리케이션 |
 | 정산 대기 중 계좌 삭제 불가 | 정산할 계좌가 사라지면 안 됨 | 애플리케이션 |
+| 기본 정산 계좌 삭제 불가 | 목록에서 기본 계좌에만 삭제 버튼이 없다. 다른 계좌를 기본으로 지정한 뒤 지운다 | 애플리케이션 |
 | 미판매+구매제안X 상품은 채팅 개설 불가 | "'미판매 + 구매제안X'인 상품이면 채팅이 애초에 열리지는 않지만" | 애플리케이션 |
 | 비밀번호 8자 이상 | "(8자 이상)" | 애플리케이션 |
 | 인증번호 3분 / 토큰 10분 | 인증번호는 대입 창을 좁히고, 토큰은 가입 플로우를 마칠 여유를 준다 | Redis TTL |

@@ -74,6 +74,8 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | API-031 | `POST` | `/api/v1/payout-accounts` | 정산 계좌 등록 | SCR-007 | PayoutAccount | O |
 | API-032 | `PUT` | `/api/v1/payout-accounts/{accountId}` | 정산 계좌 수정 | SCR-007 | PayoutAccount | O |
 | API-033 | `DELETE` | `/api/v1/payout-accounts/{accountId}` | 정산 계좌 삭제 | SCR-007 | PayoutAccount | O |
+| API-034 | `PATCH` | `/api/v1/payout-accounts/{accountId}/default` | 기본 정산 계좌 지정 | SCR-007 | PayoutAccount | O |
+| API-035 | `GET` | `/api/v1/payout-accounts/banks` | 은행 목록 (드롭다운 선택지) | SCR-007 | —(BankCode enum) | O |
 | API-040 | `GET` | `/api/v1/notification-settings` | 알림 수신 설정 조회 | SCR-008 | NotificationSetting | O |
 | API-041 | `PATCH` | `/api/v1/notification-settings` | 알림 수신 설정 변경 | SCR-008 | NotificationSetting | O |
 | API-050 | `GET` | `/api/v1/users/{userId}/followers` | 팔로워 목록 | SCR-011 | Follow, User | O |
@@ -164,7 +166,7 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | `user_block` | 없음(목록 화면 없음) | 없음 | API-054 | 없음 | API-055 |
 | `report` | 없음(관리자 기능 범위 밖) | 없음 | API-056 | 없음(append-only) | 없음(append-only) |
 | `shipping_address` | API-020 | 없음(목록에 전체 필드) | API-021 | API-022 API-024 | API-023 |
-| `payout_account` | API-030 | 없음(목록에 전체 필드) | API-031 | API-032 | API-033 |
+| `payout_account` | API-030 | 없음(목록에 전체 필드) | API-031 | API-032 API-034 | API-033 |
 | `notification_setting` | API-040 | 없음 | 없음(가입 시 기본값 생성) | API-041 | 없음(계정 종속) |
 | `post` | API-070 API-081 API-082 | API-071 | API-072 | API-073 | API-074 |
 | `post_image` | 없음(게시물에 중첩) | 없음 | API-072 에 포함 | API-073 에 포함 | 없음(부모 종속) |
@@ -211,7 +213,7 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | SCR-004 | 계정 정보 (로그인 정보) | read | O | API-013 |
 | SCR-005 | 프로필 수정 | read, update | O | API-014 API-015 |
 | SCR-006 | 배송지 관리 | read, create, update, delete | O | API-020 API-021 API-022 API-023 API-024 |
-| SCR-007 | 정산 계좌 관리 | read, create, update, delete | O | API-030 API-031 API-032 API-033 |
+| SCR-007 | 정산 계좌 관리 | read, create, update, delete | O | API-030 API-031 API-032 API-033 API-034 API-035 |
 | SCR-008 | 알림 설정 | read, update | O | API-040 API-041 |
 | SCR-009 | 회원탈퇴 | delete | O | API-016 |
 | SCR-010 | 로그아웃 | — | O | API-002 |
@@ -339,9 +341,10 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 
 | 코드 | HTTP | 메시지 | 발생 API |
 |---|:--:|---|---|
-| `PAYOUT_404` | 404 | 정산 계좌를 찾을 수 없습니다. | API-032, API-033 |
-| `PAYOUT_403` | 403 | 본인의 정산 계좌가 아닙니다. | API-032, API-033 |
+| `PAYOUT_404` | 404 | 정산 계좌를 찾을 수 없습니다. | API-032, API-033, API-034 |
+| `PAYOUT_403` | 403 | 본인의 정산 계좌가 아닙니다. | API-032, API-033, API-034 |
 | `PAYOUT_409_PENDING_SETTLEMENT` | 409 | 정산 대기 중인 거래가 있어 삭제할 수 없습니다. | API-033 |
+| `PAYOUT_409_LAST_DEFAULT` | 409 | 기본 정산 계좌는 삭제할 수 없습니다. | API-033 |
 | `PAYOUT_400_REQUIRED` | 400 | 판매 전환을 위해 정산 계좌를 먼저 등록해주세요. | API-111 |
 
 ### FollowErrorCode
@@ -1121,17 +1124,22 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 정산 계좌 목록. 인증 **필요**. 관련 화면 SCR-007.
 
-응답 `PayoutAccountResponse[]` — `{ id, bankCode, accountNumber, accountHolder, isDefault }`. 계좌번호는 마스킹해서 내려준다.
+응답 `PayoutAccountResponse[]` — `{ id, bankCode, bankName, accountNumber, accountHolder, isDefault }`.
+기본 계좌가 맨 위, 그다음 최근 등록 순이다.
+
+**계좌번호는 마스킹하지 않는다.** 수정 화면(`4684:54658`)이 기존 값으로 채워진 폼을 띄우는데 단건 조회 API가 없어
+이 목록 응답이 폼의 입력값이 된다. 마스킹하면 수정이 깨진다. 본인 계좌만 내려주므로 가릴 대상도 아니다.
 
 **응답** (`data` 배열)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `id` | Long | — |
-| `bankCode` | String | 은행 |
-| `accountNumber` | String | 마스킹해서 내려준다 |
+| `bankCode` | BankCode | 은행 enum 값. 예 `TOSS_BANK` |
+| `bankName` | String | 화면 표시명. 예 `토스뱅크` |
+| `accountNumber` | String | 원문 |
 | `accountHolder` | String | 예금주 |
-| `isDefault` | Boolean | — |
+| `isDefault` | Boolean | 기본 계좌면 true. 화면의 `기본` 배지 |
 
 ```json
 {
@@ -1141,9 +1149,10 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
   "data": [
     {
       "id": 1,
-      "bankCode": "<String>",
-      "accountNumber": "<String>",
-      "accountHolder": "<String>",
+      "bankCode": "TOSS_BANK",
+      "bankName": "토스뱅크",
+      "accountNumber": "123456-789012",
+      "accountHolder": "홍길동",
       "isDefault": true
     }
   ]
@@ -1156,16 +1165,19 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 정산 계좌 등록. 인증 **필요**. 관련 화면 SCR-007.
 
-요청 `{ bankCode, accountNumber, accountHolder, isDefault? }`. **판매 전환의 선행 조건**이라 판매를 시작하려면 최소 1건이 필요하다.
+요청 `{ bankCode, accountHolder, accountNumber }`. **판매 전환의 선행 조건**이라 판매를 시작하려면 최소 1건이 필요하다.
+
+**`isDefault` 를 받지 않는다.** 추가 화면(`4684:54402`)의 입력 필드는 은행·예금주·계좌 번호 3개뿐이고
+기본 설정 체크박스가 없다 — 배송지 추가와 다른 점이다. 첫 계좌만 자동으로 기본이 되고,
+이후 기본 변경은 목록 화면의 라디오 + `변경하기`(API-034)로 한다.
 
 **요청 본문**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `bankCode` | String | O | — | — |
-| `accountNumber` | String | O | — | — |
-| `accountHolder` | String | O | — | — |
-| `isDefault` | Boolean |  | — | — |
+| `bankCode` | BankCode | O | enum 20종 | 드롭다운 선택. 선택지는 API-035 |
+| `accountHolder` | String | O | 최대 50자 | 예금주 |
+| `accountNumber` | String | O | 최대 50자 | 계좌 번호 |
 
 **응답** (`data`)
 
@@ -1191,14 +1203,15 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 정산 계좌 수정. 인증 **필요**. 관련 화면 SCR-007.
 
 전체 수정(PUT). 과거 정산은 `settlement` 스냅샷을 쓰므로 영향이 없다.
+`isDefault` 는 이 API로 바꾸지 않는다 — 수정 화면에 기본 설정 UI가 없다.
 
 **요청 본문**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `bankCode` | String | O | — | — |
-| `accountNumber` | String | O | — | — |
-| `accountHolder` | String | O | — | — |
+| `bankCode` | BankCode | O | enum 20종 | — |
+| `accountHolder` | String | O | 최대 50자 | — |
+| `accountNumber` | String | O | 최대 50자 | — |
 
 **응답** (`data`)
 
@@ -1223,7 +1236,11 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 정산 계좌 삭제. 인증 **필요**. 관련 화면 SCR-007.
 
-하드 삭제. **정산 미완료 거래가 있으면 거부한다** — 입금할 계좌가 사라지기 때문이다.
+하드 삭제. 거부하는 경우가 둘이다.
+
+- **기본 계좌** — 화면에서 기본 계좌에만 삭제 버튼이 없다(`4684:54428`). 다른 계좌를 기본으로 지정한 뒤에 지운다.
+  승격 대상을 시스템이 고르면 어느 계좌가 기본이 됐는지 사용자가 알 수 없다 — 배송지와 같은 규칙이다
+- **정산 미완료 거래** — `settlement.settled_at IS NULL` 인 건이 있으면 거부한다. 입금할 계좌가 사라지기 때문이다
 
 **경로 파라미터**
 
@@ -1233,7 +1250,58 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 **응답** `data` 는 `null` 이다.
 
-에러 — PAYOUT_404, PAYOUT_403, PAYOUT_409_PENDING_SETTLEMENT
+에러 — PAYOUT_404, PAYOUT_403, PAYOUT_409_LAST_DEFAULT, PAYOUT_409_PENDING_SETTLEMENT
+
+#### API-034 · `PATCH /api/v1/payout-accounts/{accountId}/default`
+
+기본 정산 계좌 지정. 인증 **필요**. 관련 화면 SCR-007.
+
+목록 화면에서 라디오로 계좌를 고르고 하단 `변경하기` 를 누르면 호출한다 — 배송지(API-024)와 달리
+라디오 클릭 즉시가 아니라 CTA 로 확정한다. 요청 횟수는 1회로 같다.
+기존 기본을 내리고 이 계좌를 올린다. 이미 기본이면 아무것도 바뀌지 않는다.
+
+정산은 구매 확정 시점에 계좌 값을 `settlement` 로 스냅샷하므로(`DEC-013`), 기본 계좌를 바꿔도
+이미 확정된 정산의 입금처는 달라지지 않는다.
+
+**경로 파라미터**
+
+| 필드 | 타입 | 필수 | 제약 | 설명 |
+|---|---|:--:|---|---|
+| `accountId` | Long | O | — | — |
+
+**응답** `data` 는 `null` 이다.
+
+에러 — PAYOUT_404, PAYOUT_403
+
+#### API-035 · `GET /api/v1/payout-accounts/banks`
+
+은행 목록. 인증 **필요**. 관련 화면 SCR-007.
+
+정산 계좌 추가·수정 화면의 은행 드롭다운 선택지다. `BankCode` enum 20종을 코드와 표시명으로 내려준다.
+클라이언트가 한글 표시명을 하드코딩하면 서버가 은행을 추가했을 때 따라오지 못한다.
+
+**응답** (`data` 배열)
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `code` | BankCode | 저장·전송 값. 예 `TOSS_BANK` |
+| `name` | String | 화면 표시명. 예 `토스뱅크` |
+
+```json
+{
+  "success": true,
+  "code": "COMMON_200",
+  "message": "요청에 성공했습니다.",
+  "data": [
+    {
+      "code": "KOOKMIN",
+      "name": "KB국민은행"
+    }
+  ]
+}
+```
+
+에러 — COMMON_401
 
 ### 알림
 
