@@ -1,6 +1,6 @@
 package com.tenure.domain.notification.entity;
 
-import com.tenure.domain.notification.enums.NotificationCategory;
+import com.tenure.domain.notification.enums.NotificationSettingType;
 import com.tenure.domain.user.entity.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -47,8 +47,8 @@ public class NotificationSetting {
 
 	/** 알림 화면 탭 4종 */
 	@Enumerated(EnumType.STRING)
-	@Column(name = "category", nullable = false, length = 30)
-	private NotificationCategory category;
+	@Column(name = "setting_type", nullable = false, length = 40)
+	private NotificationSettingType settingType;
 
 	/** '알림 활성화시킬 때마다 토스트 메시지' */
 	@Column(name = "enabled", nullable = false)

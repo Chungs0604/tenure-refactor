@@ -60,6 +60,10 @@ public class Notification extends BaseCreatedEntity {
 	@Column(name = "body", length = 500)
 	private String body;
 
+	/** 행 썸네일. 다형 참조라 대상과 조인할 수 없어 발행 시점에 스냅샷한다 */
+	@Column(name = "image_key", length = 500)
+	private String imageKey;
+
 	/** 딥링크 대상 종류 */
 	@Enumerated(EnumType.STRING)
 	@Column(name = "target_type", length = 30)

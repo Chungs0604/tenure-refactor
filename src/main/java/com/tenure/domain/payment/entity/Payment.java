@@ -58,6 +58,11 @@ public class Payment extends BaseEntity {
 	@Column(name = "method", nullable = false, length = 20)
 	private PaymentMethod method;
 
+	/** 제안서·거래 상세의 '결제 수단'이 '토스뱅크 1234-1234-1234' 로 표시된다.
+	 * enum 만으로는 만들 수 없어 PG 가 준 표시 문자열을 스냅샷한다 */
+	@Column(name = "method_detail", length = 100)
+	private String methodDetail;
+
 	/** 승인/확정/해제 3단계 */
 	@Enumerated(EnumType.STRING)
 	@Column(name = "status", nullable = false, length = 20)
