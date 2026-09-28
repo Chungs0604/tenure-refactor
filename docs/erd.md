@@ -1,8 +1,8 @@
-# Tenure ERD — v3
+# Tenure ERD — v5
 
 > **피그마** [Tenure UXUI 작업](https://www.figma.com/design/hnEDDkiI0V4js9JzWR2l2M/Tenure-UXUI-%EC%9E%91%EC%97%85?node-id=813-8486&m=dev)
 > **범위** 캔버스 `2. 최종 UI`(`813:8486`) 33개 섹션 전체. 보조로 `4. 랜딩페이지`(`5359:57698`)의 서비스 IA·거래 플로우
-> **생성일** 2026-09-24 · **DB** MySQL 8 · **테이블** 37개 · **컬럼** 304개
+> **생성일** 2026-09-24 · **개정** 2026-09-28(v5, 화면 재판독) · **DB** MySQL 8 · **테이블** 38개 · **컬럼** 314개
 > **정본** [`schema.yaml`](./schema.yaml) — 이 문서의 §2 관계 요약표, §4 화면 인벤토리, §5 컬럼 명세는 정본에서 생성된다
 
 ---
@@ -191,7 +191,9 @@ erDiagram
     user {
         bigint id PK
         varchar email UK
-        varchar password_hash
+        varchar password_hash "소셜이면 NULL"
+        varchar provider "UserProvider"
+        varchar provider_id
         varchar real_name
         varchar phone
         varchar nickname UK
@@ -260,6 +262,7 @@ erDiagram
         varchar zipcode
         varchar address
         varchar address_detail
+        varchar delivery_request_type "DeliveryRequestType"
         varchar delivery_request
         boolean is_default
         datetime created_at
@@ -278,7 +281,7 @@ erDiagram
     notification_setting {
         bigint id PK
         bigint user_id
-        varchar category "NotificationCategory"
+        varchar setting_type "NotificationSettingType"
         boolean enabled
         datetime updated_at
     }
@@ -316,13 +319,13 @@ erDiagram
     post {
         bigint id PK
         bigint author_id
-        varchar content
         date worn_date
         varchar aspect_ratio "AspectRatio"
         boolean quick_posted
         datetime deleted_at "soft delete"
         int like_count
         int save_count
+        int view_count
         datetime created_at
         datetime updated_at
     }
@@ -519,6 +522,7 @@ erDiagram
         bigint offer_id UK
         bigint order_id
         varchar method "PaymentMethod"
+        varchar method_detail
         varchar status "PaymentStatus"
         int amount
         varchar pg_transaction_id
@@ -561,6 +565,7 @@ erDiagram
         varchar zipcode
         varchar address
         varchar address_detail
+        varchar delivery_request_type "DeliveryRequestType"
         varchar delivery_request
         varchar courier_code "CourierCode"
         varchar tracking_no
@@ -599,6 +604,7 @@ erDiagram
     user ||--o{ chat_room_member : "user_id"
     chat_message |o--o{ chat_room_member : "last_read_message_id"
     chat_room ||--o{ chat_message : "chat_room_id"
+    chat_message ||--o{ chat_message_image : "chat_message_id"
     user ||--o{ chat_message : "sender_id"
     user ||--o{ notification : "user_id"
     user ||--o{ search_history : "user_id"
@@ -624,8 +630,14 @@ erDiagram
         bigint chat_room_id
         bigint sender_id
         varchar message_type "ChatMessageType"
-        varchar content
+        varchar content "TEXT 일 때만"
         datetime created_at
+    }
+    chat_message_image {
+        bigint id PK
+        bigint chat_message_id
+        varchar image_key
+        int sort_order
     }
     notification {
         bigint id PK
@@ -633,6 +645,7 @@ erDiagram
         varchar category "NotificationCategory"
         varchar title
         varchar body
+        varchar image_key
         varchar target_type "NotificationTargetType"
         bigint target_id
         datetime read_at
@@ -742,7 +755,9 @@ erDiagram
 |---|---|---|:--:|:--:|:--:|---|---|
 | `id` | BIGINT | Long | O | O |  | `inferred` | PK 관례 |
 | `email` | VARCHAR(255) | String |  | O | O | `design` | 회원가입 > 이메일. '이미 존재하는 이메일입니다' / '유효하지 않은 이메일입니다' |
-| `password_hash` | VARCHAR(255) | String |  | O |  | `design` | 회원가입 > 비밀번호 '(8자 이상)'. 평문 저장 불가로 해시 컬럼 |
+| `password_hash` | VARCHAR(255) | String |  |  |  | `design` | 회원가입 > 비밀번호 '(8자 이상)'. 평문 저장 불가로 해시 컬럼. 소셜 가입은 NULL (DEC-017) |
+| `provider` | VARCHAR(20) | UserProvider |  | O |  | `design` | 로그인 화면의 구글·네이버 아이콘. 이메일 가입은 `LOCAL` |
+| `provider_id` | VARCHAR(100) | String |  |  |  | `design` | 소셜 제공자의 고유 식별자. `LOCAL` 이면 NULL |
 | `real_name` | VARCHAR(50) | String |  | O |  | `design` | 로그인 정보 > 이름 '홍길동' |
 | `phone` | VARCHAR(20) | String |  | O |  | `design` | 로그인 정보 > 휴대폰번호 '821012345678' |
 | `nickname` | VARCHAR(30) | String |  | O | O | `design` | 프로필 작성 > 닉네임. '중복된 닉네임입니다' / '닉네임을 설정해주세요.' |
@@ -759,7 +774,7 @@ erDiagram
 | `created_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 감사 컬럼 관례 |
 | `updated_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 감사 컬럼 관례 |
 
-인덱스: `uk_user_email`(email) · UNIQUE, `uk_user_nickname`(nickname) · UNIQUE, `ix_user_body`(height_cm, weight_kg), `ix_user_grade_expiry`(grade, grade_expires_at)
+인덱스: `uk_user_email`(email) · UNIQUE, `uk_user_nickname`(nickname) · UNIQUE, `uk_user_provider`(provider, provider_id) · UNIQUE, `ix_user_body`(height_cm, weight_kg), `ix_user_grade_expiry`(grade, grade_expires_at)
 
 > 제약 — 레코드 승격 — 직전 30일간 '유효 OOTD'(post.deleted_at IS NULL 이면서 아이템 태그 1개 이상) 20개 이상. 기준 날짜는 post.created_at(게시일) *(강제: application)*
 > 제약 — 승격은 게시 즉시 판정한다. 게시 트랜잭션에서 직전 30일 유효 OOTD 수를 세어 20이 되는 순간 RECORD 로 올리고 grade_expires_at 을 +30일로 세팅한다 *(강제: application)*
@@ -821,7 +836,7 @@ erDiagram
 |---|---|---|:--:|:--:|:--:|---|---|
 | `id` | BIGINT | Long | O | O |  | `inferred` | PK 관례 |
 | `user_id` | BIGINT | Long |  | O | O | `inferred` | 사용자당 1건 |
-| `reason` | VARCHAR(500) | String |  |  |  | `design` | 'Tenure를 떠나시는 이유를 알려주세요' |
+| `reason` | VARCHAR(40) | WithdrawalReason |  | O |  | `design` | 회원탈퇴 화면의 드롭다운 4종. 자유 입력이 아니다 |
 | `withdrawn_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 탈퇴 시각 |
 
 인덱스: `uk_user_withdrawal_user`(user_id) · UNIQUE
@@ -866,7 +881,7 @@ erDiagram
 
 게시물·상품·사용자 신고. ReportReason 10종의 발생 근거.
 
-- **패턴** `다형 참조 (polymorphic)` — target_type + target_id 로 POST / ITEM / USER 를 가리킨다. FK 를 걸 수 없다
+- **패턴** `다형 참조 (polymorphic)` — target_type + target_id 로 POST / ITEM 을 가리킨다. FK 를 걸 수 없다
 - **삭제 정책** `D` — 신고 이력은 감사 대상. append-only. 대상 게시물·아이템이 삭제돼도 검토 가능해야 하므로 두 테이블을 soft delete 로 둔다
 - **soft delete** X
 - **정정 경로** 정정 경로 없음 — 신고 취소 화면이 없고 운영자 처리는 범위 밖이다. 잘못된 신고는 접수 상태로 남는다
@@ -877,13 +892,15 @@ erDiagram
 |---|---|---|:--:|:--:|:--:|---|---|
 | `id` | BIGINT | Long | O | O |  | `inferred` | PK 관례 |
 | `reporter_id` | BIGINT | Long |  | O |  | `design` | 신고자 |
-| `target_type` | VARCHAR(20) | ReportTargetType |  | O |  | `design` | 신고 진입점 3종 |
+| `target_type` | VARCHAR(20) | ReportTargetType |  | O |  | `design` | 신고 진입점 2종 — 게시물 더보기·상품 상세. 채팅 모달에는 신고가 없다 |
 | `target_id` | BIGINT | Long |  | O |  | `inferred` | 다형 참조라 FK 없음 |
 | `reason` | VARCHAR(40) | ReportReason |  | O |  | `design` | '신고 사유를 선택해주세요.' 드롭다운 |
 | `detail` | VARCHAR(500) | String |  |  |  | `inferred` | 상세 사유 입력란. 화면 미확인 |
 | `created_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 감사 컬럼 관례 |
 
 인덱스: `ix_report_target`(target_type, target_id), `ix_report_reporter`(reporter_id)
+
+> 제약 — `target_type` 별로 고를 수 있는 `reason` 이 다르다. **게시물** 6종(`NOT_WORN_OOTD`·`INAPPROPRIATE`·`STOLEN_PHOTO`·`SPAM`·`PRIVACY_EXPOSURE`·`IRRELEVANT`), **상품** 6종(`COUNTERFEIT`·`INFO_MISMATCH`·`STOLEN_PHOTO`·`FRAUD_EXTERNAL_TRADE`·`PROHIBITED_ITEM`·`INAPPROPRIATE`). `USER` 는 화면 미확인 *(강제: application)*
 
 #### `shipping_address` (ShippingAddress)
 
@@ -902,7 +919,8 @@ erDiagram
 | `zipcode` | VARCHAR(10) | String |  | O |  | `design` | '우편번호' 07027. 배송지 추가 화면의 첫 입력칸이며 주소 검색이 도로명주소와 함께 돌려준다 |
 | `address` | VARCHAR(255) | String |  | O |  | `design` | '주소' 서울특별시 동작구 상도로 369. '계정 주소 검색' 프레임 존재 |
 | `address_detail` | VARCHAR(255) | String |  |  |  | `design` | '상세 주소' 104동 201호 |
-| `delivery_request` | VARCHAR(255) | String |  |  |  | `design` | '배송 요청사항(선택)' |
+| `delivery_request_type` | VARCHAR(30) | DeliveryRequestType |  |  |  | `design` | '배송 요청사항(선택)' 드롭다운 4종. 미선택이면 NULL |
+| `delivery_request` | VARCHAR(50) | String |  |  |  | `design` | '직접 입력'을 고르면 열리는 텍스트 필드. 화면에 '최대 50자까지 입력 가능'. `DIRECT` 일 때만 채운다 |
 | `is_default` | BOOLEAN | Boolean |  | O |  | `design` | '기본 배송지로 설정', '클릭으로 기본 배송지 변경' |
 | `created_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 감사 컬럼 관례 |
 | `updated_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | '배송지 수정' 존재 |
@@ -949,11 +967,13 @@ erDiagram
 |---|---|---|:--:|:--:|:--:|---|---|
 | `id` | BIGINT | Long | O | O |  | `inferred` | PK 관례 |
 | `user_id` | BIGINT | Long |  | O |  | `inferred` | 소유자 FK |
-| `category` | VARCHAR(30) | NotificationCategory |  | O |  | `design` | 알림 화면 탭 4종 |
+| `setting_type` | VARCHAR(40) | NotificationSettingType |  | O |  | `design` | 알림 설정 화면의 토글 9종. 알림 목록의 탭(`NotificationCategory`)과 축이 다르다 |
 | `enabled` | BOOLEAN | Boolean |  | O |  | `design` | '알림 활성화시킬 때마다 토스트 메시지' |
 | `updated_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 감사 컬럼 관례 |
 
-인덱스: `uk_notification_setting`(user_id, category) · UNIQUE
+인덱스: `uk_notification_setting`(user_id, setting_type) · UNIQUE
+
+> 제약 — 가입 시 9종을 모두 만든다. 기본값은 항목마다 다르다 — 팔로우 알림·서비스 소식·혜택 및 마케팅만 OFF 이고 나머지는 ON *(강제: application)*
 
 ### 5.2 OOTD 게시물
 
@@ -969,18 +989,19 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 |---|---|---|:--:|:--:|:--:|---|---|
 | `id` | BIGINT | Long | O | O |  | `inferred` | PK 관례 |
 | `author_id` | BIGINT | Long |  | O |  | `design` | 게시물 작성자. OOTD 상세 상단 프로필 |
-| `content` | TEXT | String |  |  |  | `design` | 게시물 본문. 예 '안녕하세요 SSU님!' |
 | `worn_date` | DATE | LocalDate |  | O |  | `design` | '달력 아이콘 클릭' → '날짜 선택'. 마이페이지 날짜별 캘린더와 '최근 착용'의 기준 |
 | `aspect_ratio` | VARCHAR(15) | AspectRatio |  | O |  | `design` | 촬영 비율 3종 |
 | `quick_posted` | BOOLEAN | Boolean |  | O |  | `design` | '자동 태그되어 바로 게시됨'. 태그 일괄 수정 대상 판별(3일 이내)에 필요 |
 | `deleted_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | '게시물 삭제하기'. soft delete |
 | `like_count` | INT | Integer |  | O |  | `design` | OOTD 상세 하단 '♡ 1234'. 정본은 post_like 테이블 |
 | `save_count` | INT | Integer |  | O |  | `design` | OOTD 상세 하단 '🔖 1234'. 정본은 post_save 테이블 |
+| `view_count` | INT | Integer |  | O |  | `design` | 검색 결과 정렬의 '조회수 순'. Redis 카운터를 주기적으로 반영한다 (`DEC-019`) |
 | `created_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 감사 컬럼 관례 |
 | `updated_at` | DATETIME(6) | LocalDateTime |  | O |  | `design` | '완료를 누르면 게시물 전체가 수정' |
 
 인덱스: `ix_post_author_date`(author_id, deleted_at, worn_date), `ix_post_feed`(deleted_at, created_at), `ix_post_author_created`(author_id, deleted_at, created_at)
 
+> 제약 — 본문(캡션) 컬럼을 두지 않는다. 작성 플로우에 입력란이 없고 OOTD 상세에도 표시 영역이 없다. v3 의 `content` 는 홈 헤더 인사말 `안녕하세요 SSU님!` 을 본문 예시로 잘못 인용해 생긴 컬럼이다 *(강제: application)*
 > 제약 — 판매 중(item_listing.sale_status=ON_SALE)인 상품의 대표 OOTD로 걸린 게시물은 삭제 불가 *(강제: application)*
 
 #### `post_image` (PostImage)
@@ -1096,7 +1117,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `parent_id` | BIGINT | Long |  |  |  | `design` | depth=1 이면 NULL |
 | `name` | VARCHAR(50) | String |  | O |  | `design` | 대분류 10종(화면 순서): 아우터·상의·하의·신발·가방·모자·치마·원피스·액세서리·주얼리. 세부 102종. 값은 `V2__seed_category.sql` 이 정본 |
 | `depth` | INT | Integer |  | O |  | `design` | 1=카테고리, 2=세부 카테고리 |
-| `size_scheme` | VARCHAR(30) | String |  |  |  | `design` | '아이템 상세 정보 수정 (카테고리마다 세부 카테고리, 사이즈 다름)' — 카테고리별 사이즈 체계가 다르다(→ Q6) |
+| `size_scheme` | VARCHAR(30) | String |  |  |  | `design` | 체계 4종 확인 — ALPHA(XS~3XL) / KR_NUMERIC(85~115) / EU_NUMERIC(36~50) / FREE_NUMBER(0~6). 대분류별 매핑은 미확정(→ Q6) |
 | `sort_order` | INT | Integer |  | O |  | `inferred` | 드롭다운 노출 순서 |
 
 인덱스: `ix_category_parent`(parent_id, sort_order)
@@ -1117,7 +1138,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `brand_name` | VARCHAR(100) | String |  | O |  | `design` | '브랜드명'. 예 'Levis' |
 | `category_id` | BIGINT | Long |  | O |  | `design` | '세부 카테고리'(depth=2)를 가리킨다 |
 | `size_label` | VARCHAR(20) | String |  |  |  | `design` | '사이즈'. 예 'L' |
-| `wear_target` | VARCHAR(10) | WearTarget |  |  |  | `design` | '착용 대상'. 예 '남성복' |
+| `wear_target` | VARCHAR(10) | WearTarget |  | O |  | `design` | '착용 대상'. 등록·판매 전환 모두 필수 표시(*). 칩 라벨은 화면마다 다르다 — 등록 '남자/여자/공용', 판매 전환 '남성복/여성복/공용' |
 | `cover_image_key` | VARCHAR(500) | String |  | O |  | `design` | '대표 사진' (필수 표시 *). 저장소 키를 넣는다 (DEC-006) |
 | `description` | TEXT | String |  |  |  | `design` | '제품 설명' / '상품 설명' |
 | `first_owned_date` | DATE | LocalDate |  |  |  | `design` | '최초 보유 날짜'. 예 25.02.8. 최초 item_ownership 구간의 start_date 와 같은 값이며, 거래 전까지만 수정할 수 있다 |
@@ -1383,6 +1404,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `method` | VARCHAR(20) | PaymentMethod |  | O |  | `design` | '결제 수단' 3종 |
 | `status` | VARCHAR(20) | PaymentStatus |  | O |  | `design` | 승인/확정/해제 3단계 |
 | `amount` | INT | Integer |  | O |  | `design` | '최종 결제 금액' / '결제 금액' |
+| `method_detail` | VARCHAR(100) | String |  |  |  | `design` | 제안서·거래 상세의 '결제 수단'이 `토스뱅크 1234-1234-1234` 로 표시된다. enum 만으로는 못 그려 PG 가 준 표시 문자열을 스냅샷한다 |
 | `pg_transaction_id` | VARCHAR(100) | String |  |  |  | `inferred` | PG 연동 식별자. 화면 미표시 |
 | `authorized_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | '결제 승인이 임시로 확보되었습니다' |
 | `captured_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | '판매자가 수락하면 최종 결제되며' |
@@ -1450,7 +1472,8 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `zipcode` | VARCHAR(10) | String |  | O |  | `inferred` | '우편번호' 07027 — 거래 상세에 표시되지 않지만 배송지 값 전체를 스냅샷한다 |
 | `address` | VARCHAR(255) | String |  | O |  | `design` | '주소' 서울특별시 동작구 상도로 369 |
 | `address_detail` | VARCHAR(255) | String |  |  |  | `design` | '상세주소' 112동 201호 |
-| `delivery_request` | VARCHAR(255) | String |  |  |  | `design` | '요청사항' 배송 전에 미리 연락 바랍니다. |
+| `delivery_request_type` | VARCHAR(30) | DeliveryRequestType |  |  |  | `design` | 배송지의 요청사항 유형을 스냅샷 (DEC-013) |
+| `delivery_request` | VARCHAR(50) | String |  |  |  | `design` | '요청사항' 배송 전에 미리 연락 바랍니다. `DIRECT` 일 때만 채워진다 |
 | `courier_code` | VARCHAR(30) | CourierCode |  |  |  | `design` | '택배사' CJ 택배 |
 | `tracking_no` | VARCHAR(50) | String |  |  |  | `design` | '운송장 번호' 1234123412349 |
 | `shipped_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | '상품 발송' 25.05.28 |
@@ -1563,7 +1586,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `chat_room_id` | BIGINT | Long |  | O |  | `inferred` | 부모 FK |
 | `sender_id` | BIGINT | Long |  | O |  | `design` | 발신자. 좌/우 말풍선 구분 |
 | `message_type` | VARCHAR(10) | ChatMessageType |  | O |  | `design` | 텍스트 / '사진' |
-| `content` | TEXT | String |  | O |  | `design` | 메시지 본문. IMAGE 면 저장소 키 (DEC-006) |
+| `content` | TEXT | String |  |  |  | `design` | 메시지 본문. `TEXT` 일 때만 채운다 — `IMAGE` 는 `chat_message_image` 에 여러 장을 담는다 |
 | `created_at` | DATETIME(6) | LocalDateTime |  | O |  | `design` | '오후 6:30', 날짜 구분선 '2026.06.21 월요일' |
 
 인덱스: `ix_chat_message_room`(chat_room_id, id), `ix_chat_message_sender`(sender_id)
@@ -1587,6 +1610,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `category` | VARCHAR(30) | NotificationCategory |  | O |  | `design` | 탭 4종 |
 | `title` | VARCHAR(200) | String |  | O |  | `design` | 알림 목록 항목 제목 |
 | `body` | VARCHAR(500) | String |  |  |  | `design` | 알림 본문 |
+| `image_key` | VARCHAR(500) | String |  |  |  | `design` | 행 썸네일. 다형 참조라 조인할 수 없어 발행 시점에 키를 스냅샷한다 |
 | `target_type` | VARCHAR(30) | NotificationTargetType |  |  |  | `inferred` | 딥링크 대상 종류 |
 | `target_id` | BIGINT | Long |  |  |  | `inferred` | 다형 참조라 FK 없음 |
 | `read_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | 읽음 표시 (읽지 않은 항목 강조) |
@@ -1629,7 +1653,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 |---|---|---|
 | **A** | `deleted_at` 보유 | `post`, `item` |
 | **B** | 상태 컬럼으로 대체 | `user`(status), `item_listing`(sale_status·closed_at), `chat_room`, `chat_room_member`(left_at) |
-| **C** | 하드 삭제 | `follow`, `user_block`, `shipping_address`, `payout_account`, `notification_setting`, `notification`, `search_history`, `wishlist`, `post_like`, `post_save`, `post_image`, `post_item_tag`, `item_image`, `item_measurement`, `item_condition`, `category`, `listing_featured_post`, `chat_message` |
+| **C** | 하드 삭제 | `follow`, `user_block`, `shipping_address`, `payout_account`, `notification_setting`, `notification`, `search_history`, `wishlist`, `post_like`, `post_save`, `post_image`, `post_item_tag`, `item_image`, `item_measurement`, `item_condition`, `category`, `listing_featured_post`, `chat_message`, `chat_message_image` |
 | **D** | append-only (삭제 금지) | `item_ownership`, `item_wear_record`, `purchase_offer`, `payment`, `trade_order`, `order_shipment`, `order_status_history`, `settlement`, `user_agreement`, `user_withdrawal`, `user_grade_history`, `report`, `post_tag_edit_log` |
 
 ### 규칙
@@ -1645,6 +1669,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `email` | `withdrawn_{id}@deleted.local` 치환 (UNIQUE·NOT NULL 유지) |
 | `phone`, `real_name` | 고정 마스크 값 치환 |
 | `profile_image_key`, `gender`, `height_cm`, `weight_kg` | NULL |
+| `provider_id` | NULL. 소셜 제공자의 식별자도 개인정보다. `provider` 는 `LOCAL` 로 되돌린다 |
 | `nickname` | 저장값 `탈퇴한사용자_{id}`, 화면 표시 `탈퇴한 사용자` |
 | 연관 삭제 | `shipping_address` `payout_account` `search_history` `notification` `notification_setting` 하드 삭제. Redis 의 `recent-view:{userId}:*` 키도 함께 지운다 |
 
@@ -1749,7 +1774,48 @@ email 은 withdrawn_{id}@deleted.local 로, phone·real_name 은 마스크로 �
 
 user.default_shipping_fee 컬럼을 만들지 않는다. 그 결과 미판매 아이템 구매 제안의 배송비는 항상 0원(판매자 부담)이 된다
 
-*재검토 시점:* 설정 화면이 디자인되면 컬럼을 추가한다
+*재검토 시점:* **전제가 사실과 달랐다.** 설정 화면은 이미 있고(`3063:28991`·`2958:72226`)
+`거래` 섹션에 `기본 배송비`·`수수료 부담 기본값`·`구매 제안 받기 기본값` 메뉴 3종이 들어 있다.
+상세 화면만 없는 상태다. `listing`·`offer` 도메인 설계 전에 다시 정한다
+
+---
+
+**DEC-017 — 소셜 로그인(구글·네이버)**
+
+> 결정: **설계에 포함한다**
+
+로그인 화면(`2791:15250`)의 `다음` 구분선 아래에 구글·네이버 아이콘이 실재하는데
+스키마·명세·제외 근거 **어디에도 없었다.** 텍스트 덤프가 아이콘을 잡지 못한 전형적인 누락이다.
+
+```
+user.provider     LOCAL | GOOGLE | NAVER   (NOT NULL, 기본 LOCAL)
+user.provider_id  제공자 고유 식별자        (LOCAL 이면 NULL)
+uk_user_provider(provider, provider_id) UNIQUE
+```
+
+소셜 가입은 비밀번호가 없으므로 `password_hash` 를 **nullable** 로 바꿨다.
+모바일 앱이 제공자 SDK 로 받은 토큰을 서버에 넘기고 서버가 검증하는 방식을 쓴다 —
+웹 리다이렉트 콜백은 앱에서 흐름이 번거롭다.
+
+*재검토 시점:* 애플 로그인이 추가되면 enum 에 `APPLE` 을 더한다.
+iOS 심사는 소셜 로그인이 있으면 애플 로그인을 함께 요구한다.
+
+---
+
+**DEC-018 — 가입 플로우에 실명·휴대폰 입력 화면이 없는 문제**
+
+> 결정: **화면 누락으로 보고 NOT NULL 을 유지한다**
+
+회원가입 4단계(계정 생성 → 동의 → 주소 등록 → 프로필 작성) 어디에도 실명·휴대폰 입력란이 없는데
+로그인 정보 화면(`3063:28514`)은 두 값을 **표시한다.** 가입 중 주소 등록(`2791:17337`)도
+주소·상세주소만 받아 `shipping_address` 의 수령인·연락처·우편번호를 채울 수 없다.
+
+디자인이 덜 그려진 것으로 판단하고 스키마를 유지한다 — nullable 로 열면 로그인 정보 화면이
+빈칸을 보여주고, 배송에 필요한 연락처가 없는 주문이 생긴다.
+**프론트가 가입 단계에 입력란을 추가해야 한다.**
+
+*재검토 시점:* 디자인이 갱신되면 그 화면에 맞춰 다시 본다.
+소셜 로그인(`DEC-017`)은 제공자가 실명·이메일을 주므로 그 경로에서는 입력이 줄어든다.
 
 ---
 
@@ -1906,6 +1972,7 @@ recent-view:{userId}:{targetType}    score = 열람 시각
 | `post.like_count` | `post_like` | 좋아요·취소 트랜잭션 내 증감 | OOTD 상세의 '♡ 1234'. 피드에서 게시물마다 필요 |
 | `post.save_count` | `post_save` | 저장·취소 트랜잭션 내 증감 | OOTD 상세의 '🔖 1234' |
 | `item_listing.wish_count` | `wishlist` | 관심 등록·해제 트랜잭션 내 증감 | 상품 상세의 '관심 14명' |
+| `post.view_count` | Redis `post-view:{postId}` | 조회는 Redis INCR, 주기 배치가 컬럼에 더한다 | 검색 결과 '조회수 순' 정렬. 읽기 경로에 DB 쓰기를 붙이지 않는다 (`DEC-019`) |
 | `chat_room.last_message_at` | `MAX(chat_message.created_at)` | 메시지 쓰기 트랜잭션 내 동기 갱신 | 채팅방 목록 정렬. 매번 MAX 를 구하면 방이 늘수록 비싸진다 |
 | `item_wear_record.worn_date` | `post.worn_date` | 복제하지 않음 — 스냅샷 | 파생이 아니라 인증 시점의 값 고정. 질문 대상이 아니다 |
 | `user_grade_history.valid_ootd_count` | `평가 시점의 판정 결과` | 복제하지 않음 — 스냅샷 | 재계산하면 그 사이 삭제된 게시물 때문에 값이 달라진다. 판정 근거값이므로 당시 수치를 고정한다 |
@@ -1994,7 +2061,8 @@ INSERT 대신 `voided_at` 을 `NULL` 로 되돌리는 규칙을 제약으로 두
 
 | ID | 항목 | 핵심 |
 |---|---|---|
-| **Q6** | 카테고리별 사이즈 체계 | 대분류 10 · 세부 **102**종은 확보해 `V2__seed_category.sql` 로 넣었다(아우터 14 / 상의 12 / 하의 11 / 신발 8 / 가방 10 / 모자 9 / **치마 11** / 원피스 9 / 액세서리 9 / 주얼리 9). 남은 것은 `size_scheme` 값 목록뿐이고, 그때까지 `NULL` 로 둔다 |
+| **Q7** | 인증번호 재전송 정책 | 회원가입·비밀번호 찾기 모두 `재전송` 버튼이 있는데 쿨다운과 1일 한도가 없다. 제한이 없으면 메일 발송이 그대로 어뷰징 통로가 된다 |
+| **Q6** | 카테고리별 사이즈 체계의 **매핑** | 값 목록은 찾았다 — `ALPHA`(XS~3XL) · `KR_NUMERIC`(85~115) · `EU_NUMERIC`(36~50) · `FREE_NUMBER`(0~6). 남은 것은 대분류 10종이 각각 어느 체계를 쓰는지다. 화면이 네 체계를 한 번에 펼쳐 놓아 매핑을 읽을 수 없었다 |
 
 ### 설계 범위에서 제외한 것
 
@@ -2005,6 +2073,8 @@ INSERT 대신 `voided_at` 을 `NULL` 로 되돌리는 규칙을 제약으로 두
 - **`email_verification` 테이블** — Redis 로 관리한다(`DEC-009`)
 - **refresh token 테이블** — Redis 로 관리한다(`DEC-010`). `spring-boot-starter-data-redis` 의존성이 필요하다
 - **관리자 기능** — 신고 접수 후 운영자가 게시물·아이템을 내리는 흐름. `report` 는 접수까지만 담는다
+- **공지사항 · 문의하기** — 설정 > 서비스 메뉴에 있으나 테이블을 두지 않는다. 관리자 기능이 범위 밖이라
+  공지를 쓸 주체도 문의에 답할 주체도 없다. 약관·개인정보 처리방침·버전 정보와 함께 정적 페이지로 처리한다
 - **탈퇴 후 재가입 시 제안 기회 초기화** — 알고 넘어간다. 막으려면 탈퇴자 식별 정보를 보관해야 해 즉시 익명화 원칙과 충돌한다
 
 ---
