@@ -1111,7 +1111,7 @@ enums:
   - GS_POSTBOX
   - CU_CONVENIENCE
   source: design
-  evidence: 운송장 번호 입력 > '택배사' Select box 펼친 화면(2958:68218)의 4개 항목
+  evidence: 운송장 번호 입력 > '택배사' Select box 펼친 화면(2958:68218)의 4개 항목. 거래 상세(2958:64259)는 'CJ 택배'로 줄여 쓰지만 저장값은 같다 — 표시 문구만 화면마다 다르다
   value_evidence_table: order_shipment
   labels:
     CJ_LOGISTICS: CJ대한통운
@@ -1287,7 +1287,7 @@ entities:
     default: ACTIVE
     enum: UserStatus
     source: inferred
-    evidence: 회원탈퇴 화면 존재 + 탈퇴 후에도 이력 참조 필요
+    evidence: 화면에 상태 칩이 없다 — 회원탈퇴 화면은 있으나 ACTIVE/WITHDRAWN 을 노출하지 않는다. 탈퇴 후에도 소유 이력이 남아야 해 물리 삭제가 불가능하므로 설계상 추가했다
   - name: anonymizedAt
     column: anonymized_at
     db_type: DATETIME(6)
@@ -1410,7 +1410,7 @@ entities:
     nullable: true
     enum: UserGrade
     source: inferred
-    evidence: 최초 부여 시 NULL
+    evidence: 화면에 없다 — 등급 이력을 보여주는 화면이 없어 승격·강등 판정의 감사 기록으로 설계상 추가했다. 최초 부여 시 NULL
   - name: afterGrade
     column: after_grade
     db_type: VARCHAR(20)
@@ -1418,7 +1418,7 @@ entities:
     nullable: false
     enum: UserGrade
     source: inferred
-    evidence: 변경 후 등급
+    evidence: 화면에 없다 — 위와 같은 감사 기록. 변경 후 등급
   - name: windowStart
     column: window_start
     db_type: DATE
@@ -3060,7 +3060,7 @@ entities:
     nullable: true
     enum: WearRecordVoidReason
     source: inferred
-    evidence: 무효화 사유. voided_at 이 NULL 이 아닐 때만 채워진다
+    evidence: 화면에 노출되지 않는다 — 태그 변경·삭제로 인증을 무효화할 때 사유를 구분하려고 설계상 추가했다. voided_at 이 NULL 이 아닐 때만 채워진다
   indexes:
   - name: ix_item_wear_record_item
     columns:
@@ -4065,7 +4065,7 @@ entities:
     java_type: String
     nullable: true
     source: design
-    evidence: '''운송장 번호'' 1234123412349'
+    evidence: '''운송장 번호'' 1234123412349. 거래 상세의 ''배송 조회'' 버튼은 courier_code 와 이 값으로 추적 URL 을 조합해 만든다 — URL 은 저장하지 않는다'
   - name: shippedAt
     column: shipped_at
     db_type: DATETIME(6)
@@ -4600,7 +4600,7 @@ entities:
     nullable: true
     enum: NotificationTargetType
     source: inferred
-    evidence: 딥링크 대상 종류
+    evidence: 화면에 없다 — 알림을 누르면 어디로 가는지는 디자인에 명시되지 않았다. 탭 4종이 각각 게시물·아이템·거래·제안으로 연결되는 것을 보고 딥링크 대상 목록을 설계상 정했다
   - name: targetId
     column: target_id
     db_type: BIGINT
@@ -5910,6 +5910,15 @@ design_decisions:
   decision: search_history 집계 (인기 검색어)
   rationale: 검색창을 누르면 '데님 팬츠'·'나이키 신발'·'Levis 501'·'가죽 자켓' 칩이 뜬다(2820:34830). 고정 목록 테이블은 관리자 기능을 범위 밖으로 둔 것과 충돌한다 — 값을 넣을 화면이 없어 DB 직접 입력이 된다. 집계는 운영 손이 들지 않고 데이터가 쌓일수록 좋아진다. 최근 N일 keyword 별 건수 상위를 뽑아 Redis 에 캐시하고 TTL 을 건다 — 매 요청 집계하면 search_history 전체를 스캔한다
   revisit_when: 초기에는 검색 기록이 없어 칸이 빈다. 서비스 초반에 노출이 필요하면 상수 목록을 폴백으로 두는 안을 검토한다
+- id: DEC-021
+  topic: 화면 드롭다운의 선택지를 API 로 내릴 것인가 클라이언트가 가질 것인가
+  considered:
+  - 모든 enum 의 선택지를 API 로 내린다
+  - 모든 선택지를 클라이언트가 하드코딩한다
+  - 값이 앱 배포와 무관하게 늘 수 있는 것만 API 로 내린다
+  decision: 값이 앱 배포와 무관하게 늘 수 있는 것만 API 로 내린다
+  rationale: 은행 목록(API-035)을 만들면서 기준 없이 정했더니 같은 성격인 택배사가 빠졌다. 기준은 '값이 앱 배포와 무관하게 늘어나는가'다. 은행·택배사는 서버가 enum 을 늘려도 앱이 따라오지 못하면 화면이 낡는다 — API 로 내린다. 성별·수수료 부담·결제 수단·상태 이상 체크·배송 요청사항·탈퇴 사유는 값이 고정이고 화면 문구가 디자인에 박혀 있어 클라이언트가 갖는다. 표시 문구가 길어 화면에 그대로 쓰이는 것(알림 설정 9종의 제목·설명·그룹 헤더)은 값이 고정이어도 그 문구를 함께 내린다 — 클라이언트가 두 줄짜리 문구 9개를 복제하면 문구 수정이 배포에 묶인다
+  revisit_when: enum 을 새로 만들 때 이 기준으로 판정한다. 관리자 화면이 생겨 운영이 목록을 바꾸게 되면 그 enum 은 마스터 테이블로 옮긴다
 - id: DEC-101
   topic: 타인에게 보이는 프로필 필드 — 등급·키·몸무게는 공개, 성별은 비공개
   considered:
