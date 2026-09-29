@@ -23,7 +23,14 @@ public class ServiceLoggingAspect {
 
 	private static final int MAX_LEN = 200;
 
-	@Around("execution(* com.tenure.domain..service..*.*(..))")
+	/**
+	 * 도메인 서비스 전체와, 그 밖에서 Loggable 을 붙인 메서드를 잡는다.
+	 *
+	 * 패키지 조건만 두면 global 에 있는 서비스(이미지 업로드)가 빠진다. 어노테이션을
+	 * 붙였는데 로그가 안 남는 쪽이 규칙이 하나 더 있는 것보다 알아채기 어렵다.
+	 */
+	@Around("execution(* com.tenure.domain..service..*.*(..)) "
+			+ "|| @annotation(com.tenure.global.logging.Loggable)")
 	public Object log(ProceedingJoinPoint pjp) throws Throwable {
 		MethodSignature signature = (MethodSignature) pjp.getSignature();
 		Method method = signature.getMethod();

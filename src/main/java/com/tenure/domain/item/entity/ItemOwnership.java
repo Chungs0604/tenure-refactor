@@ -25,8 +25,8 @@ import lombok.NoArgsConstructor;
 /**
  * 아이템의 소유 구간. 상품 상세 'Tenure 기록 기준' 섹션이 이 테이블 그대로다. 거래 완료 시 이전 행의 end_date 를 닫고 구매자 행을 새로 연다.
  *
- * <p>생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
- * 스키마에서 읽을 수 없다. {@code @Builder} 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
+ * 생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
+ * 스키마에서 읽을 수 없다. @Builder 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
  */
 @Entity
 @Table(name = "item_ownership")
@@ -69,5 +69,31 @@ public class ItemOwnership extends BaseCreatedEntity {
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "order_id")
 	private TradeOrder order;
+
+
+	/** 끝난 구간이면 true. 종료된 구간의 태그는 수정·삭제를 막는다. */
+	public boolean isClosed() {
+		return endDate != null;
+	}
+
+
+	/**
+	 * 최초 소유 구간. 시작일은 item.first_owned_date 와 같은 값이다 (DEC-007).
+	 *
+	 * 거래로 승계된 구간은 근거 거래를 갖는다 — 그 팩토리는 order 도메인을 만들 때 추가한다.
+	 */
+	public static ItemOwnership openInitial(Item item, User owner, LocalDate startDate) {
+		return ItemOwnership.builder()
+				.item(item)
+				.owner(owner)
+				.startDate(startDate)
+				.acquiredBy(AcquiredBy.INITIAL_REGISTRATION)
+				.build();
+	}
+
+	/** 구간 종료. 거래 완료 시 이전 소유자의 구간을 닫는다 — append-only 의 허용된 UPDATE 다. */
+	public void close(LocalDate endDate) {
+		this.endDate = endDate;
+	}
 
 }
