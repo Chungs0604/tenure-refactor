@@ -15,18 +15,18 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /**
- * {@code V1__init.sql} 이 실제 MySQL 8 에 적용되는지 검증한다.
+ * V1__init.sql 이 실제 MySQL 8 에 적용되는지 검증한다.
  *
- * <p>DDL 은 {@code docs/schema.yaml} 에서 생성한다. 생성기 결과가 문법만 맞고 제약이 빠져
- * 있을 수 있으므로, 적용된 뒤 {@code information_schema} 를 세어 정본과 대조한다.
+ * DDL 은 docs/schema.yaml 에서 생성한다. 생성기 결과가 문법만 맞고 제약이 빠져
+ * 있을 수 있으므로, 적용된 뒤 information_schema 를 세어 정본과 대조한다.
  * 컨텍스트를 띄워 검증하므로 운영과 같은 경로(Spring 이 Flyway 를 구동)를 탄다.
  */
 @DisplayName("Flyway V1 마이그레이션")
 class FlywayMigrationTest extends IntegrationTestSupport {
 
-	/** 정본 {@code docs/schema.yaml} 기준 수치. 스키마를 바꾸면 이 숫자도 같이 바뀐다. */
+	/** 정본 docs/schema.yaml 기준 수치. 스키마를 바꾸면 이 숫자도 같이 바뀐다. */
 	private static final int EXPECTED_TABLES = 38;
-	private static final int EXPECTED_COLUMNS = 314;
+	private static final int EXPECTED_COLUMNS = 315;
 	private static final int EXPECTED_FOREIGN_KEYS = 69;
 
 	@Autowired
@@ -52,7 +52,7 @@ class FlywayMigrationTest extends IntegrationTestSupport {
 	}
 
 	@Test
-	@DisplayName("컬럼 314개와 FK 69개가 만들어진다")
+	@DisplayName("컬럼 315개와 FK 69개가 만들어진다")
 	void migration_applied_createsAllColumnsAndForeignKeys() throws Exception {
 		long columns = queryLong("""
 				select count(*) from information_schema.columns

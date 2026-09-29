@@ -14,6 +14,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
@@ -76,6 +77,15 @@ public class Post extends BaseEntity {
 	@Column(name = "view_count", nullable = false)
 	private Integer viewCount;
 
+	/**
+	 * 검색 '추천 순'의 정렬 키. 인기와 신선도를 합친 값이며 배치가 갱신한다 (DEC-023).
+	 *
+	 * 조회할 때마다 계산하지 않는다 — 함수 결과로 정렬하면 인덱스를 못 타고, 요청 사이에 값이
+	 * 바뀌면 커서 경계가 흔들려 스크롤에서 중복·누락이 난다.
+	 */
+	@Column(name = "rank_score", nullable = false, precision = 6, scale = 4)
+	private BigDecimal rankScore;
+
 
 	/**
 	 * 게시. 카운터는 0 에서 시작한다.
@@ -94,6 +104,8 @@ public class Post extends BaseEntity {
 				.likeCount(0)
 				.saveCount(0)
 				.viewCount(0)
+				// 갓 올라온 게시물의 점수는 배치가 처음 돌 때 채운다
+				.rankScore(BigDecimal.ZERO)
 				.build();
 	}
 
