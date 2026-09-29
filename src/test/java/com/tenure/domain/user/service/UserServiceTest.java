@@ -343,7 +343,7 @@ class UserServiceTest {
 		@DisplayName("팔로워·게시물은 카운터 컬럼으로, 아이템·위시는 COUNT 로 채운다")
 		void getMyProfile_existingUser_returnsFourCounters() {
 			given(userRepository.findById(USER_ID)).willReturn(Optional.of(profileUser()));
-			given(itemRepository.countRegisteredItem(USER_ID)).willReturn(16);
+			given(itemRepository.countOwnedItem(USER_ID)).willReturn(16);
 			given(wishlistRepository.countByUserId(USER_ID)).willReturn(4);
 			given(fileStorage.toUrl(IMAGE_KEY)).willReturn(IMAGE_URL);
 
@@ -543,7 +543,7 @@ class UserServiceTest {
 			User user = profileUser();
 			ReflectionTestUtils.setField(user, "status", UserStatus.WITHDRAWN);
 			given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
-			given(itemRepository.countRegisteredItem(USER_ID)).willReturn(16);
+			given(itemRepository.countOwnedItem(USER_ID)).willReturn(16);
 			given(fileStorage.toUrl(IMAGE_KEY)).willReturn(IMAGE_URL);
 			given(followRepository.existsFollow(VIEWER_ID, USER_ID)).willReturn(false);
 			given(userBlockRepository.existsBlock(VIEWER_ID, USER_ID)).willReturn(false);
@@ -568,7 +568,7 @@ class UserServiceTest {
 
 		private void givenOtherProfile() {
 			given(userRepository.findById(USER_ID)).willReturn(Optional.of(profileUser()));
-			given(itemRepository.countRegisteredItem(USER_ID)).willReturn(16);
+			given(itemRepository.countOwnedItem(USER_ID)).willReturn(16);
 			given(fileStorage.toUrl(IMAGE_KEY)).willReturn(IMAGE_URL);
 		}
 	}

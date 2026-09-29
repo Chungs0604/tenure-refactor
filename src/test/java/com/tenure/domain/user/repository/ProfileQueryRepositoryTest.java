@@ -117,7 +117,7 @@ class ProfileQueryRepositoryTest extends RepositorySliceTestSupport {
 	}
 
 	@Nested
-	@DisplayName("countRegisteredItem")
+	@DisplayName("countOwnedItem")
 	class CountRegisteredItem {
 
 		@Test
@@ -128,7 +128,7 @@ class ProfileQueryRepositoryTest extends RepositorySliceTestSupport {
 			insertItem(me.getId(), "지운 것", true);
 
 			// 등록한 아이템 목록 화면과 조건이 같아야 수치와 목록이 어긋나지 않는다
-			assertThat(itemRepository.countRegisteredItem(me.getId())).isEqualTo(2);
+			assertThat(itemRepository.countOwnedItem(me.getId())).isEqualTo(2);
 		}
 
 		@Test
@@ -137,13 +137,13 @@ class ProfileQueryRepositoryTest extends RepositorySliceTestSupport {
 			insertItem(me.getId(), "내 것", false);
 			insertItem(other.getId(), "남의 것", false);
 
-			assertThat(itemRepository.countRegisteredItem(me.getId())).isEqualTo(1);
+			assertThat(itemRepository.countOwnedItem(me.getId())).isEqualTo(1);
 		}
 
 		@Test
 		@DisplayName("아이템이 없으면 0 이다")
 		void noItems_zero() {
-			assertThat(itemRepository.countRegisteredItem(me.getId())).isZero();
+			assertThat(itemRepository.countOwnedItem(me.getId())).isZero();
 		}
 	}
 
@@ -163,6 +163,10 @@ class ProfileQueryRepositoryTest extends RepositorySliceTestSupport {
 				.executeUpdate();
 	}
 
+	/**
+	 * 아이템과 최초 소유 구간을 함께 넣는다 — 등록이 두 행을 만드는 것이 도메인 계약이고,
+	 * 카운터도 목록도 소유 구간을 보고 판정한다.
+	 */
 	private void insertItem(Long registrantId, String name, boolean deleted) {
 		Object categoryId = em.createNativeQuery(
 				"select id from category where depth = 2 order by id limit 1").getSingleResult();
@@ -173,6 +177,13 @@ class ProfileQueryRepositoryTest extends RepositorySliceTestSupport {
 						 values (?, ?, 'Levis', ?, 'item/cover.jpg', 'UNISEX', %s, now(6), now(6))"""
 						.formatted(deleted ? "now(6)" : "null"))
 				.setParameter(1, registrantId).setParameter(2, name).setParameter(3, categoryId)
+				.executeUpdate();
+
+		// 등록 시점부터 열린 구간. end_date 가 null 이라 '현재 소유' 임
+		em.createNativeQuery("""
+						insert into item_ownership (item_id, owner_id, start_date, acquired_by, created_at)
+						 values ((select max(id) from item), ?, current_date, 'INITIAL_REGISTRATION', now(6))""")
+				.setParameter(1, registrantId)
 				.executeUpdate();
 	}
 
