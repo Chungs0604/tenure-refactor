@@ -31,15 +31,25 @@
 
 HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 
-**페이징** — 목록은 예외 없이 페이징한다.
+**페이징** — 목록은 예외 없이 커서 페이지네이션이다.
+
+목록은 **커서 페이지네이션**이다. 화면이 전부 아래로 스크롤하는 구조라 페이지 번호를 쓰는 곳이 없고,
+offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 밀려 **같은 항목이 두 번 보이거나 한 건이 빠진다**(`DEC-022`).
 
 | 파라미터 | 기본 | 설명 |
 |---|---|---|
-| `page` | 0 | **0부터** 시작 |
-| `size` | 20 | 최대 100 |
-| `sort` | 화면별 상이 | `필드,asc\|desc` |
+| `cursor` | 없음 | 직전 응답의 `nextCursor` 를 그대로 넘긴다. 첫 페이지는 비운다 |
+| `size` | 20 | 1~100. 벗어나면 `COMMON_400` — 조용히 깎지 않는다 |
 
-응답은 `BaseResponse<PageResponse<T>>` 이며 `content` · `page` · `size` · `totalElements` · `totalPages` · `hasNext` 를 갖는다. `first`/`last` 는 쓰지 않는다.
+응답은 `BaseResponse<CursorResponse<T>>` 이며 `content` · `nextCursor` · `hasNext` 를 갖는다.
+마지막 페이지면 `nextCursor` 가 `null` 이다. **총 건수는 싣지 않는다** — 세는 데 쿼리가 한 번 더 드는데
+쓰는 화면이 검색 결과뿐이라, 거기서만 `totalCount` 를 따로 더한다.
+
+`cursor` 는 **불투명한 문자열**이다. 정렬 키와 id 를 담고 있을 뿐 암호화한 값은 아니지만, 형식을
+공개하지 않는다 — 클라이언트가 직접 만들기 시작하면 서버가 형식을 바꿀 수 없다. 깨진 커서는 `COMMON_400` 이다.
+
+**정렬은 서버가 고정한다.** 화면마다 정렬이 하나로 정해져 있어(피드는 게시일, 그리드는 착용일)
+`sort` 파라미터를 받지 않는다. 커서 키는 그 정렬 키와 같고, 값이 겹칠 때를 대비해 항상 id 로 tie-break 한다.
 
 **필드 규칙** — JSON 은 camelCase. 금액은 문자열로 직렬화. 날짜는 ISO 8601.
 `deletedAt` · `passwordHash` · `voidedAt` 같은 내부 필드는 응답에 노출하지 않는다.
@@ -391,6 +401,9 @@ HTTP 상태 코드는 `ErrorCode.getStatus()` 가 결정한다.
 | `POST_400_EDIT_WINDOW` | 400 | 바로 게시한 지 3일이 지난 게시물은 태그를 수정할 수 없습니다. | API-083 |
 | `POST_409_LIKE` | 409 | 이미 좋아요한 게시물입니다. | API-075 |
 | `POST_409_SAVE` | 409 | 이미 저장한 게시물입니다. | API-077 |
+| `POST_404_TAG` | 404 | 태그를 찾을 수 없습니다. | API-073 |
+| `POST_400_COVER` | 400 | 대표 사진은 한 장만 지정할 수 있습니다. | API-072 |
+| `POST_400_IMAGE_ORDER` | 400 | 사진 순서가 중복됐습니다. | API-072 |
 
 ### ItemErrorCode
 
@@ -1468,7 +1481,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 |---|---|:--:|---|---|
 | `userId` | Long | O | — | — |
 
-**응답** (`data` — PageResponse)
+**응답** (`data` — CursorResponse)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
@@ -1495,10 +1508,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
         "isFollowing": true
       }
     ],
-    "page": 0,
-    "size": 20,
-    "totalElements": 137,
-    "totalPages": 7,
+    "nextCursor": "djF8MjAyNi0wNi0yMVQxODozMHwxMA",
     "hasNext": true
   }
 }
@@ -1518,7 +1528,7 @@ API-050 과 동일한 스키마. 방향만 다르다.
 |---|---|:--:|---|---|
 | `userId` | Long | O | — | — |
 
-**응답** (`data` — PageResponse)
+**응답** (`data` — CursorResponse)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
@@ -1545,10 +1555,7 @@ API-050 과 동일한 스키마. 방향만 다르다.
         "isFollowing": true
       }
     ],
-    "page": 0,
-    "size": 20,
-    "totalElements": 137,
-    "totalPages": 7,
+    "nextCursor": "djF8MjAyNi0wNi0yMVQxODozMHwxMA",
     "hasNext": true
   }
 }
@@ -1711,29 +1718,24 @@ API-050 과 동일한 스키마. 방향만 다르다.
 > `API-051`(팔로잉 목록)로 채운다 — 피드와 갱신 주기도 페이징 단위도 다르기 때문이다.
 > 특정 사용자를 고르면 `API-082`(타인 게시물)로 넘어간다.
  차단한 사용자와 `deletedAt IS NOT NULL` 은 제외한다.
-응답은 `PostSummaryResponse` — `{ id, imageUrl, aspectRatio, author{id, nickname, profileImageUrl}, likeCount, saveCount, isLiked, isSaved }`.
-카드는 **대표 사진 1장**만 싣는다(나머지는 상세에서). `likeCount`·`saveCount` 는 카운터 컬럼을 그대로 읽는다 — 피드에서 게시물마다 집계하지 않으려고 둔 컬럼이다(§6-3 파생 컬럼 대장).
+응답은 `PostSummaryResponse` — `{ id, imageUrl, aspectRatio, isLiked, isSaved }`.
+카드는 **대표 사진 1장**과 하트·북마크 아이콘이 전부다(`2791:21848`). **작성자도 좋아요 수도 그리지 않으므로 싣지 않는다** — 작성자는 카드를 눌러 들어간 상세에서 보여준다. 비율이 섞인 masonry 그리드라 `aspectRatio` 로 높이를 계산한다.
 
 **쿼리 파라미터**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
 | `tab` | String |  | ALL \| FOLLOWING | 기본 ALL |
-| `page` | Integer |  | 0부터 | — |
-| `size` | Integer |  | 기본 20, 최대 100 | — |
+| `cursor` | String |  | 직전 응답의 nextCursor | 첫 페이지는 비운다 |
+| `size` | Integer |  | 1~100, 기본 20 | — |
 
-**응답** (`data` — PageResponse)
+**응답** (`data` — CursorResponse)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `id` | Long | — |
 | `imageUrl` | String | 대표 사진 1장 |
 | `aspectRatio` | AspectRatio | RATIO_3_4 \| RATIO_4_5 \| RATIO_1_1 — masonry 높이 계산 |
-| `author.id` | Long | — |
-| `author.nickname` | String | 카드 상단 작성자 |
-| `author.profileImageUrl` | String | — |
-| `likeCount` | Integer | 카운터 컬럼 |
-| `saveCount` | Integer | 카운터 컬럼 |
 | `isLiked` | Boolean | 하트 아이콘 상태 |
 | `isSaved` | Boolean | 북마크 아이콘 상태 |
 
@@ -1748,21 +1750,11 @@ API-050 과 동일한 스키마. 방향만 다르다.
         "id": 1,
         "imageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg",
         "aspectRatio": "<AspectRatio>",
-        "author": {
-          "id": 1,
-          "nickname": "<String>",
-          "profileImageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg"
-        },
-        "likeCount": 1,
-        "saveCount": 1,
         "isLiked": true,
         "isSaved": true
       }
     ],
-    "page": 0,
-    "size": 20,
-    "totalElements": 137,
-    "totalPages": 7,
+    "nextCursor": "djF8MjAyNi0wNi0yMVQxODozMHwxMA",
     "hasNext": true
   }
 }
@@ -1798,6 +1790,7 @@ OOTD 상세. 인증 **필요**. 관련 화면 SCR-015.
 | `images[].id` | Long | `API-079` 의 입력 키 |
 | `images[].url` | String | — |
 | `images[].isCover` | Boolean | — |
+| `images[].tags[].postItemTagId` | Long | 태그 id. `API-073` 의 입력값이다 |
 | `images[].tags[].itemId` | Long | — |
 | `images[].tags[].itemName` | String | — |
 | `images[].tags[].brandName` | String | — |
@@ -1831,6 +1824,7 @@ OOTD 상세. 인증 **필요**. 관련 화면 SCR-015.
         "isCover": true,
         "tags": [
           {
+            "postItemTagId": 1,
             "itemId": 1,
             "itemName": "<String>",
             "brandName": "<String>",
@@ -1899,7 +1893,7 @@ OOTD 게시. 인증 **필요**. 관련 화면 SCR-018.
 }
 ```
 
-에러 — POST_400_IMAGE_REQUIRED, POST_400_TAG_LIMIT, POST_400_TAG_OWNERSHIP, ITEM_404
+에러 — POST_400_IMAGE_REQUIRED, POST_400_TAG_LIMIT, POST_400_TAG_OWNERSHIP, POST_400_COVER, POST_400_IMAGE_ORDER, ITEM_404
 
 #### API-073 · `PATCH /api/v1/posts/{postId}`
 
@@ -1931,7 +1925,7 @@ OOTD 게시. 인증 **필요**. 관련 화면 SCR-018.
 }
 ```
 
-에러 — POST_403, POST_404, ITEM_409_TAG_CLOSED_PERIOD, POST_400_TAG_OWNERSHIP
+에러 — POST_403, POST_404, POST_404_TAG, ITEM_409_TAG_CLOSED_PERIOD, POST_400_TAG_OWNERSHIP
 
 #### API-074 · `DELETE /api/v1/posts/{postId}`
 
@@ -2082,9 +2076,14 @@ soft delete (`deleted_at`). 판매 중인 상품의 대표 OOTD 로 걸려 있�
 `사진 속에서 태그된 것만 모아봅니다` 이므로 경로 키는 `post_image_id` 다. `imageId` 는 `API-071` 의
 `images[].id` 로 받는다.
 
-응답 `{ items[{ itemId, listingId?, brandName, name, coverImageUrl, status: ON_SALE|NOT_FOR_SALE|SOLD|DELETED, price?, offerAllowed, isWished }] }`.
+응답 `{ items[{ itemId, listingId?, brandName, name, coverImageUrl, status: ON_SALE|NOT_FOR_SALE|SOLD|DELETED, price?, offerAllowed, alarmEnabled }] }`.
+
+행 우측 토글은 **하트가 아니라 벨**이다(`2791:27831`). 관심 등록과 알림 신청을 겸하므로 상태값도 `alarmEnabled` 하나만 싣는다 — 위시에 담지 않은 채 알림만 켜는 상태가 없다. 위시리스트 화면에서 알림만 끈 아이템은 여기서도 꺼진 벨로 보인다.
 삭제된 아이템은 `DELETED` 로 내려가고 화면에서 회색 처리된다. `listingId` 가 `null` 이면 판매 등록이
 한 번도 없었던 아이템이라 **CTA 버튼을 띄우지 않는다**(`구매제안 불가능 제품에 관하여는 CTA 버튼이 없다`).
+
+시트 하단에는 `관련된 OOTD 보러가기` 버튼이 있다(`2791:27798`). 이 엔드포인트가 아니라 아이템
+히스토리(`API-097`)로 가는 링크다.
 
 **경로 파라미터**
 
@@ -2103,7 +2102,7 @@ soft delete (`deleted_at`). 판매 중인 상품의 대표 OOTD 로 걸려 있�
 | `coverImageUrl` | String | — |
 | `status` | String | ON_SALE \| NOT_FOR_SALE \| SOLD \| DELETED |
 | `price` | String | 금액은 문자열 |
-| `isWished` | Boolean | 행 우측 위시 아이콘 상태 |
+| `alarmEnabled` | Boolean | 행 우측 벨 아이콘 상태. 관심 등록 + 알림 겸임 |
 | `offerAllowed` | Boolean | — |
 
 ```json
@@ -2131,6 +2130,8 @@ soft delete (`deleted_at`). 판매 중인 상품의 대표 OOTD 로 걸려 있�
 #### API-080 · `POST /api/v1/posts/analyze`
 
 AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR-018.
+
+**2026-09-28 현재 구현하지 않았다** — 외부 AI 서비스가 정해지지 않아 게시물 도메인 구현에서 제외했다. 클라이언트는 아이템을 직접 골라 태그하면 `API-072` 로 게시할 수 있다.
 
 요청 `{ imageKey, x, y }` → 응답 `{ candidates[{ itemId, brandName, name, coverImageUrl, score }] }`. 후보는 **본인 옷장 범위**에서만 찾으며 결과를 저장하지 않는다(설계 범위 제외). 사용자가 고른 것만 API-072 로 확정된다.
 
@@ -2185,15 +2186,16 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 |---|---|:--:|---|---|
 | `tab` | String |  | POSTS \| LIKED \| SAVED | 기본 POSTS |
 | `yearMonth` | String |  | 2026-06 | 날짜별 그룹 |
-| `page` | Integer |  | — | — |
-| `size` | Integer |  | — | — |
+| `cursor` | String |  | 직전 응답의 nextCursor | 첫 페이지는 비운다 |
+| `size` | Integer |  | 1~100, 기본 20 | — |
 
-**응답** (`data` — PageResponse)
+**응답** (`data` — CursorResponse)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `id` | Long | — |
 | `imageUrl` | String | 그리드 썸네일 |
+| `aspectRatio` | AspectRatio | masonry 높이 계산. 그리드도 피드와 같은 가변 높이다(`2825:42638`) |
 | `wornDate` | LocalDate | 월별 그룹 헤더용 |
 | `isLiked` | Boolean | 그리드 오버레이 아이콘 |
 | `isSaved` | Boolean | — |
@@ -2208,15 +2210,13 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
       {
         "id": 1,
         "imageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg",
+        "aspectRatio": "<AspectRatio>",
         "wornDate": "2026-06-21",
         "isLiked": true,
         "isSaved": true
       }
     ],
-    "page": 0,
-    "size": 20,
-    "totalElements": 137,
-    "totalPages": 7,
+    "nextCursor": "djF8MjAyNi0wNi0yMVQxODozMHwxMA",
     "hasNext": true
   }
 }
@@ -2237,13 +2237,16 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 |---|---|:--:|---|---|
 | `userId` | Long | O | — | — |
 
-**응답** (`data` — PageResponse)
+**응답** (`data` — CursorResponse)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `id` | Long | — |
 | `imageUrl` | String | 그리드 썸네일 |
+| `aspectRatio` | AspectRatio | masonry 높이 계산 |
 | `wornDate` | LocalDate | — |
+| `isLiked` | Boolean | 타인 프로필 그리드에도 오버레이 아이콘이 있다(`3910:44008`) |
+| `isSaved` | Boolean | — |
 
 ```json
 {
@@ -2255,13 +2258,13 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
       {
         "id": 1,
         "imageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg",
-        "wornDate": "2026-06-21"
+        "aspectRatio": "<AspectRatio>",
+        "wornDate": "2026-06-21",
+        "isLiked": true,
+        "isSaved": true
       }
     ],
-    "page": 0,
-    "size": 20,
-    "totalElements": 137,
-    "totalPages": 7,
+    "nextCursor": "djF8MjAyNi0wNi0yMVQxODozMHwxMA",
     "hasNext": true
   }
 }
@@ -2354,10 +2357,10 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
 | `keyword` | String |  | 2자 이상 | 브랜드명·아이템명 부분 일치. 소유자 기준이라 `ix_item_registrant` 가 받는다(`IDX-003`) |
-| `page` | Integer |  | — | — |
-| `size` | Integer |  | — | — |
+| `cursor` | String |  | 직전 응답의 nextCursor | 첫 페이지는 비운다 |
+| `size` | Integer |  | 1~100, 기본 20 | — |
 
-**응답** (`data` — PageResponse)
+**응답** (`data` — CursorResponse)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
@@ -2393,10 +2396,7 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
         }
       }
     ],
-    "page": 0,
-    "size": 20,
-    "totalElements": 137,
-    "totalPages": 7,
+    "nextCursor": "djF8MjAyNi0wNi0yMVQxODozMHwxMA",
     "hasNext": true
   }
 }
@@ -2626,7 +2626,7 @@ soft delete. 태그는 남아 `태그된 아이템` 목록에 `삭제된 아이�
 |---|---|:--:|---|---|
 | `itemId` | Long | O | — | — |
 
-**응답** (`data` — PageResponse)
+**응답** (`data` — CursorResponse)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
@@ -2647,10 +2647,7 @@ soft delete. 태그는 남아 `태그된 아이템` 목록에 `삭제된 아이�
         "wornDate": "2026-06-21"
       }
     ],
-    "page": 0,
-    "size": 20,
-    "totalElements": 137,
-    "totalPages": 7,
+    "nextCursor": "djF8MjAyNi0wNi0yMVQxODozMHwxMA",
     "hasNext": true
   }
 }
@@ -2718,10 +2715,10 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
 | `keyword` | String |  | — | — |
-| `page` | Integer |  | — | — |
-| `size` | Integer |  | — | — |
+| `cursor` | String |  | 직전 응답의 nextCursor | 첫 페이지는 비운다 |
+| `size` | Integer |  | 1~100, 기본 20 | — |
 
-**응답** (`data` — PageResponse)
+**응답** (`data` — CursorResponse)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
@@ -2744,10 +2741,7 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
         "coverImageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg"
       }
     ],
-    "page": 0,
-    "size": 20,
-    "totalElements": 137,
-    "totalPages": 7,
+    "nextCursor": "djF8MjAyNi0wNi0yMVQxODozMHwxMA",
     "hasNext": true
   }
 }
@@ -3096,10 +3090,10 @@ Guidi / 788z Boots와 비슷한 스타일
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
 | `tab` | String |  | ALL \| ON_SALE \| IN_TRADE | 기본 ALL |
-| `page` | Integer |  | — | — |
-| `size` | Integer |  | — | — |
+| `cursor` | String |  | 직전 응답의 nextCursor | 첫 페이지는 비운다 |
+| `size` | Integer |  | 1~100, 기본 20 | — |
 
-**응답** (`data` — PageResponse)
+**응답** (`data` — CursorResponse)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
@@ -3138,10 +3132,7 @@ Guidi / 788z Boots와 비슷한 스타일
         "offerAllowed": true
       }
     ],
-    "page": 0,
-    "size": 20,
-    "totalElements": 137,
-    "totalPages": 7,
+    "nextCursor": "djF8MjAyNi0wNi0yMVQxODozMHwxMA",
     "hasNext": true
   }
 }
@@ -3637,10 +3628,10 @@ Guidi / 788z Boots와 비슷한 스타일
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
 | `tab` | String |  | ALL \| PENDING \| IN_PROGRESS \| DONE | 기본 ALL |
-| `page` | Integer |  | — | — |
-| `size` | Integer |  | — | — |
+| `cursor` | String |  | 직전 응답의 nextCursor | 첫 페이지는 비운다 |
+| `size` | Integer |  | 1~100, 기본 20 | — |
 
-**응답** (`data` — PageResponse)
+**응답** (`data` — CursorResponse)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
@@ -3713,10 +3704,7 @@ Guidi / 788z Boots와 비슷한 스타일
         "createdAt": "2026-06-20T10:00:00"
       }
     ],
-    "page": 0,
-    "size": 20,
-    "totalElements": 137,
-    "totalPages": 7,
+    "nextCursor": "djF8MjAyNi0wNi0yMVQxODozMHwxMA",
     "hasNext": true
   }
 }
@@ -3749,10 +3737,10 @@ Guidi / 788z Boots와 비슷한 스타일
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
 | `tab` | String |  | ALL \| PENDING \| IN_PROGRESS \| DONE | 기본 ALL |
-| `page` | Integer |  | — | — |
-| `size` | Integer |  | — | — |
+| `cursor` | String |  | 직전 응답의 nextCursor | 첫 페이지는 비운다 |
+| `size` | Integer |  | 1~100, 기본 20 | — |
 
-**응답** (`data` — PageResponse)
+**응답** (`data` — CursorResponse)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
@@ -3803,10 +3791,7 @@ Guidi / 788z Boots와 비슷한 스타일
         "createdAt": "2026-06-21T18:30:00"
       }
     ],
-    "page": 0,
-    "size": 20,
-    "totalElements": 137,
-    "totalPages": 7,
+    "nextCursor": "djF8MjAyNi0wNi0yMVQxODozMHwxMA",
     "hasNext": true
   }
 }
@@ -3996,10 +3981,10 @@ Guidi / 788z Boots와 비슷한 스타일
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
 | `tab` | String |  | ALL \| BUYING \| SELLING \| UNREAD | — |
-| `page` | Integer |  | — | — |
-| `size` | Integer |  | — | — |
+| `cursor` | String |  | 직전 응답의 nextCursor | 첫 페이지는 비운다 |
+| `size` | Integer |  | 1~100, 기본 20 | — |
 
-**응답** (`data` — PageResponse)
+**응답** (`data` — CursorResponse)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
@@ -4038,10 +4023,7 @@ Guidi / 788z Boots와 비슷한 스타일
         "recentWornDate": "2026-06-21"
       }
     ],
-    "page": 0,
-    "size": 20,
-    "totalElements": 137,
-    "totalPages": 7,
+    "nextCursor": "djF8MjAyNi0wNi0yMVQxODozMHwxMA",
     "hasNext": true
   }
 }
@@ -4155,14 +4137,14 @@ Guidi / 788z Boots와 비슷한 스타일
 
 메시지 목록 (커서 페이징). 인증 **필요**. 관련 화면 SCR-042.
 
-커서 페이징 (`cursor` = 마지막 메시지 id, `size`). 오래된 순으로 거슬러 올라간다.
+커서 페이징. 오래된 순으로 거슬러 올라가므로 커서 키는 메시지 id 다. 다른 목록과 같은 불투명 문자열이며 클라이언트는 직전 응답의 `nextCursor` 를 그대로 넘긴다.
 
 **쿼리 파라미터**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `cursor` | Long |  | 마지막 메시지 id | 커서 페이징 |
-| `size` | Integer |  | 기본 30 | — |
+| `cursor` | String |  | 직전 응답의 nextCursor | 첫 페이지는 비운다 |
+| `size` | Integer |  | 1~100, 기본 30 | 메시지는 한 번에 더 받는다 |
 
 **응답** (`data` 배열)
 
@@ -4283,10 +4265,10 @@ Guidi / 788z Boots와 비슷한 스타일
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
 | `category` | NotificationCategory |  | ACTION_REQUIRED \| ITEM_NEWS \| TRADE_STATUS \| WISHLIST | 미지정 시 전체 |
-| `page` | Integer |  | — | — |
-| `size` | Integer |  | — | — |
+| `cursor` | String |  | 직전 응답의 nextCursor | 첫 페이지는 비운다 |
+| `size` | Integer |  | 1~100, 기본 20 | — |
 
-**응답** (`data` — PageResponse)
+**응답** (`data` — CursorResponse)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
@@ -4320,10 +4302,7 @@ Guidi / 788z Boots와 비슷한 스타일
         "createdAt": "2026-06-21T18:30:00"
       }
     ],
-    "page": 0,
-    "size": 20,
-    "totalElements": 137,
-    "totalPages": 7,
+    "nextCursor": "djF8MjAyNi0wNi0yMVQxODozMHwxMA",
     "hasNext": true
   }
 }
@@ -4417,14 +4396,27 @@ Guidi / 788z Boots와 비슷한 스타일
 
 | sort | 화면 | 기준 |
 |---|---|---|
-| `RECOMMENDED` | 추천 순 | 기본값. 키워드 관련도 + 최신순 보정 |
+| `RECOMMENDED` | 추천 순 | 기본값. **매칭 등급 → `post.rank_score` → id** 순으로 정렬한다(`DEC-023`) |
 | `LATEST` | 최신 순 | `created_at desc` |
 | `LIKE` | 좋아요 순 | `like_count desc` |
 | `VIEW` | 조회수 순 | `view_count desc`. Redis 카운터를 주기 반영한 값이다(`DEC-019`) |
 | `SAVE` | 저장 순 | `save_count desc` |
 
+**추천 순의 정렬 키**(`DEC-023`) — 키워드는 게시물이 아니라 **태그된 아이템**과 매칭된다.
+`post` 에 캡션 컬럼이 없어 게시물 자체에는 텍스트가 없기 때문이다.
+
+| 매칭 등급 | 조건 | 예 |
+|:--:|---|---|
+| 3 | 브랜드 + 모델명 둘 다 일치 | `Levis 501` |
+| 2 | 브랜드 또는 아이템명 일치 | `나이키` |
+| 1 | 카테고리명 일치 | `반팔` |
+| 0 | 매칭 없음 — 키워드가 있으면 결과에서 제외 | |
+
+같은 등급 안에서는 `post.rank_score` 로 가른다. 인기와 신선도를 합친 값이며 **배치가 미리 계산해 둔다** —
+조회할 때마다 계산하면 정렬이 인덱스를 타지 못하고, 요청 사이에 값이 바뀌어 커서 경계가 흔들린다.
+
 화면 상단에는 적용된 필터가 **칩으로 나열되고 X 로 개별 해제**된다. 그때마다 이 엔드포인트를 다시 호출한다.
-결과 수(`총 게시물 80개`)는 `PageResponse.totalElements` 다.
+결과 수(`총 게시물 80개`)는 응답의 `totalCount` 다. **목록 중 여기서만 총계를 싣는다** — 세는 데 쿼리가 한 번 더 들기 때문이며, 다른 화면에는 총계 표기가 없다(`DEC-022`).
 
 **쿼리 파라미터**
 
@@ -4438,16 +4430,17 @@ Guidi / 788z Boots와 비슷한 스타일
 | `heightMax` | Integer |  | 0~200 | — |
 | `weightMin` | Integer |  | 0~150 | — |
 | `weightMax` | Integer |  | 0~150 | — |
-| `page` | Integer |  | — | — |
-| `size` | Integer |  | — | — |
+| `cursor` | String |  | 직전 응답의 nextCursor | 첫 페이지는 비운다 |
+| `size` | Integer |  | 1~100, 기본 20 | — |
 
-**응답** (`data` — PageResponse)
+**응답** (`data` — CursorResponse)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `id` | Long | — |
 | `imageUrl` | String | 그리드 썸네일 |
 | `aspectRatio` | AspectRatio | — |
+| `totalCount` | Integer | 화면 상단 `총 게시물 80개`. content 와 나란한 위치다 |
 
 ```json
 {
@@ -4462,11 +4455,9 @@ Guidi / 788z Boots와 비슷한 스타일
         "aspectRatio": "<AspectRatio>"
       }
     ],
-    "page": 0,
-    "size": 20,
-    "totalElements": 137,
-    "totalPages": 7,
-    "hasNext": true
+    "nextCursor": "djF8MjAyNi0wNi0yMVQxODozMHwxMA",
+    "hasNext": true,
+    "totalCount": 80
   }
 }
 ```
@@ -4485,10 +4476,10 @@ Guidi / 788z Boots와 비슷한 스타일
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
 | `keyword` | String | O | — | — |
-| `page` | Integer |  | — | — |
-| `size` | Integer |  | — | — |
+| `cursor` | String |  | 직전 응답의 nextCursor | 첫 페이지는 비운다 |
+| `size` | Integer |  | 1~100, 기본 20 | — |
 
-**응답** (`data` — PageResponse)
+**응답** (`data` — CursorResponse)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
@@ -4515,10 +4506,7 @@ Guidi / 788z Boots와 비슷한 스타일
         "isFollowing": true
       }
     ],
-    "page": 0,
-    "size": 20,
-    "totalElements": 137,
-    "totalPages": 7,
+    "nextCursor": "djF8MjAyNi0wNi0yMVQxODozMHwxMA",
     "hasNext": true
   }
 }
@@ -4629,7 +4617,7 @@ Guidi / 788z Boots와 비슷한 스타일
 |---|---|:--:|---|---|
 | `section` | String | O | 위 4종 | — |
 
-**응답** (`data` — PageResponse) — `POPULAR_USER` 는 `UserSummaryResponse`, 나머지는 `PostSummaryResponse` 다.
+**응답** (`data` — CursorResponse) — `POPULAR_USER` 는 `UserSummaryResponse`, 나머지는 `PostSummaryResponse` 다.
 
 에러 — COMMON_400
 
@@ -4704,6 +4692,7 @@ Guidi / 788z Boots와 비슷한 스타일
 | ID | 내용 | 영향받는 API |
 |---|---|---|
 | **Q6** | `category.size_scheme` 값 목록 미확정 | `API-090` 이 `sizeScheme` 을 `null` 로 내려준다. `API-092`·`API-094` 의 `sizeLabel` 검증 규칙도 함께 미정이다 |
+| **가중치** | `rank_score` 의 가중치와 배치 주기는 상수로 시작한다 | `DEC-023` 에 초기값을 적었다. 클릭 로그가 쌓이면 조정한다 — 로그가 없는 지금 맞추려는 시도는 근거가 없다 |
 
 ### 이번 점검에서 확정한 것
 
@@ -4720,6 +4709,8 @@ Guidi / 788z Boots와 비슷한 스타일
 | `IDX-003` | `ix_item_search`·`ix_item_listing_browse` 를 제거했다. 쓰는 엔드포인트가 없다 |
 | `DEC-014` | `recent_view` 테이블을 없애고 **Redis Sorted Set** 으로 옮겼다. 보관 정책이 없어 영구 보관되던 고부하 테이블이다. `V4` 가 내린다 |
 | `DEC-015` | `notification` 보관 기간을 **90일** 로 정했다. 지우는 경로가 없어 무한 증가하고 있었다 |
+| `DEC-022` | 목록 페이지네이션을 **커서**로 통일했다. 화면이 전부 무한 스크롤이고 총계를 쓰는 곳이 검색 결과뿐이라 offset·count 가 낭비였다 |
+| `DEC-023` | 검색 `추천 순` 의 정렬 키를 정했다 — 매칭 등급 → `post.rank_score`(배치 사전 계산) → id |
 
 그 밖에 **도메인 패키지 배치표를 §5 에 넣었다** — 도메인과 ErrorCode 가 1:1 이 아니라
 어느 패키지에 놓이는지 근거가 없었다.
@@ -4727,7 +4718,7 @@ Guidi / 788z Boots와 비슷한 스타일
 ### 범위 밖으로 둔 것
 
 - **관리자 기능** — `report` 는 접수까지만 담는다. 처리 상태·운영자 계정이 없다
-- **AI 아이템 인식 결과** — `API-080` 은 후보를 돌려줄 뿐 저장하지 않는다
+- **AI 아이템 인식 결과** — `API-080` 은 후보를 돌려줄 뿐 저장하지 않는다. 외부 서비스가 미정이라 게시물 도메인 구현에서도 빠졌다(2026-09-28)
 - **태그 일괄 수정** — `API-083` 은 `MVP 외`
 - **탈퇴 후 재가입 시 제안 기회 초기화** — 알고 넘어간다
 

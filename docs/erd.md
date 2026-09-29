@@ -1,8 +1,8 @@
-# Tenure ERD — v5
+# Tenure ERD — v6
 
 > **피그마** [Tenure UXUI 작업](https://www.figma.com/design/hnEDDkiI0V4js9JzWR2l2M/Tenure-UXUI-%EC%9E%91%EC%97%85?node-id=813-8486&m=dev)
 > **범위** 캔버스 `2. 최종 UI`(`813:8486`) 33개 섹션 전체. 보조로 `4. 랜딩페이지`(`5359:57698`)의 서비스 IA·거래 플로우
-> **생성일** 2026-09-24 · **개정** 2026-09-28(v5, 화면 재판독) · **DB** MySQL 8 · **테이블** 38개 · **컬럼** 314개
+> **생성일** 2026-09-24 · **개정** 2026-09-28(v6, 커서 페이지네이션·추천 순 정렬 키) · **DB** MySQL 8 · **테이블** 38개 · **컬럼** 315개
 > **정본** [`schema.yaml`](./schema.yaml) — 이 문서의 §2 관계 요약표, §4 화면 인벤토리, §5 컬럼 명세는 정본에서 생성된다
 
 ---
@@ -353,6 +353,7 @@ erDiagram
         int like_count
         int save_count
         int view_count
+        decimal rank_score
         datetime created_at
         datetime updated_at
     }
@@ -1023,6 +1024,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `like_count` | INT | Integer |  | O |  | `design` | OOTD 상세 하단 '♡ 1234'. 정본은 post_like 테이블 |
 | `save_count` | INT | Integer |  | O |  | `design` | OOTD 상세 하단 '🔖 1234'. 정본은 post_save 테이블 |
 | `view_count` | INT | Integer |  | O |  | `design` | 검색 결과 정렬의 '조회수 순'. Redis 카운터를 주기적으로 반영한다 (`DEC-019`) |
+| `rank_score` | DECIMAL(6,4) | BigDecimal |  | O |  | `design` | 검색 '추천 순'의 정렬 키. 인기·신선도를 합친 값을 배치가 갱신한다 (`DEC-023`) |
 | `created_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 감사 컬럼 관례 |
 | `updated_at` | DATETIME(6) | LocalDateTime |  | O |  | `design` | '완료를 누르면 게시물 전체가 수정' |
 
@@ -1994,6 +1996,52 @@ recent-view:{userId}:{targetType}    score = 열람 시각
 
 ---
 
+**DEC-022 — 목록 페이지네이션 방식**
+
+> 결정: **커서로 통일. 총 건수는 검색 결과에만**
+
+47개 화면에 페이지 번호 UI 가 하나도 없다 — 전부 아래로 스크롤한다. 그런데 응답은
+`page`·`totalElements`·`totalPages` 를 싣고 있었고 그 값을 쓰는 화면은 검색 결과의
+`총 게시물 80개` **하나뿐**이었다. 목록마다 아무도 안 쓰는 count 쿼리를 한 번씩 더 치던 셈이다.
+
+게다가 offset 은 스크롤 중에 새 게시물이 앞에 들어오면 페이지가 밀려 **같은 항목이 두 번 보이거나
+한 건이 빠진다.** 커서는 '어디까지 줬는지' 를 값으로 기억해 그 일이 없고, `size + 1` 건을 읽어
+다음 페이지 유무를 알므로 count 가 사라진다.
+
+커서는 정렬 키와 id 를 담은 **불투명 문자열**(base64)이다. 암호화하지 않는다 — 담긴 값이 이미 응답에
+나가는 값이라 숨길 것이 없고, 목적은 클라이언트가 형식을 알고 직접 만들지 못하게 하는 것이다.
+정렬 키가 겹칠 때를 대비해 **항상 id 로 tie-break** 한다.
+
+*재검토 시점:* 총계를 표시하는 화면이 더 생기면 그 엔드포인트에만 `totalCount` 를 더한다.
+규격을 offset 으로 되돌리지 않는다.
+
+---
+
+**DEC-023 — 검색 '추천 순'의 정렬 기준**
+
+> 결정: **매칭 등급 → `post.rank_score` → id**
+
+키워드는 게시물이 아니라 **태그된 아이템**과 매칭된다 — `post` 에 캡션 컬럼이 없어 게시물 자체에는
+텍스트가 없다. 등급은 3(브랜드+모델명) / 2(브랜드 또는 아이템명) / 1(카테고리명) / 0(제외)이다.
+
+```
+rank_score = log10(1 + save*3 + like*1 + view*0.2) * 0.6
+           + exp(-경과일 / 14)                      * 0.4
+```
+
+저장에 가장 큰 가중치를 준 것은 '나중에 사겠다' 는 신호이기 때문이고, 조회수는 어뷰징에 약해 낮췄다.
+`log` 는 인기 게시물의 상위 고착을 막는다. **배치가 미리 계산한다** — 조회 시점에 계산하면 정렬이
+인덱스를 못 타고, 요청 사이에 값이 바뀌어 커서 경계가 흔들린다(`DEC-022`).
+
+키워드 없이 필터만 적용하면 등급이 전부 0 이라 `rank_score` 만으로 정렬된다 — 사실상
+`지금 인기 있는 스타일` 과 같은 성질이 된다.
+
+*재검토 시점:* 개인화 가산점(팔로우 중인 작성자·비슷한 체형)은 넣지 않았다. 사용자별 점수가 되면
+사전 계산이 불가능해지고 정렬 이상을 디버깅할 수 없다. 클릭 로그로 효과를 잴 수 있게 되면 가중치와
+함께 재검토한다.
+
+---
+
 ### 6-3. 파생 컬럼 대장
 
 다른 테이블에서 다시 만들어낼 수 있는 값이다. **무엇이 정본이고 언제 갱신하는지**를 못박아 둔다.
@@ -2006,6 +2054,7 @@ recent-view:{userId}:{targetType}    score = 열람 시각
 | `post.save_count` | `post_save` | 저장·취소 트랜잭션 내 증감 | OOTD 상세의 '🔖 1234' |
 | `item_listing.wish_count` | `wishlist` | 관심 등록·해제 트랜잭션 내 증감 | 상품 상세의 '관심 14명' |
 | `post.view_count` | Redis `post-view:{postId}` | 조회는 Redis INCR, 주기 배치가 컬럼에 더한다 | 검색 결과 '조회수 순' 정렬. 읽기 경로에 DB 쓰기를 붙이지 않는다 (`DEC-019`) |
+| `post.rank_score` | `post_like` · `post_save` · `view_count` · `created_at` | 배치가 60분마다 계산해 덮어쓴다 | 검색 '추천 순' 정렬 키. 조회 시점에 계산하면 인덱스를 못 타고 커서 경계가 흔들린다 (`DEC-023`) |
 | `chat_room.last_message_at` | `MAX(chat_message.created_at)` | 메시지 쓰기 트랜잭션 내 동기 갱신 | 채팅방 목록 정렬. 매번 MAX 를 구하면 방이 늘수록 비싸진다 |
 | `item_wear_record.worn_date` | `post.worn_date` | 복제하지 않음 — 스냅샷 | 파생이 아니라 인증 시점의 값 고정. 질문 대상이 아니다 |
 | `user_grade_history.valid_ootd_count` | `평가 시점의 판정 결과` | 복제하지 않음 — 스냅샷 | 재계산하면 그 사이 삭제된 게시물 때문에 값이 달라진다. 판정 근거값이므로 당시 수치를 고정한다 |
