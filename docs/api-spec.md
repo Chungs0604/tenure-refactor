@@ -193,7 +193,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | `post_tag_edit_log` | 없음(MVP 외) | 없음 | API-083 이 자동 생성 | 없음(append-only) | 없음(append-only) |
 | `category` | API-090 | 없음(트리로 일괄) | 없음(마스터 데이터) | 없음(마스터 데이터) | 없음(마스터 데이터) |
 | `item` | API-091 API-098 API-099 (추천) | API-093 | API-092 | API-094 | API-095 |
-| `item_image` | 없음(아이템에 중첩) | API-093 에 포함 | API-092 에 포함 | API-094 에 포함 (전체 교체) | 없음(교체로 대체) |
+| `item_image` | 없음 | 없음 | 없음 | 없음 | 없음 — 사진을 여러 장 넣는 화면도 보여주는 화면도 없다. 대표 사진은 `item.cover_image_key` 다 |
 | `item_measurement` | 없음(아이템에 중첩) | API-093 에 포함 | API-111 에 포함 | API-112 에 포함 | 없음(부모 종속) |
 | `item_condition` | 없음(아이템에 중첩) | API-093 에 포함 | API-111 에 포함 | API-112 에 포함 | 없음(부모 종속) |
 | `item_ownership` | API-097 | 없음 | API-092 API-165 가 자동 생성 | 없음(append-only) | 없음(append-only) |
@@ -414,6 +414,8 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | `ITEM_409_ON_SALE` | 409 | 판매 중이거나 거래가 진행 중이라 삭제할 수 없습니다. | API-095 |
 | `ITEM_400_MEASUREMENT` | 400 | 해당 카테고리에 맞지 않는 실측 항목입니다. | API-111, API-112 |
 | `ITEM_400_CATEGORY` | 400 | 세부 카테고리를 선택해주세요. | API-092, API-094 |
+| `ITEM_400_SIZE` | 400 | 해당 카테고리에서 고를 수 없는 사이즈입니다. | API-092, API-094 |
+| `ITEM_409_TRADED` | 409 | 거래 이력이 있어 최초 보유 날짜를 바꿀 수 없습니다. | API-094 |
 | `ITEM_409_TAG_CLOSED_PERIOD` | 409 | 이미 판매된 아이템의 과거 태그는 수정할 수 없습니다. | API-073, API-083 |
 
 ### CategoryErrorCode
@@ -2310,7 +2312,16 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 
 카테고리 트리 (대분류 10 · 세부 102). 인증 **필요**. 관련 화면 SCR-024, SCR-047.
 
-응답 `{ categories[{ id, name, depth, sizeScheme, children[] }] }`. 대분류 10종 · 세부 102종. id 는 `V2__seed_category.sql` 의 고정값이다(대분류 1~10, 세부 101~202). **`sizeScheme` 값 목록은 미확정(`Q6`)** — 현재는 `null` 로 내려간다.
+응답은 `{ id, name, depth, sizeScheme, sizeOptions[], children[] }` 배열이다. 대분류 10종 · 세부 102종. id 는 `V2__seed_category.sql` 의 고정값이다(대분류 1~10, 세부 101~202).
+
+**`sizeOptions` 는 대분류에만 실린다** — 세부 카테고리는 부모의 칩을 그대로 쓰므로 빈 배열이다. 아이템 등록·수정은 여기서 받은 `label` 을 `sizeLabel` 로 그대로 보내고, 서버가 그 세트에 속한 값인지 확인한다(`DEC-025`).
+
+| 세트 | 대분류 | 칩 |
+|---|---|---|
+| `TOP` | 상의 · 아우터 · 원피스 | `XS`~`3XL` + `85`~`115` + `36`~`50` + `0`~`6` (29) |
+| `BOTTOM` | 하의 · 치마 | `XS`~`3XL` + `24`~`40`(인치) + `0`~`6` (31) |
+| `SHOE` | 신발 | `210`~`310` (5단위, 21) |
+| `ONE_SIZE` | 모자 · 가방 · 액세서리 · 쥬얼리 | `One size` (1) |
 
 **응답** (`data` 배열)
 
@@ -2319,7 +2330,9 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `id` | Long | — |
 | `name` | String | 대분류 10종 / 세부 102종 |
 | `depth` | Integer | 1 \| 2 |
-| `sizeScheme` | String | **Q6 미확정 — null** |
+| `sizeScheme` | SizeScheme | TOP \| BOTTOM \| SHOE \| ONE_SIZE. 세부 카테고리는 null |
+| `sizeOptions[].label` | String | 칩 라벨. `sizeLabel` 에 이 값을 그대로 보낸다 |
+| `sizeOptions[].sizeSystem` | SizeSystem | ALPHA \| KR_NUMERIC \| EU_NUMERIC \| INCH \| MM \| FREE_NUMBER \| ONE_SIZE. 화면은 이 값이 바뀌는 지점에서 줄을 바꾼다 |
 | `children[]` | Category | 하위 카테고리 |
 
 ```json
@@ -2332,7 +2345,13 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
       "id": 1,
       "name": "<String>",
       "depth": 1,
-      "sizeScheme": "<String>",
+      "sizeScheme": "TOP",
+      "sizeOptions": [
+        {
+          "label": "L",
+          "sizeSystem": "ALPHA"
+        }
+      ],
       "children": [
         "<Category>"
       ]
@@ -2346,6 +2365,8 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 #### API-091 · `GET /api/v1/items`
 
 내가 등록한 아이템 목록. 인증 **필요**. 관련 화면 SCR-022.
+
+**현재 소유자 기준이다** — 등록자가 아니라 소유 구간이 열려 있는(`end_date IS NULL`) 아이템만 내려간다. 팔면 목록에서 빠진다. 등록자 기준으로 두면 행을 눌러 들어간 상세에서 수정·삭제가 403 이 되는 행이 생긴다. 마이페이지의 `아이템 N` 카운터도 같은 조건이다.
 
 페이징. `saleStatus` · `wishCount` · `offerAllowed` 는 아이템이 갖고(`DEC-024`), 판매 조건만 `listing { id, price }` 로 중첩한다 — 판매 등록이 없으면 `null` 이다.
 
@@ -2412,7 +2433,13 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 
 아이템 등록. 인증 **필요**. 관련 화면 SCR-024, SCR-018.
 
-요청 `ItemCreateRequest` — `name` `brandName` `categoryId` `sizeLabel?` `wearTarget` `coverImageKey` `description?` `firstOwnedDate?` `images[]`. 생성과 동시에 `item_ownership` 최초 구간(`acquired_by=INITIAL_REGISTRATION`)을 연다.
+요청 `ItemCreateRequest` — `name` `brandName` `categoryId` `sizeLabel?` `wearTarget` `coverImageKey` `description?` `firstOwnedDate?`. 생성과 동시에 `item_ownership` 최초 구간(`acquired_by=INITIAL_REGISTRATION`)을 연다.
+
+**`firstOwnedDate` 를 비우면 소유 구간은 등록일부터 연다.** `item.first_owned_date` 는 `null` 로 남겨 '언제부터 갖고 있었는지 모른다' 와 '등록 시점부터 기록한다' 를 나눠 표현한다.
+
+**`sizeLabel` 은 카테고리 트리(`API-090`)가 준 `label` 만 받는다.** 그 아이템 대분류의 칩 세트에 없는 값이면 `ITEM_400_SIZE` 다 — 칩에서 고르는 값이라 자유 입력이 아니고, 오타가 공개 페이지와 상품 상세에 그대로 박힌다(`DEC-025`). 비우면 검증하지 않는다.
+
+**`images[]` 를 받지 않는다.** 등록 폼(`2825:47795`)과 판매 전환(`3342:32943`) 모두 `대표 사진` 1장이고, 판매 상품 상세(`2825:57089`)도 캐러셀 없이 1장이다. `item_image` 테이블은 남기되 채우는 경로가 아직 없다 — 다중 사진 화면이 생기면 그때 연다.
 
 **실측·상태 이상은 받지 않는다.** 등록 폼(`2825:47795`)과 상세 수정 바텀시트(`2825:49332` 외 9종) 어디에도 입력란이 없고, 두 항목은 판매 전환 화면(`3342:32943`)에만 있다. `item_measurement`·`item_condition` 은 아이템 속성이라 `item_id` 를 그대로 참조하되 입력 시점은 `API-111` 이다 — 재판매 때 이전 값이 채워진다(안내사항 `3633:34232` — '아이템에 관하여 이미 등록된 정보가 있다면 미리 빈칸에 작성되어있습니다').
 
@@ -2423,13 +2450,11 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `name` | String | O | — | 아이템명 |
 | `brandName` | String | O | — | — |
 | `categoryId` | Long | O | depth=2 | — |
-| `sizeLabel` | String |  | — | — |
+| `sizeLabel` | String |  | 대분류의 칩 세트에 있는 값 | `API-090` 의 `sizeOptions[].label` |
 | `wearTarget` | WearTarget | O | MALE \| FEMALE \| UNISEX | 등록 폼에 필수 표시(*). DB 도 NOT NULL |
 | `coverImageKey` | String | O | API-060 응답 | 대표 사진 |
 | `description` | String |  | — | — |
-| `firstOwnedDate` | LocalDate |  | — | 최초 보유 날짜 = 최초 소유 구간 start_date |
-| `images[].imageKey` | String |  | — | — |
-| `images[].sortOrder` | Integer |  | — | — |
+| `firstOwnedDate` | LocalDate |  | — | 비우면 소유 구간은 등록일부터 연다 |
 
 **응답** (`data`)
 
@@ -2448,13 +2473,15 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 }
 ```
 
-에러 — ITEM_400_CATEGORY, CATEGORY_404
+에러 — ITEM_400_CATEGORY, ITEM_400_SIZE, CATEGORY_404
 
 #### API-093 · `GET /api/v1/items/{itemId}`
 
 아이템 상세 (소유자 시점). 인증 **필요**. 관련 화면 SCR-023.
 
-응답에 `coverImageUrl` · `images[]` · `measurements` · `conditions` · `ownerships[]` · `frequentlyWornWith[]` · `recentWornDate` · `totalWearCount` · `listing` 을 중첩한다.
+**현재 소유자만 열 수 있다** — 이 화면에 수정·삭제 진입이 있어서다. 소유자가 아니면 `ITEM_403` 이다. 남의 아이템 기록을 보는 경로는 `API-097`(Tenure 기록 기준)과 공개 페이지다.
+
+응답에 `coverImageUrl` · `ownerships[]` · `frequentlyWornWith[]` · `recentWornDate` · `totalWearCount` · `listing` 을 중첩한다. `images[]` 는 없다 — 사진을 여러 장 넣는 화면도 보여주는 화면도 없다(`API-092` 참고).
 
 `saleStatus` · `wishCount` · `offerAllowed` 는 아이템이 갖는다(`DEC-024`). 화면(`2825:48757`)이 미판매 아이템에도 `미판매 · 구매 제안 X` 와 `관심 14명` 을 그린다.
 
@@ -2462,7 +2489,7 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 
 하단 CTA 는 `saleStatus` 로 갈린다 — 판매 중이면 `판매 페이지로`(`API-110`), 그 외에는 `공개 페이지로`(미판매 공개 페이지 `2825:58233`)다. 판매 전환 진입은 이 화면이 아니라 목록(`API-091`)의 행 버튼이다.
 
-`measurements` · `conditions` 는 이 화면에 그려지지 않지만 응답에 싣는다 — 판매 전환 폼(`API-111`)이 이 값으로 빈칸을 채운다(안내사항 `3633:34232`).
+판매 전환 폼의 빈칸 채우기(안내사항 `3633:34232`)는 `listing` 도메인에서 담당한다 — 실측·상태 이상은 이 화면에 없고 `API-111`·`API-112` 가 읽고 쓴다.
 
 `frequentlyWornWith` 는 `자주 같이 입은 옷` 칩이다. 같은 게시물에 함께 태그된 횟수 상위 **3건**이며 `post_item_tag` 자기 조인으로 구한다. 삭제된 아이템은 제외한다.
 
@@ -2480,17 +2507,13 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `name` | String | — |
 | `brandName` | String | — |
 | `coverImageUrl` | String | 대표 사진 |
-| `images[].id` | Long | — |
-| `images[].url` | String | 상세 사진 캐러셀 |
-| `images[].sortOrder` | Integer | — |
-| `category.id` | Long | 수정 화면의 드롭다운 초기값 |
-| `category.name` | String | — |
+| `rootCategoryName` | String | '상의 · 긴소매 티셔츠' 의 앞쪽 |
+| `categoryId` | Long | 수정 화면의 초기값 |
+| `categoryName` | String | — |
 | `sizeLabel` | String | — |
 | `wearTarget` | WearTarget | — |
 | `description` | String | — |
 | `firstOwnedDate` | LocalDate | — |
-| `measurements` | ProductMeasurements | 10필드 고정. 판매 전환 폼 prefill 용 |
-| `conditions[]` | ConditionCode | 판매 전환 폼 prefill 용 |
 | `saleStatus` | SaleStatus | NOT_FOR_SALE \| ON_SALE \| SOLD. 판매 등록이 없으면 NOT_FOR_SALE |
 | `wishCount` | Integer | 관심 N명 |
 | `offerAllowed` | Boolean | `구매 제안 허용` 토글 상태 |
@@ -2519,26 +2542,14 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
     "id": 1,
     "name": "<String>",
     "brandName": "<String>",
-    "category": {
-      "id": 1,
-      "name": "<String>"
-    },
+    "rootCategoryName": "상의",
+    "categoryId": 116,
+    "categoryName": "긴소매 티셔츠",
     "coverImageUrl": "https://cdn.tenure.app/item/2026/06/ab12.jpg",
-    "images": [
-      {
-        "id": 1,
-        "url": "https://cdn.tenure.app/item/2026/06/ab12.jpg",
-        "sortOrder": 0
-      }
-    ],
     "sizeLabel": "<String>",
     "wearTarget": "<WearTarget>",
     "description": "<String>",
     "firstOwnedDate": "2026-06-21",
-    "measurements": "<ProductMeasurements>",
-    "conditions": [
-      "<ConditionCode>"
-    ],
     "saleStatus": "<SaleStatus>",
     "wishCount": 14,
     "offerAllowed": true,
@@ -2580,7 +2591,7 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 
 요청 `ItemUpdateRequest`. 실측·상태 이상은 여기서 받지 않는다 — 상세 수정 바텀시트(`2825:49332` 외 9종)에 입력란이 없고 판매 전환(`API-111`)이 담당한다. `offerAllowed` 는 여기서 바꾼다 — 미판매 아이템에는 `item_listing` 행이 없어 `API-113` 을 쓸 수 없다(`DEC-024`). `firstOwnedDate` 를 바꾸면 **최초 소유 구간의 `start_date` 도 함께 갱신**된다 — 단 소유 구간이 1개이고 본인이 현재 소유자일 때만 허용하며, 거래 이력이 생기면 잠긴다(`DEC-007`).
 
-사진도 여기서 바꾼다 — `coverImageKey` 는 교체, `images[]` 는 **전체 교체**다(보낸 배열이 곧 최종 상태이고, 생략하면 유지한다). `item_image` 는 하드 삭제 대상이라 개별 삭제 엔드포인트를 따로 두지 않는다.
+사진은 `coverImageKey` 로 교체한다. 사이즈나 카테고리를 보냈을 때만 `sizeLabel` 을 검증한다 — 둘 다 안 건드렸으면 다시 보지 않아서, 칩 세트가 나중에 바뀌어도 기존 아이템의 수정이 막히지 않는다.
 
 **요청 본문**
 
@@ -2589,11 +2600,9 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `name` | String |  | — | — |
 | `brandName` | String |  | — | — |
 | `categoryId` | Long |  | depth=2 | — |
-| `sizeLabel` | String |  | — | — |
+| `sizeLabel` | String |  | 대분류의 칩 세트에 있는 값 | `API-090` 의 `sizeOptions[].label` |
 | `wearTarget` | WearTarget |  | — | — |
 | `coverImageKey` | String |  | API-060 응답 | 대표 사진 교체 |
-| `images[].imageKey` | String |  | API-060 응답 | **전체 교체** — 생략하면 유지 |
-| `images[].sortOrder` | Integer |  | — | — |
 | `description` | String |  | — | — |
 | `firstOwnedDate` | LocalDate |  | 구간 1개 + 본인 소유일 때만 | 최초 구간 start_date 도 갱신 |
 | `offerAllowed` | Boolean |  | — | `구매 제안 허용` 토글 |
@@ -2615,7 +2624,7 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 }
 ```
 
-에러 — ITEM_403, ITEM_404, CATEGORY_404
+에러 — ITEM_403, ITEM_404, ITEM_400_CATEGORY, ITEM_400_SIZE, ITEM_409_TRADED, CATEGORY_404
 
 #### API-095 · `DELETE /api/v1/items/{itemId}`
 

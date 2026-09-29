@@ -398,8 +398,15 @@ erDiagram
         bigint parent_id
         varchar name
         int depth
-        varchar size_scheme
+        varchar size_scheme "SizeScheme"
         smallint sort_order
+    }
+    size_option {
+        bigint id PK
+        varchar scheme "SizeScheme"
+        varchar size_system "SizeSystem"
+        varchar label
+        int sort_order
     }
     item {
         bigint id PK
@@ -1146,10 +1153,33 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `parent_id` | BIGINT | Long |  |  |  | `design` | depth=1 이면 NULL |
 | `name` | VARCHAR(50) | String |  | O |  | `design` | 대분류 10종(화면 순서): 아우터·상의·하의·신발·가방·모자·치마·원피스·액세서리·주얼리. 세부 102종. 값은 `V2__seed_category.sql` 이 정본 |
 | `depth` | INT | Integer |  | O |  | `design` | 1=카테고리, 2=세부 카테고리 |
-| `size_scheme` | VARCHAR(30) | String |  |  |  | `design` | 체계 4종 확인 — ALPHA(XS~3XL) / KR_NUMERIC(85~115) / EU_NUMERIC(36~50) / FREE_NUMBER(0~6). 대분류별 매핑은 미확정(→ Q6) |
+| `size_scheme` | VARCHAR(30) | SizeScheme |  |  |  | `design` | 이 대분류가 쓰는 사이즈 칩 세트. 칩 목록은 `size_option` 이 갖는다. 세부 카테고리는 NULL 이며 부모에서 읽는다 (Q6 해소, DEC-025) |
 | `sort_order` | INT | Integer |  | O |  | `inferred` | 드롭다운 노출 순서 |
 
 인덱스: `ix_category_parent`(parent_id, sort_order)
+
+#### `size_option` (SizeOption)
+
+카테고리별 사이즈 칩 목록. 값은 `V15__size_option.sql` 이 정본이며 애플리케이션이 만들지 않는다. 프론트가 칩을 하드코딩하지 않도록 `API-090` 이 카테고리 트리와 함께 내려준다 (DEC-025).
+
+| 컬럼 | 타입 | Java | PK | NN | UQ | 출처 | 설명 |
+|---|---|---|:--:|:--:|:--:|---|---|
+| `id` | BIGINT | Long | O | O |  | `inferred` | PK 관례 |
+| `scheme` | VARCHAR(20) | SizeScheme |  | O |  | `design` | 칩 세트. `category.size_scheme` 이 가리킨다 |
+| `size_system` | VARCHAR(20) | SizeSystem |  | O |  | `design` | 그 칩이 속한 체계. 화면은 체계 이름을 글자로 쓰지 않고 줄바꿈으로만 구분한다 |
+| `label` | VARCHAR(20) | String |  | O |  | `design` | 화면에 그대로 쓰는 칩 라벨. `item.size_label` 에 이 값이 복사된다 |
+| `sort_order` | INT | Integer |  | O |  | `inferred` | 칩 노출 순서 |
+
+인덱스: `uk_size_option`(scheme, label) UNIQUE, `ix_size_option_order`(scheme, sort_order)
+
+칩 세트는 넷이다.
+
+| 세트 | 대분류 | 칩 |
+|---|---|---|
+| `TOP` | 상의 · 아우터 · 원피스 | `XS`~`3XL` + `85`~`115` + `36`~`50` + `0`~`6` (29) |
+| `BOTTOM` | 하의 · 치마 | `XS`~`3XL` + `24`~`40`(인치) + `0`~`6` (31) |
+| `SHOE` | 신발 | `210`~`310` (5단위, 21) |
+| `ONE_SIZE` | 모자 · 가방 · 액세서리 · 쥬얼리 | `One size` (1) |
 
 #### `item` (Item)
 

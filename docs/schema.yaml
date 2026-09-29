@@ -1,10 +1,11 @@
-# Tenure DB 스키마 정본 (machine-readable) — v7
+# Tenure DB 스키마 정본 (machine-readable) — v8
+# v8: 사이즈 칩 목록을 size_option 테이블로 옮기고 Q6 를 닫았다(DEC-025).
 # v7: 공개 노출 속성(wish_count · offer_allowed)을 item_listing 에서 item 으로 올렸다(DEC-024).
 # v6: 목록 페이지네이션을 커서로 통일하고(DEC-022) 검색 추천 순의 정렬 키를 확정했다(DEC-023).
 # v5: 47개 화면을 전수 재판독해 30건을 바로잡았다. 경위는 docs/design-audit.md
 # 생성: figma-to-erd 규격. docs/erd.md 의 관계 요약표·화면 인벤토리·컬럼 명세 표는 이 파일에서 생성된다.
 
-version: 7
+version: 8
 generated_from:
   figma_url: https://www.figma.com/design/hnEDDkiI0V4js9JzWR2l2M/Tenure-UXUI-%EC%9E%91%EC%97%85?node-id=813-8486&m=dev
   file_key: hnEDDkiI0V4js9JzWR2l2M
@@ -941,6 +942,32 @@ enums:
   source: design
   evidence: '''사진 비율은 총 3가지입니다. 3:4, 4:5, 1:1 비율에 따라 사진을 촬영할 수 있습니다.'' + 촬영 프레임 3종'
   value_evidence_table: post
+- name: SizeScheme
+  values:
+  - TOP
+  - BOTTOM
+  - SHOE
+  - ONE_SIZE
+  labels:
+    TOP: 상의 · 아우터 · 원피스
+    BOTTOM: 하의 · 치마
+    SHOE: 신발
+    ONE_SIZE: 모자 · 가방 · 액세서리 · 쥬얼리
+  source: design
+  evidence: 상세 수정 바텀시트 10종에서 확정했다. 상의처럼 한 세트가 여러 체계를 섞어 쓰므로 체계 이름이 아니라 세트 이름이다 (DEC-025)
+  value_evidence_table: category
+- name: SizeSystem
+  values:
+  - ALPHA
+  - KR_NUMERIC
+  - EU_NUMERIC
+  - INCH
+  - MM
+  - FREE_NUMBER
+  - ONE_SIZE
+  source: design
+  evidence: 'ALPHA(XS~3XL) / KR_NUMERIC(85~115) / EU_NUMERIC(36~50) / INCH(24~40, 하의·치마) / MM(210~310, 신발) / FREE_NUMBER(0~6) / ONE_SIZE. 인치·mm·One size 는 A-14 가 찾은 4종에 없던 체계다'
+  value_evidence_table: size_option
 - name: WearTarget
   values:
   - MALE
@@ -2543,10 +2570,11 @@ entities:
   - name: sizeScheme
     column: size_scheme
     db_type: VARCHAR(30)
-    java_type: String
+    java_type: SizeScheme
+    enum: SizeScheme
     nullable: true
     source: design
-    evidence: 아이템 등록(2825:47795)·판매 전환(3342:32943)의 '사이즈' 칩에서 체계 4종을 확인했다 — ALPHA(XS·S·M·L·XL·2XL·3XL) / KR_NUMERIC(85~115) / EU_NUMERIC(36~50) / FREE_NUMBER(0~6). 어느 대분류가 어느 체계를 쓰는지는 화면이 전 체계를 한 번에 펼쳐 보여줘 확정하지 못했다(→ Q6)
+    evidence: 이 대분류가 쓰는 사이즈 칩 세트. 칩 목록은 size_option 이 갖는다. 세부 카테고리(depth=2)는 NULL 이며 부모에서 읽는다 — 상세 수정 바텀시트 10종에서 매핑을 확정했다 (Q6 해소, DEC-025)
   - name: sortOrder
     column: sort_order
     db_type: INT
@@ -2563,6 +2591,73 @@ entities:
     unique: false
   pattern: 자기 참조
   pattern_note: parent_id nullable, depth 로 2단(카테고리 > 세부 카테고리)을 고정한다. 하위가 있으면 RESTRICT 로 삭제를 막는다
+- name: SizeOption
+  table: size_option
+  domain: category
+  description: 카테고리별 사이즈 칩 목록. 값은 V15__size_option.sql 이 정본이며 애플리케이션이 만들지 않는다. 프론트가 칩을 하드코딩하지 않도록 API-090 이 카테고리 트리와 함께 내려준다 (DEC-025).
+  soft_delete: false
+  delete_policy: C
+  delete_rationale: 참조 데이터. 행을 지우는 대신 seed 를 고친다
+  source: design
+  evidence:
+  - 아이템 상세 수정 바텀시트 10종 (2825:49332 외) — 카테고리마다 펼쳐지는 칩이 다르다
+  - 안내사항 2825:49032 — '아이템 상세 정보 수정 (카테고리마다 세부 카테고리, 사이즈 다름)'
+  fields:
+  - name: id
+    column: id
+    db_type: BIGINT
+    java_type: Long
+    pk: true
+    auto_increment: true
+    nullable: false
+    source: inferred
+    evidence: PK 관례
+  - name: scheme
+    column: scheme
+    db_type: VARCHAR(20)
+    java_type: SizeScheme
+    nullable: false
+    enum: SizeScheme
+    source: design
+    evidence: 칩 세트. category.size_scheme 이 이 값을 가리킨다
+  - name: sizeSystem
+    column: size_system
+    db_type: VARCHAR(20)
+    java_type: SizeSystem
+    nullable: false
+    enum: SizeSystem
+    source: design
+    evidence: 그 칩이 속한 체계. 화면이 체계 이름을 글자로 쓰지 않고 줄바꿈으로만 구분한다
+  - name: label
+    column: label
+    db_type: VARCHAR(20)
+    java_type: String
+    nullable: false
+    source: design
+    evidence: 화면에 그대로 쓰는 칩 라벨. item.size_label 에 이 값이 복사된다
+  - name: sortOrder
+    column: sort_order
+    db_type: INT
+    java_type: Integer
+    nullable: false
+    source: inferred
+    evidence: 칩 노출 순서
+  indexes:
+  - name: uk_size_option
+    columns:
+    - scheme
+    - label
+    unique: true
+  - name: ix_size_option_order
+    columns:
+    - scheme
+    - sort_order
+    unique: false
+  constraints:
+  - rule: item.size_label 은 그 아이템 대분류의 scheme 에 속한 label 이어야 한다
+    enforced_by: application
+    source: design
+    evidence: 칩에서 고르는 값이라 자유 입력이 아니다. FK 로 묶지 않는 이유는 스냅샷이기 때문 (DEC-025)
 - name: Item
   table: item
   domain: item
@@ -5992,6 +6087,28 @@ design_decisions:
     '미판매'는 두 경로(listing 행 없음 / 최신 listing 이 NOT_FOR_SALE)로 생기므로 API 응답에서는
     saleStatus 를 아이템 레벨로 평탄화해 하나로 내려준다
   revisit_when: 판매 중 아이템의 구매 제안 허용을 판매 등록별로 다르게 걸고 싶어지면 item_listing 에 재정의 컬럼을 더한다. item 의 값은 기본값으로 남긴다
+- id: DEC-025
+  topic: 카테고리별 사이즈 칩을 어디에 두는가 (Q6 해소)
+  considered:
+  - category.size_scheme 한 칸에 체계 이름을 넣는다 (기존)
+  - 프론트가 칩 목록을 하드코딩한다
+  - size_option 테이블을 만들고 size_label 을 검증한다
+  decision: size_option 테이블을 신설한다. category.size_scheme 은 대분류에만 칩 세트 이름을 담고, item.size_label 은 문자열로 두되 등록·수정이 그 세트로 검증한다
+  rationale: |
+    category.size_scheme 은 VARCHAR 한 칸이라 체계를 하나만 담는데, 상세 수정 바텀시트를 열어 보니
+    상의는 네 체계(XS~3XL · 85~115 · 36~50 · 0~6)를 한꺼번에 펼친다. 한 칸으로는 화면을 그릴 수 없다.
+    게다가 그 칸이 세부 카테고리 102행에도 있어 어디가 정본인지 모호했다.
+      TOP       상의 · 아우터 · 원피스   ALPHA 7 + KR_NUMERIC 7 + EU_NUMERIC 8 + FREE_NUMBER 7 = 29칩
+      BOTTOM    하의 · 치마             ALPHA 7 + INCH 17 + FREE_NUMBER 7 = 31칩
+      SHOE      신발                    MM 210~310 = 21칩
+      ONE_SIZE  모자 · 가방 · 액세서리 · 쥬얼리  1칩
+    칩 목록을 DB 에 두면 프론트가 하드코딩하지 않아도 되고, 체계를 고치는 일이 seed UPDATE 한 번으로
+    끝난다. 또 백엔드가 size_label 을 검증할 수 있게 된다 — 칩에서 고르는 값인데 API 가 아무거나
+    받으면 그 오타가 공개 페이지와 상품 상세에 그대로 박힌다. 기록으로 가치를 증명하는 서비스라
+    아이템 원장의 품질이 중요하다.
+    item.size_label 을 FK 로 묶지는 않았다. 사이즈 체계를 나중에 손보더라도 이미 등록된 아이템의
+    기록이 흔들리면 안 된다 — 금액·배송지를 스냅샷으로 두는 것과 같은 이유다.
+  revisit_when: 대분류 안에서 세부 카테고리마다 칩이 갈리는 화면이 생기면 category.size_scheme 을 depth=2 에도 채우고 '가장 가까운 조상' 규칙으로 읽는다. 테이블 구조는 그대로 쓸 수 있다
 - id: DEC-101
   topic: 타인에게 보이는 프로필 필드 — 등급·키·몸무게는 공개, 성별은 비공개
   considered:
