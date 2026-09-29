@@ -13,12 +13,13 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
- * HTTP 요청 경로의 예외를 {@link BaseResponse} 로 변환한다.
+ * HTTP 요청 경로의 예외를 BaseResponse 로 변환한다.
  *
- * <p>예외 로깅은 여기서 한 번만 한다 — 던지는 쪽에서 찍으면 호출 스택마다 중복된다.
+ * 예외 로깅은 여기서 한 번만 한다 — 던지는 쪽에서 찍으면 호출 스택마다 중복된다.
  * 4xx 는 스택트레이스를 남기지 않는다. 로그량이 감당되지 않는다.
  */
 @Slf4j
@@ -32,7 +33,7 @@ public class GlobalExceptionHandler {
 		return ResponseEntity.status(code.getStatus()).body(BaseResponse.fail(code));
 	}
 
-	/** {@code @Valid} 실패. 어느 필드가 왜 틀렸는지 알려줘야 고칠 수 있다. */
+	/** @Valid 실패. 어느 필드가 왜 틀렸는지 알려줘야 고칠 수 있다. */
 	@ExceptionHandler(MethodArgumentNotValidException.class)
 	public ResponseEntity<BaseResponse<Void>> handleValidation(MethodArgumentNotValidException e) {
 		String detail = e.getBindingResult().getFieldErrors().stream()
@@ -73,6 +74,20 @@ public class GlobalExceptionHandler {
 		log.warn("[{}] {}", CommonErrorCode.FORBIDDEN.getCode(), e.getMessage());
 		return ResponseEntity.status(CommonErrorCode.FORBIDDEN.getStatus())
 				.body(BaseResponse.fail(CommonErrorCode.FORBIDDEN));
+	}
+
+	/**
+	 * 업로드 용량 초과. 상한은 spring.servlet.multipart 에 있다.
+	 *
+	 * Tomcat 이 요청 파싱 단계에서 끊으므로 컨트롤러에 도달하지 않는다 — MediaService 의
+	 * 형식 검증과 달리 여기서만 잡을 수 있다.
+	 */
+	@ExceptionHandler(MaxUploadSizeExceededException.class)
+	public ResponseEntity<BaseResponse<Void>> handleUploadSize(MaxUploadSizeExceededException e) {
+		log.warn("[{}] 업로드 용량 상한을 넘었습니다. maxUploadSize={}",
+				MediaErrorCode.MEDIA_413.getCode(), e.getMaxUploadSize());
+		return ResponseEntity.status(MediaErrorCode.MEDIA_413.getStatus())
+				.body(BaseResponse.fail(MediaErrorCode.MEDIA_413));
 	}
 
 	/** 매핑되지 않은 경로. 스택트레이스 없이 404 로 끝낸다. */
