@@ -23,8 +23,8 @@ import lombok.NoArgsConstructor;
 /**
  * 등급 변경 이력. UserGrade.RECORD 로의 승격이 언제·왜 일어났는지 기록할 자리.
  *
- * <p>생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
- * 스키마에서 읽을 수 없다. {@code @Builder} 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
+ * 생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
+ * 스키마에서 읽을 수 없다. @Builder 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
  */
 @Entity
 @Table(name = "user_grade_history")
@@ -70,5 +70,27 @@ public class UserGradeHistory {
 	/** 변경 시각 */
 	@Column(name = "changed_at", nullable = false)
 	private LocalDateTime changedAt;
+
+
+	/**
+	 * 등급 변경 기록. 판정 근거를 함께 남긴다 — 나중에 재계산하면 그 사이 삭제된 게시물 때문에
+	 * 수치가 달라져 당시 판정을 설명할 수 없다.
+	 *
+	 * beforeGrade — 최초 부여면 null
+	 */
+	public static UserGradeHistory of(
+			User user, UserGrade beforeGrade, UserGrade afterGrade,
+			LocalDate windowStart, LocalDate windowEnd, int validOotdCount
+	) {
+		return UserGradeHistory.builder()
+				.user(user)
+				.beforeGrade(beforeGrade)
+				.afterGrade(afterGrade)
+				.windowStart(windowStart)
+				.windowEnd(windowEnd)
+				.validOotdCount(validOotdCount)
+				.changedAt(LocalDateTime.now())
+				.build();
+	}
 
 }

@@ -26,8 +26,8 @@ import lombok.NoArgsConstructor;
 /**
  * 패션 아이템. 소유자가 바뀌어도 이 행은 유지된다 — 착용 기록이 아이템에 영구 귀속되어야 "구매자는 아이템의 기록을 이어서 받게됩니다"가 성립한다. 현재 소유자와 보유 기간은 ItemOwnership 에서 조회한다.
  *
- * <p>생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
- * 스키마에서 읽을 수 없다. {@code @Builder} 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
+ * 생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
+ * 스키마에서 읽을 수 없다. @Builder 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
  */
 @Entity
 @Table(name = "item")
@@ -85,5 +85,34 @@ public class Item extends BaseEntity {
 	/** '삭제된 아이템' 상태. soft delete */
 	@Column(name = "deleted_at")
 	private LocalDateTime deletedAt;
+
+
+	/**
+	 * 아이템 등록.
+	 *
+	 * 소유 구간(ItemOwnership)은 함께 만들지 않는다 — 아이템이 먼저 저장돼야 구간이
+	 * item_id 를 가질 수 있다. 등록 서비스가 두 행을 한 트랜잭션에서 만든다.
+	 */
+	public static Item register(
+			User registrant, Category category, String name, String brandName,
+			String sizeLabel, WearTarget wearTarget, String coverImageKey,
+			String description, LocalDate firstOwnedDate
+	) {
+		return Item.builder()
+				.registrant(registrant)
+				.category(category)
+				.name(name)
+				.brandName(brandName)
+				.sizeLabel(sizeLabel)
+				.wearTarget(wearTarget)
+				.coverImageKey(coverImageKey)
+				.description(description)
+				.firstOwnedDate(firstOwnedDate)
+				.build();
+	}
+
+	public boolean isDeleted() {
+		return deletedAt != null;
+	}
 
 }

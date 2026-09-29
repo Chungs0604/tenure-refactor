@@ -23,8 +23,8 @@ import lombok.NoArgsConstructor;
 /**
  * 서비스 사용자. 계정 정보(실명·휴대폰)와 프로필(닉네임·체형)을 함께 보유한다.
  *
- * <p>생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
- * 스키마에서 읽을 수 없다. {@code @Builder} 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
+ * 생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
+ * 스키마에서 읽을 수 없다. @Builder 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
  */
 @Entity
 @Table(name = "user")
@@ -115,7 +115,7 @@ public class User extends BaseEntity {
 	/**
 	 * 회원가입. 이메일 인증을 통과한 뒤에만 호출된다 (API-012).
 	 *
-	 * <p>비밀번호는 해시를 받는다 — 엔티티가 인코더를 알면 도메인이 보안 구현에 묶인다.
+	 * 비밀번호는 해시를 받는다 — 엔티티가 인코더를 알면 도메인이 보안 구현에 묶인다.
 	 * 등급은 BASIC 으로 시작하고 레코드 승격은 게시 시점에 판정한다.
 	 */
 	public static User signUp(
@@ -130,7 +130,7 @@ public class User extends BaseEntity {
 	/**
 	 * 소셜 가입까지 받는 전체 팩토리 (DEC-017).
 	 *
-	 * <p>소셜 가입은 비밀번호가 없어 {@code passwordHash} 가 NULL 이고 제공자 식별자를 갖는다.
+	 * 소셜 가입은 비밀번호가 없어 passwordHash 가 NULL 이고 제공자 식별자를 갖는다.
 	 * 이메일 가입은 그 반대다 — 어느 쪽이든 한쪽은 비어 있다.
 	 */
 	public static User signUp(
@@ -168,7 +168,7 @@ public class User extends BaseEntity {
 	/**
 	 * 프로필 수정.
 	 *
-	 * <p>받은 값으로 그대로 덮어쓴다 — 사진만 {@code null} 을 허용하며 그때는 기본 프로필로 돌아간다.
+	 * 받은 값으로 그대로 덮어쓴다 — 사진만 null 을 허용하며 그때는 기본 프로필로 돌아간다.
 	 * 닉네임 중복은 Service 가 먼저 확인한다.
 	 */
 	public void updateProfile(
@@ -185,4 +185,29 @@ public class User extends BaseEntity {
 	public boolean isWithdrawn() {
 		return status == UserStatus.WITHDRAWN;
 	}
+
+	/** 게시. 정본은 post 테이블이고 이 값은 목록에서 반복 노출되는 카운터다 (§6-3). */
+	public void increasePostCount() {
+		this.postCount++;
+	}
+
+	/** 게시물 삭제. 0 아래로는 내리지 않는다 — 어긋나면 프로필에 음수가 그대로 뜬다. */
+	public void decreasePostCount() {
+		this.postCount = Math.max(0, this.postCount - 1);
+	}
+
+	/**
+	 * 레코드 승격. 판정은 UserGradeService 가 한다 — 조건이 게시물 수라 엔티티가 알 수 없다.
+	 *
+	 * gradeExpiresAt — 보장 만료 시각(승격 +30일). 이 시점에 재평가해 미달이면 강등한다
+	 */
+	public void promoteToRecord(LocalDateTime gradeExpiresAt) {
+		this.grade = UserGrade.RECORD;
+		this.gradeExpiresAt = gradeExpiresAt;
+	}
+
+	public boolean isRecordGrade() {
+		return grade == UserGrade.RECORD;
+	}
+
 }
