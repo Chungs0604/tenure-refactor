@@ -1,7 +1,10 @@
 package com.tenure.domain.category.entity;
 
+import com.tenure.domain.category.enums.SizeScheme;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -48,9 +51,14 @@ public class Category {
 	@Column(name = "depth", nullable = false)
 	private Integer depth;
 
-	/** '아이템 상세 정보 수정 (카테고리마다 세부 카테고리, 사이즈 다름)' — 카테고리별 사이즈 체계가 다르다(→ Q6) */
+	/**
+	 * 이 대분류가 쓰는 사이즈 칩 세트. 칩 목록은 size_option 이 갖는다.
+	 *
+	 * 세부 카테고리(depth=2)는 NULL 이며 부모에서 읽는다.
+	 */
+	@Enumerated(EnumType.STRING)
 	@Column(name = "size_scheme", length = 30)
-	private String sizeScheme;
+	private SizeScheme sizeScheme;
 
 	/** 드롭다운 노출 순서 */
 	@Column(name = "sort_order", nullable = false)
