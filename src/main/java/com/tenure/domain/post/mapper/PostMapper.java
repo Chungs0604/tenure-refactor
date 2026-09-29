@@ -92,8 +92,7 @@ public interface PostMapper {
 	@Mapping(target = "coverImageUrl", source = "coverImageUrl")
 	@Mapping(target = "status", source = "status")
 	@Mapping(target = "price", expression = "java(formatPrice(listing))")
-	@Mapping(target = "offerAllowed",
-			expression = "java(listing != null && Boolean.TRUE.equals(listing.getOfferAllowed()))")
+	@Mapping(target = "offerAllowed", expression = "java(Boolean.TRUE.equals(item.getOfferAllowed()))")
 	@Mapping(target = "alarmEnabled", source = "alarmEnabled")
 	TaggedItemResponse toTaggedItemResponse(
 			Item item, ItemListing listing, String coverImageUrl,

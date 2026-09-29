@@ -47,9 +47,12 @@ public class PurchaseOffer extends BaseEntity {
 	@Column(name = "id")
 	private Long id;
 
-	/** 제안 대상 판매 등록 */
-	@ManyToOne(fetch = FetchType.LAZY, optional = false)
-	@JoinColumn(name = "listing_id", nullable = false)
+	/**
+	 * 제안 대상 판매 등록. PURCHASE_OFFER(미판매 제안)는 판매 등록이 없어 null 이고
+	 * TRADE_INTENT(판매 중 거래 의사)만 값을 갖는다 (DEC-024).
+	 */
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "listing_id")
 	private ItemListing listing;
 
 	/** 1회 제한 판정을 아이템 기준으로 하기 위해 중복 보유(→ purchase_offer 제약 — 아이템당 1회) */

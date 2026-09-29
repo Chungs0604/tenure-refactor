@@ -511,9 +511,9 @@ class PostRepositoryTest extends RepositorySliceTestSupport {
 	 */
 	private long insertListing(Item item, User seller, SaleStatus saleStatus, int price) {
 		em.createNativeQuery("insert into item_listing "
-						+ "(item_id, seller_id, sale_status, offer_allowed, price, shipping_fee, "
-						+ "fee_bearer, wish_count, created_at, updated_at) "
-						+ "values (?, ?, ?, true, ?, 0, 'SELLER', 0, now(6), now(6))")
+						+ "(item_id, seller_id, sale_status, price, shipping_fee, "
+						+ "fee_bearer, created_at, updated_at) "
+						+ "values (?, ?, ?, ?, 0, 'SELLER', now(6), now(6))")
 				.setParameter(1, item.getId())
 				.setParameter(2, seller.getId())
 				.setParameter(3, saleStatus.name())

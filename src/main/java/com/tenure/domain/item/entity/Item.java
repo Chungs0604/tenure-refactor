@@ -82,6 +82,22 @@ public class Item extends BaseEntity {
 	@Column(name = "first_owned_date")
 	private LocalDate firstOwnedDate;
 
+	/**
+	 * '구매 제안 O' / '구매 제안 X'. 판매 등록과 무관하게 아이템에 붙는다 (DEC-024).
+	 *
+	 * 미판매 아이템에는 item_listing 행이 없는데 미판매 공개 페이지가 이 토글을 그린다.
+	 */
+	@Column(name = "offer_allowed", nullable = false)
+	private Boolean offerAllowed;
+
+	/**
+	 * '관심 N명'. 정본은 wishlist 이고 이 컬럼은 비정규화 카운터다 (DEC-024).
+	 *
+	 * 판매를 내렸다 다시 걸면 item_listing 행이 새로 생기므로 거기 두면 수가 리셋된다.
+	 */
+	@Column(name = "wish_count", nullable = false)
+	private Integer wishCount;
+
 	/** '삭제된 아이템' 상태. soft delete */
 	@Column(name = "deleted_at")
 	private LocalDateTime deletedAt;
@@ -108,6 +124,8 @@ public class Item extends BaseEntity {
 				.coverImageKey(coverImageKey)
 				.description(description)
 				.firstOwnedDate(firstOwnedDate)
+				.offerAllowed(false)
+				.wishCount(0)
 				.build();
 	}
 
