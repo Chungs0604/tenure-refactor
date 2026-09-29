@@ -91,6 +91,15 @@ public class ItemOwnership extends BaseCreatedEntity {
 				.build();
 	}
 
+	/**
+	 * 최초 보유 날짜 정정. 최초 구간의 시작일은 item.first_owned_date 와 같은 값이어야 한다 (DEC-007).
+	 *
+	 * 거래가 있었으면 이 값이 이전 소유자의 구간 경계라 Service 가 먼저 막는다.
+	 */
+	public void moveStartDate(LocalDate startDate) {
+		this.startDate = startDate;
+	}
+
 	/** 구간 종료. 거래 완료 시 이전 소유자의 구간을 닫는다 — append-only 의 허용된 UPDATE 다. */
 	public void close(LocalDate endDate) {
 		this.endDate = endDate;

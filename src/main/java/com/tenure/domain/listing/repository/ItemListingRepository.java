@@ -19,4 +19,8 @@ public interface ItemListingRepository extends JpaRepository<ItemListing, Long> 
 			+ "(select max(latest.id) from ItemListing latest "
 			+ "where latest.item.id in :itemIds group by latest.item.id)")
 	List<ItemListing> findLatestByItemIds(@Param("itemIds") Collection<Long> itemIds);
+	/** 삭제를 막는 판정. 최신 등록이 판매 중이면 지울 수 없다. */
+	@Query("select count(l) > 0 from ItemListing l "
+			+ "where l.item.id = :itemId and l.saleStatus = com.tenure.domain.listing.enums.SaleStatus.ON_SALE")
+	boolean existsOnSale(@Param("itemId") Long itemId);
 }

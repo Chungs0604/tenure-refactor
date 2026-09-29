@@ -129,6 +129,54 @@ public class Item extends BaseEntity {
 				.build();
 	}
 
+	/**
+	 * 상세 수정. 보낸 항목만 바꾼다 — 비운 항목은 유지한다.
+	 *
+	 * 최초 보유 날짜는 소유 구간이 하나이고 본인이 현재 소유자일 때만 바뀐다 (DEC-007).
+	 * 그 판정은 소유 구간을 읽어야 하므로 Service 가 하고, 여기서는 받은 값을 반영만 한다.
+	 */
+	public void update(
+			Category category, String name, String brandName, String sizeLabel,
+			WearTarget wearTarget, String coverImageKey, String description
+	) {
+		if (category != null) {
+			this.category = category;
+		}
+		if (name != null) {
+			this.name = name;
+		}
+		if (brandName != null) {
+			this.brandName = brandName;
+		}
+		if (sizeLabel != null) {
+			this.sizeLabel = sizeLabel;
+		}
+		if (wearTarget != null) {
+			this.wearTarget = wearTarget;
+		}
+		if (coverImageKey != null) {
+			this.coverImageKey = coverImageKey;
+		}
+		if (description != null) {
+			this.description = description;
+		}
+	}
+
+	/** 최초 보유 날짜 변경. 최초 소유 구간의 시작일도 함께 옮겨야 한다 (DEC-007). */
+	public void changeFirstOwnedDate(LocalDate firstOwnedDate) {
+		this.firstOwnedDate = firstOwnedDate;
+	}
+
+	/** '구매 제안 허용' 토글. 미판매 아이템에도 걸린다 (DEC-024). */
+	public void changeOfferAllowed(boolean offerAllowed) {
+		this.offerAllowed = offerAllowed;
+	}
+
+	/** soft delete. 태그는 남아 '삭제된 아이템' 으로 표시된다. */
+	public void delete(LocalDateTime deletedAt) {
+		this.deletedAt = deletedAt;
+	}
+
 	public boolean isDeleted() {
 		return deletedAt != null;
 	}
