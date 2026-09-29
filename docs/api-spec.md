@@ -194,8 +194,8 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | `category` | API-090 | 없음(트리로 일괄) | 없음(마스터 데이터) | 없음(마스터 데이터) | 없음(마스터 데이터) |
 | `item` | API-091 API-098 API-099 (추천) | API-093 | API-092 | API-094 | API-095 |
 | `item_image` | 없음(아이템에 중첩) | API-093 에 포함 | API-092 에 포함 | API-094 에 포함 (전체 교체) | 없음(교체로 대체) |
-| `item_measurement` | 없음(아이템에 중첩) | 없음 | API-092 에 포함 | API-094 에 포함 | 없음(부모 종속) |
-| `item_condition` | 없음(아이템에 중첩) | 없음 | API-092 에 포함 | API-094 에 포함 | 없음(부모 종속) |
+| `item_measurement` | 없음(아이템에 중첩) | API-093 에 포함 | API-111 에 포함 | API-112 에 포함 | 없음(부모 종속) |
+| `item_condition` | 없음(아이템에 중첩) | API-093 에 포함 | API-111 에 포함 | API-112 에 포함 | 없음(부모 종속) |
 | `item_ownership` | API-097 | 없음 | API-092 API-165 가 자동 생성 | 없음(append-only) | 없음(append-only) |
 | `item_wear_record` | API-096 | 없음 | API-072 가 자동 적립 | 없음(voided_at 무효화만) | 없음(append-only) |
 | `item_listing` | API-091 에 포함 | API-110 API-093 에 포함 | API-111 | API-112 API-113 | 없음(상태 변경으로 대체) |
@@ -412,7 +412,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | `ITEM_404` | 404 | 아이템을 찾을 수 없습니다. | API-093~097 |
 | `ITEM_403` | 403 | 본인의 아이템이 아닙니다. | API-094, API-095, API-111 |
 | `ITEM_409_ON_SALE` | 409 | 판매 중이거나 거래가 진행 중이라 삭제할 수 없습니다. | API-095 |
-| `ITEM_400_MEASUREMENT` | 400 | 해당 카테고리에 맞지 않는 실측 항목입니다. | API-092, API-094 |
+| `ITEM_400_MEASUREMENT` | 400 | 해당 카테고리에 맞지 않는 실측 항목입니다. | API-111, API-112 |
 | `ITEM_400_CATEGORY` | 400 | 세부 카테고리를 선택해주세요. | API-092, API-094 |
 | `ITEM_409_TAG_CLOSED_PERIOD` | 409 | 이미 판매된 아이템의 과거 태그는 수정할 수 없습니다. | API-073, API-083 |
 
@@ -2347,10 +2347,12 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 
 내가 등록한 아이템 목록. 인증 **필요**. 관련 화면 SCR-022.
 
-페이징. 응답에 `listing { id, saleStatus, price, offerAllowed, wishCount }` 를 중첩한다.
+페이징. `saleStatus` · `wishCount` · `offerAllowed` 는 아이템이 갖고(`DEC-024`), 판매 조건만 `listing { id, price }` 로 중첩한다 — 판매 등록이 없으면 `null` 이다.
+
+`saleStatus` 는 **아이템 레벨로 평탄화한 값**이다. '미판매'는 판매 등록이 아예 없는 경우와 판매를 내린 경우(최신 `item_listing.sale_status=NOT_FOR_SALE`) 둘 다이므로 서버가 하나로 합쳐 내려준다.
 
 화면(`4765:53893`)에는 **검색창**이 있고 행마다 `미판매 · 최근 착용 1일 전` 처럼 **최근 착용일**이 붙는다.
-미판매 행에만 우측에 `판매 전환` 버튼이 뜬다 — `listing` 이 `null` 이거나 `saleStatus=NOT_FOR_SALE` 일 때다.
+미판매 행에만 우측에 `판매 전환` 버튼이 뜬다 — `saleStatus=NOT_FOR_SALE` 일 때다.
 
 **쿼리 파라미터**
 
@@ -2368,12 +2370,13 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `brandName` | String | — |
 | `name` | String | — |
 | `coverImageUrl` | String | — |
-| `listing.id` | Long | — |
-| `listing.saleStatus` | SaleStatus | NOT_FOR_SALE \| ON_SALE \| SOLD |
+| `saleStatus` | SaleStatus | NOT_FOR_SALE \| ON_SALE \| SOLD. 판매 등록이 없으면 NOT_FOR_SALE |
+| `wishCount` | Integer | 관심 N명 |
+| `offerAllowed` | Boolean | 구매 제안 허용 |
 | `lastWornDate` | LocalDate | `최근 착용 N일 전` 계산 기준. `item_wear_record` 의 최신 `worn_date`(`voided_at IS NULL`) |
+| `listing` | Object | **nullable** — 판매 등록이 없으면 null |
+| `listing.id` | Long | `API-112`·`API-113` 의 입력 키 |
 | `listing.price` | String | — |
-| `listing.offerAllowed` | Boolean | — |
-| `listing.wishCount` | Integer | — |
 
 ```json
 {
@@ -2387,12 +2390,13 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
         "brandName": "<String>",
         "name": "<String>",
         "coverImageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg",
+        "saleStatus": "<SaleStatus>",
+        "wishCount": 1,
+        "offerAllowed": true,
+        "lastWornDate": "2026-06-21",
         "listing": {
           "id": 1,
-          "saleStatus": "<SaleStatus>",
-          "price": "360000",
-          "offerAllowed": true,
-          "wishCount": 1
+          "price": "360000"
         }
       }
     ],
@@ -2408,7 +2412,9 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 
 아이템 등록. 인증 **필요**. 관련 화면 SCR-024, SCR-018.
 
-요청 `ItemCreateRequest` — `name` `brandName` `categoryId` `sizeLabel?` `wearTarget?` `coverImageKey` `description?` `firstOwnedDate?` `images[]` `measurements?` `conditions[]`. 실측은 **대분류 이름**으로 필수·금지가 갈린다 — 상의·아우터·원피스 4종, 하의 6종, 치마 4종, 신발·가방·모자·액세서리·주얼리는 입력 자체가 금지다. 생성과 동시에 `item_ownership` 최초 구간을 연다.
+요청 `ItemCreateRequest` — `name` `brandName` `categoryId` `sizeLabel?` `wearTarget` `coverImageKey` `description?` `firstOwnedDate?` `images[]`. 생성과 동시에 `item_ownership` 최초 구간(`acquired_by=INITIAL_REGISTRATION`)을 연다.
+
+**실측·상태 이상은 받지 않는다.** 등록 폼(`2825:47795`)과 상세 수정 바텀시트(`2825:49332` 외 9종) 어디에도 입력란이 없고, 두 항목은 판매 전환 화면(`3342:32943`)에만 있다. `item_measurement`·`item_condition` 은 아이템 속성이라 `item_id` 를 그대로 참조하되 입력 시점은 `API-111` 이다 — 재판매 때 이전 값이 채워진다(안내사항 `3633:34232` — '아이템에 관하여 이미 등록된 정보가 있다면 미리 빈칸에 작성되어있습니다').
 
 **요청 본문**
 
@@ -2418,23 +2424,12 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `brandName` | String | O | — | — |
 | `categoryId` | Long | O | depth=2 | — |
 | `sizeLabel` | String |  | — | — |
-| `wearTarget` | WearTarget |  | MALE \| FEMALE \| UNISEX | — |
+| `wearTarget` | WearTarget | O | MALE \| FEMALE \| UNISEX | 등록 폼에 필수 표시(*). DB 도 NOT NULL |
 | `coverImageKey` | String | O | API-060 응답 | 대표 사진 |
 | `description` | String |  | — | — |
 | `firstOwnedDate` | LocalDate |  | — | 최초 보유 날짜 = 최초 소유 구간 start_date |
 | `images[].imageKey` | String |  | — | — |
 | `images[].sortOrder` | Integer |  | — | — |
-| `measurements.shoulderWidth` | BigDecimal |  | 대분류별 필수·금지 | 상의·아우터·원피스 필수 |
-| `measurements.chestWidth` | BigDecimal |  | — | 상의·아우터·원피스 필수 |
-| `measurements.sleeveLength` | BigDecimal |  | — | 상의·아우터·원피스 필수 |
-| `measurements.totalLength` | BigDecimal |  | — | 상의·아우터·원피스·하의·치마 필수 |
-| `measurements.waistWidth` | BigDecimal |  | — | 하의·치마 필수 |
-| `measurements.thighWidth` | BigDecimal |  | — | 하의 필수 |
-| `measurements.rise` | BigDecimal |  | — | 하의 필수 |
-| `measurements.inseam` | BigDecimal |  | — | 하의 필수 |
-| `measurements.hemWidth` | BigDecimal |  | — | 하의·치마 필수 |
-| `measurements.hipWidth` | BigDecimal |  | — | 치마 필수 |
-| `conditions[]` | ConditionCode |  | STAIN \| TEAR \| PILLING_DISCOLOR \| REPAIRED \| MISSING_PARTS | 복수 선택 |
 
 **응답** (`data`)
 
@@ -2453,14 +2448,23 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 }
 ```
 
-에러 — ITEM_400_MEASUREMENT, ITEM_400_CATEGORY, CATEGORY_404
+에러 — ITEM_400_CATEGORY, CATEGORY_404
 
 #### API-093 · `GET /api/v1/items/{itemId}`
 
 아이템 상세 (소유자 시점). 인증 **필요**. 관련 화면 SCR-023.
 
-응답에 `coverImageUrl` · `images[]` · `measurements` · `conditions` · `ownerships[{ ownerNickname, startDate, endDate, wearCount, acquiredBy }]` · `recentWornDate` · `totalWearCount` · `listing` 을 중첩한다.
-`listing` 은 **nullable** 이다 — 판매 전환을 한 번도 하지 않은 아이템에는 `item_listing` 행이 없다. `listing` 이 `null` 이면 화면은 `판매 전환` CTA 를, 있으면 `판매 상태 변경`(`API-113`)·`판매 정보 수정`(`API-112`) CTA 를 띄운다 — 둘 다 `listing.id` 를 받으므로 상세 응답에 반드시 실어야 한다.
+응답에 `coverImageUrl` · `images[]` · `measurements` · `conditions` · `ownerships[]` · `frequentlyWornWith[]` · `recentWornDate` · `totalWearCount` · `listing` 을 중첩한다.
+
+`saleStatus` · `wishCount` · `offerAllowed` 는 아이템이 갖는다(`DEC-024`). 화면(`2825:48757`)이 미판매 아이템에도 `미판매 · 구매 제안 X` 와 `관심 14명` 을 그린다.
+
+`listing` 은 **nullable** 이다 — 판매 전환을 한 번도 하지 않은 아이템에는 `item_listing` 행이 없다. 있으면 화면은 `판매 상태 변경`(`API-113`)·`판매 정보 수정`(`API-112`) CTA 에 `listing.id` 를 쓴다.
+
+하단 CTA 는 `saleStatus` 로 갈린다 — 판매 중이면 `판매 페이지로`(`API-110`), 그 외에는 `공개 페이지로`(미판매 공개 페이지 `2825:58233`)다. 판매 전환 진입은 이 화면이 아니라 목록(`API-091`)의 행 버튼이다.
+
+`measurements` · `conditions` 는 이 화면에 그려지지 않지만 응답에 싣는다 — 판매 전환 폼(`API-111`)이 이 값으로 빈칸을 채운다(안내사항 `3633:34232`).
+
+`frequentlyWornWith` 는 `자주 같이 입은 옷` 칩이다. 같은 게시물에 함께 태그된 횟수 상위 **3건**이며 `post_item_tag` 자기 조인으로 구한다. 삭제된 아이템은 제외한다.
 
 **경로 파라미터**
 
@@ -2485,21 +2489,26 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `wearTarget` | WearTarget | — |
 | `description` | String | — |
 | `firstOwnedDate` | LocalDate | — |
-| `measurements` | ProductMeasurements | 10필드 고정. 카테고리별로 채우는 것이 다르다 |
-| `conditions[]` | ConditionCode | — |
+| `measurements` | ProductMeasurements | 10필드 고정. 판매 전환 폼 prefill 용 |
+| `conditions[]` | ConditionCode | 판매 전환 폼 prefill 용 |
+| `saleStatus` | SaleStatus | NOT_FOR_SALE \| ON_SALE \| SOLD. 판매 등록이 없으면 NOT_FOR_SALE |
+| `wishCount` | Integer | 관심 N명 |
+| `offerAllowed` | Boolean | `구매 제안 허용` 토글 상태 |
 | `ownerships[].ownerNickname` | String | — |
+| `ownerships[].ownerProfileImageUrl` | String | 소유 구간 카드의 프로필 사진 |
 | `ownerships[].startDate` | LocalDate | — |
 | `ownerships[].endDate` | LocalDate | null 이면 현재 |
 | `ownerships[].wearCount` | Integer | voided 제외 |
-| `ownerships[].acquiredBy` | AcquiredBy | INITIAL_REGISTRATION \| TRADE |
+| `ownerships[].acquiredBy` | AcquiredBy | INITIAL_REGISTRATION \| TRADE. INITIAL_REGISTRATION 에만 `최초 등록` 배지가 붙는다 |
+| `ownerships[].previewImages[]` | String | 그 구간의 OOTD 사진 **최대 3장**. 카드 안 그리드 |
+| `frequentlyWornWith[].itemId` | Long | `자주 같이 입은 옷` 칩. 최대 3건 |
+| `frequentlyWornWith[].brandName` | String | — |
+| `frequentlyWornWith[].name` | String | — |
 | `recentWornDate` | LocalDate | 최근 착용 |
 | `totalWearCount` | Integer | 소유 구간 합계 — voided 제외 |
 | `listing` | Object | **nullable** — 판매 전환 이력이 없으면 null |
 | `listing.id` | Long | `API-112`·`API-113` 의 입력 키 |
-| `listing.saleStatus` | SaleStatus | NOT_FOR_SALE \| ON_SALE \| SOLD |
 | `listing.price` | String | 미판매면 null |
-| `listing.offerAllowed` | Boolean | `구매 제안 허용` 토글 상태 |
-| `listing.wishCount` | Integer | 관심 N명 |
 
 ```json
 {
@@ -2530,23 +2539,34 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
     "conditions": [
       "<ConditionCode>"
     ],
+    "saleStatus": "<SaleStatus>",
+    "wishCount": 14,
+    "offerAllowed": true,
     "ownerships": [
       {
         "ownerNickname": "<String>",
+        "ownerProfileImageUrl": "https://cdn.tenure.app/profile/2026/06/ab12.jpg",
         "startDate": "2026-06-21",
         "endDate": "2026-06-21",
         "wearCount": 1,
-        "acquiredBy": "<AcquiredBy>"
+        "acquiredBy": "<AcquiredBy>",
+        "previewImages": [
+          "https://cdn.tenure.app/post/2026/06/ab12.jpg"
+        ]
+      }
+    ],
+    "frequentlyWornWith": [
+      {
+        "itemId": 1,
+        "brandName": "<String>",
+        "name": "<String>"
       }
     ],
     "recentWornDate": "2026-06-21",
     "totalWearCount": 20,
     "listing": {
       "id": 1,
-      "saleStatus": "<SaleStatus>",
-      "price": "360000",
-      "offerAllowed": true,
-      "wishCount": 14
+      "price": "360000"
     }
   }
 }
@@ -2558,7 +2578,7 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 
 아이템 상세 정보 수정. 인증 **필요**. 관련 화면 SCR-024.
 
-요청 `ItemUpdateRequest`. 실측 규칙은 API-092 와 동일하다. `firstOwnedDate` 를 바꾸면 **최초 소유 구간의 `start_date` 도 함께 갱신**된다 — 단 소유 구간이 1개이고 본인이 현재 소유자일 때만 허용하며, 거래 이력이 생기면 잠긴다(`DEC-007`).
+요청 `ItemUpdateRequest`. 실측·상태 이상은 여기서 받지 않는다 — 상세 수정 바텀시트(`2825:49332` 외 9종)에 입력란이 없고 판매 전환(`API-111`)이 담당한다. `offerAllowed` 는 여기서 바꾼다 — 미판매 아이템에는 `item_listing` 행이 없어 `API-113` 을 쓸 수 없다(`DEC-024`). `firstOwnedDate` 를 바꾸면 **최초 소유 구간의 `start_date` 도 함께 갱신**된다 — 단 소유 구간이 1개이고 본인이 현재 소유자일 때만 허용하며, 거래 이력이 생기면 잠긴다(`DEC-007`).
 
 사진도 여기서 바꾼다 — `coverImageKey` 는 교체, `images[]` 는 **전체 교체**다(보낸 배열이 곧 최종 상태이고, 생략하면 유지한다). `item_image` 는 하드 삭제 대상이라 개별 삭제 엔드포인트를 따로 두지 않는다.
 
@@ -2576,8 +2596,7 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `images[].sortOrder` | Integer |  | — | — |
 | `description` | String |  | — | — |
 | `firstOwnedDate` | LocalDate |  | 구간 1개 + 본인 소유일 때만 | 최초 구간 start_date 도 갱신 |
-| `measurements` | ProductMeasurements |  | 대분류별 필수·금지 | — |
-| `conditions[]` | ConditionCode |  | — | — |
+| `offerAllowed` | Boolean |  | — | `구매 제안 허용` 토글 |
 
 **응답** (`data`)
 
@@ -2596,7 +2615,7 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 }
 ```
 
-에러 — ITEM_403, ITEM_400_MEASUREMENT, CATEGORY_404
+에러 — ITEM_403, ITEM_404, CATEGORY_404
 
 #### API-095 · `DELETE /api/v1/items/{itemId}`
 
@@ -2618,7 +2637,11 @@ soft delete. 태그는 남아 `태그된 아이템` 목록에 `삭제된 아이�
 
 아이템 히스토리 (등장 OOTD 그리드). 인증 **필요**. 관련 화면 SCR-025.
 
-페이징. 응답 `{ posts[{ postId, imageUrl, wornDate }] }` — 이 아이템이 등장한 OOTD 사진 그리드. `voided_at IS NULL` 인 착용 기록만 센다.
+페이징. 응답 `{ posts[{ postId, imageUrl, aspectRatio, wornDate }] }` — 이 아이템이 등장한 OOTD 사진 그리드. `voided_at IS NULL` 인 착용 기록만 센다.
+
+화면(`2825:48979`)은 **masonry 2열**이라 카드 높이가 제각각이다. 피드(`API-070`)와 같은 이유로 `aspectRatio` 를 실어 클라이언트가 높이를 계산하게 한다.
+
+진입은 아이템 상세의 소유 구간 카드에 있는 `더보기` 지만 **아이템 전체**를 보여준다 — 화면 제목이 `아이템 히스토리` 고 그리드에 구간 구분이 없다.
 
 **경로 파라미터**
 
@@ -2632,6 +2655,7 @@ soft delete. 태그는 남아 `태그된 아이템` 목록에 `삭제된 아이�
 |---|---|---|
 | `postId` | Long | — |
 | `imageUrl` | String | — |
+| `aspectRatio` | AspectRatio | masonry 높이 계산 |
 | `wornDate` | LocalDate | — |
 
 ```json
@@ -2644,6 +2668,7 @@ soft delete. 태그는 남아 `태그된 아이템` 목록에 `삭제된 아이�
       {
         "postId": 1,
         "imageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg",
+        "aspectRatio": "<AspectRatio>",
         "wornDate": "2026-06-21"
       }
     ],
@@ -2659,7 +2684,9 @@ soft delete. 태그는 남아 `태그된 아이템` 목록에 `삭제된 아이�
 
 Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 화면 SCR-023, SCR-026.
 
-응답 `{ ownerships[{ ownerNickname, startDate, endDate, wearCount, isInitial }], totalWearCount, firstOwnedDate, recentWornDate }`. `Tenure 기록 기준` 섹션이 이 응답이다.
+응답 `{ ownerships[{ ownerNickname, ownerProfileImageUrl, startDate, endDate, wearCount, isInitial, previewImages[] }], totalWearCount, firstOwnedDate, recentWornDate }`. `Tenure 기록 기준` 섹션이 이 응답이다.
+
+소유 구간 카드(`2825:48650`)는 프로필 사진 · 닉네임 · `26.07.10 ~ 현재` · `OOTD 인증 12회` · 그 구간의 OOTD 사진 **3장** · `더보기` 로 구성된다. 최초 구간에만 `최초 등록` 배지가 붙는다.
 
 **경로 파라미터**
 
@@ -2672,10 +2699,12 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `ownerships[].ownerNickname` | String | 탈퇴자는 '탈퇴한 사용자' |
+| `ownerships[].ownerProfileImageUrl` | String | 카드의 프로필 사진 |
 | `ownerships[].startDate` | LocalDate | — |
-| `ownerships[].endDate` | LocalDate | — |
+| `ownerships[].endDate` | LocalDate | null 이면 현재 |
 | `ownerships[].wearCount` | Integer | OOTD 인증 N회 |
-| `ownerships[].isInitial` | Boolean | 최초 등록 |
+| `ownerships[].isInitial` | Boolean | 최초 등록 배지 |
+| `ownerships[].previewImages[]` | String | 그 구간의 OOTD 사진 최대 3장 |
 | `totalWearCount` | Integer | — |
 | `firstOwnedDate` | LocalDate | — |
 | `recentWornDate` | LocalDate | — |
@@ -2689,10 +2718,14 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
     "ownerships": [
       {
         "ownerNickname": "<String>",
+        "ownerProfileImageUrl": "https://cdn.tenure.app/profile/2026/06/ab12.jpg",
         "startDate": "2026-06-21",
         "endDate": "2026-06-21",
         "wearCount": 1,
-        "isInitial": true
+        "isInitial": true,
+        "previewImages": [
+          "https://cdn.tenure.app/post/2026/06/ab12.jpg"
+        ]
       }
     ],
     "totalWearCount": 1,
@@ -2797,6 +2830,8 @@ Guidi / 788z Boots와 비슷한 스타일
 상품 상세 (구매자 시점). 인증 **필요**. 관련 화면 SCR-026, SCR-031.
 
 응답 `ListingResponse` — 상품 정보 + `measurements` + `conditions` + `ownerships`(Tenure 기록 기준) + `featuredPosts[]` + `seller{ id, nickname, profileImageUrl, followerCount, grade }` + `wishCount` + `isWished` + `offerAllowed` + `myOfferStatus`. 판매 완료·미판매·구매제안 off 상태에 따라 CTA 가 달라진다.
+
+**판매 등록이 없는 아이템의 공개 페이지는 아직 이 엔드포인트로 열 수 없다.** 미판매 공개 페이지(`2825:58233`)는 `관심 N명` · `OOTD 인증 N회` · 스펙 그리드 · `태그된 OOTD` · 구매제안 CTA 로 구성되는데, `listingId` 가 없어 진입 키가 없다. `wishCount` 와 `offerAllowed` 가 아이템으로 올라갔으므로(`DEC-024`) 데이터는 다 있다 — `listing` 도메인을 구현할 때 조회 키를 `itemId` 로 통일할지 별도 엔드포인트를 팔지 정한다.
 
 **`itemId` 를 반드시 함께 내려준다.** 이 화면에서 나가는 동작이 전부 아이템 기준이기 때문이다 —
 관심 등록(`API-121`)·해제(`API-122`)·채팅 개설(`API-181`) 은 경로가 `/items/{itemId}/…` 이고
@@ -2976,14 +3011,13 @@ Guidi / 788z Boots와 비슷한 스타일
 
 판매 상태 변경 (판매중 / 미판매 / 판매완료). 인증 **필요**. 관련 화면 SCR-029.
 
-요청 `{ saleStatus, offerAllowed? }`. `미판매 + 구매제안 off` 로 바꾸면 신규 채팅 개설이 막힌다(기존 방은 유지).
+요청 `{ saleStatus }`. `미판매 + 구매제안 off` 로 바꾸면 신규 채팅 개설이 막힌다(기존 방은 유지). `offerAllowed` 는 아이템이 갖는 값이라 `API-094` 로 바꾼다(`DEC-024`) — 미판매 아이템에는 `item_listing` 행이 없어 여기서 받을 수 없다.
 
 **요청 본문**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
 | `saleStatus` | SaleStatus | O | NOT_FOR_SALE \| ON_SALE \| SOLD | — |
-| `offerAllowed` | Boolean |  | — | 미판매일 때만 의미 있음 |
 
 **응답** (`data`)
 

@@ -1,9 +1,10 @@
-# Tenure DB 스키마 정본 (machine-readable) — v6
+# Tenure DB 스키마 정본 (machine-readable) — v7
+# v7: 공개 노출 속성(wish_count · offer_allowed)을 item_listing 에서 item 으로 올렸다(DEC-024).
 # v6: 목록 페이지네이션을 커서로 통일하고(DEC-022) 검색 추천 순의 정렬 키를 확정했다(DEC-023).
 # v5: 47개 화면을 전수 재판독해 30건을 바로잡았다. 경위는 docs/design-audit.md
 # 생성: figma-to-erd 규격. docs/erd.md 의 관계 요약표·화면 인벤토리·컬럼 명세 표는 이 파일에서 생성된다.
 
-version: 6
+version: 7
 generated_from:
   figma_url: https://www.figma.com/design/hnEDDkiI0V4js9JzWR2l2M/Tenure-UXUI-%EC%9E%91%EC%97%85?node-id=813-8486&m=dev
   file_key: hnEDDkiI0V4js9JzWR2l2M
@@ -2648,6 +2649,22 @@ entities:
     nullable: true
     source: design
     evidence: '''최초 보유 날짜''. 예 25.02.8. 최초 item_ownership 구간의 start_date 와 같은 값이며, 거래 전까지만 수정할 수 있다'
+  - name: offerAllowed
+    column: offer_allowed
+    db_type: BOOLEAN
+    java_type: Boolean
+    nullable: false
+    default: false
+    source: design
+    evidence: '미판매 상품 상세(2825:58233)의 ''구매 제안 O'' / ''구매 제안 X''. 판매 등록과 무관하게 아이템에 붙는다 (DEC-024)'
+  - name: wishCount
+    column: wish_count
+    db_type: INT
+    java_type: Integer
+    nullable: false
+    default: 0
+    source: design
+    evidence: '''관심 5명''. 판매 등록 전 아이템도 위시에 담기므로 아이템이 갖는다. 비정규화 카운터이며 정본은 wishlist (→ 파생 컬럼 대장, DEC-024)'
   - name: deletedAt
     column: deleted_at
     db_type: DATETIME(6)
@@ -3119,7 +3136,7 @@ entities:
 - name: ItemListing
   table: item_listing
   domain: listing
-  description: 아이템의 판매 등록('판매 전환'). 아이템이 재판매될 때마다 새 행이 생기므로 Item 과 1:N 이다. 생성 전제로 판매자에게 PayoutAccount 가 있어야 한다.
+  description: 아이템의 판매 등록('판매 전환'). 아이템이 재판매될 때마다 새 행이 생기므로 Item 과 1:N 이다. 생성 전제로 판매자에게 PayoutAccount 가 있어야 한다. 판매 조건만 갖는다 — 관심 수와 구매 제안 허용은 판매와 무관하게 살아 있어야 해서 Item 으로 올렸다 (DEC-024).
   soft_delete: false
   delete_policy: B
   delete_rationale: sale_status + closed_at 으로 상태 관리. 거래가 참조하므로 물리 삭제하지 않는다
@@ -3159,14 +3176,6 @@ entities:
     enum: SaleStatus
     source: design
     evidence: '''판매 중'' / ''미판매'' / 판매 완료 배지'
-  - name: offerAllowed
-    column: offer_allowed
-    db_type: BOOLEAN
-    java_type: Boolean
-    nullable: false
-    default: false
-    source: design
-    evidence: '''구매 제안 O'' / ''구매 제안 X'', ''구매 제안 허용'' 토글'
   - name: price
     column: price
     db_type: INT
@@ -3197,14 +3206,6 @@ entities:
     nullable: true
     source: design
     evidence: '''판매자 설명'''
-  - name: wishCount
-    column: wish_count
-    db_type: INT
-    java_type: Integer
-    nullable: false
-    default: 0
-    source: design
-    evidence: '''관심 14명'' — 화면에 수치가 표시된다. 비정규화 카운터이며 정본은 wishlist 테이블(→ 파생 컬럼 대장)'
   - name: listedAt
     column: listed_at
     db_type: DATETIME(6)
@@ -3404,9 +3405,9 @@ entities:
     column: listing_id
     db_type: BIGINT
     java_type: Long
-    nullable: false
+    nullable: true
     source: design
-    evidence: 제안 대상 판매 등록
+    evidence: 제안 대상 판매 등록. PURCHASE_OFFER(미판매 제안)는 판매 등록이 없어 NULL 이고 TRADE_INTENT 만 값을 갖는다 (DEC-024)
   - name: itemId
     column: item_id
     db_type: BIGINT
@@ -5753,10 +5754,10 @@ derived_columns:
   master: post_save
   update: 저장·취소 트랜잭션 내 증감
   reason: OOTD 상세의 '🔖 1234'
-- column: item_listing.wish_count
+- column: item.wish_count
   master: wishlist
   update: 관심 등록·해제 트랜잭션 내 증감
-  reason: 상품 상세의 '관심 14명'
+  reason: 상품 상세의 '관심 14명'. 판매 등록 전 아이템도 위시에 담기고 판매를 내렸다 다시 걸어도 수가 유지돼야 해서 item 이 갖는다 (DEC-024)
 - column: post.view_count
   master: Redis post-view:{postId}
   update: 조회 시 Redis INCR, 주기 배치가 컬럼에 더한다
@@ -5967,6 +5968,30 @@ design_decisions:
     키워드 없이 필터만 적용한 경우는 등급이 전부 0 이라 rank_score 만으로 정렬된다 — 사실상
     '지금 인기 있는 스타일'과 같은 성질이 된다.
   revisit_when: 개인화 가산점(팔로우 중인 작성자·내 체형과 비슷한 작성자)은 넣지 않았다. 사용자별 점수가 되어 사전 계산이 불가능해지고 정렬 이상을 디버깅하기 어려워진다. 클릭 로그가 쌓여 효과를 측정할 수 있게 되면 재검토한다. 가중치와 배치 주기도 그때 조정한다
+- id: DEC-024
+  topic: 관심 수와 구매 제안 허용을 어느 테이블에 두는가
+  considered:
+  - item_listing 에 그대로 둔다 (기존)
+  - 아이템 등록 시 item_listing 을 NOT_FOR_SALE 로 함께 만든다
+  - item 으로 올린다
+  decision: wish_count 와 offer_allowed 를 item 으로 올리고 item_listing 은 판매 조건만 갖는다. purchase_offer.listing_id 는 nullable 로 바꾼다
+  rationale: |
+    item_listing 은 성격이 다른 둘을 함께 담고 있었다 — 공개 노출 속성(관심 수·구매 제안 허용)은
+    아이템과 수명이 같고, 판매 조건(가격·배송비·수수료 부담·판매자 설명)은 판매할 때만 산다.
+    item_listing 은 재판매마다 새 행이 생기는 1:N 이라 공개 속성을 여기 두면 세 가지가 깨진다.
+      1. 갓 등록한 아이템은 listing 이 없어 관심을 받을 곳이 없다. 그런데 wishlist 는
+         '판매 등록 전 아이템도 담을 수 있어야 한다'가 전제이고 위시리스트 화면에 '미판매' 배지가 있다
+      2. OfferType.PURCHASE_OFFER 의 정의가 '미판매 제품에 대한 구매제안'인데
+         purchase_offer.listing_id 가 NOT NULL 이라 보낼 대상이 없었다
+      3. 판매를 내렸다 다시 걸면 새 listing 행이 생겨 관심 수가 0 으로 리셋된다
+    화면 근거는 미판매 상품 상세(2825:58233)다 — '관심 5명'과 '구매 제안 O/X' 를 함께 그리고,
+    구매제안 on(2825:57652)에는 하단에 '구매제안하기' CTA 가 붙고 off(2825:57760)에는 없다.
+    '등록 시 listing 을 함께 만든다'는 택하지 않았다. item_listing 생성 전제가 판매자에게
+    정산 계좌가 있는 것이라, 정산 계좌 없는 사용자가 아이템 등록조차 못 하게 된다.
+    chat_room.listing_id 가 이미 '미판매 아이템이면 NULL 가능' 이었으므로 방향은 일관된다.
+    '미판매'는 두 경로(listing 행 없음 / 최신 listing 이 NOT_FOR_SALE)로 생기므로 API 응답에서는
+    saleStatus 를 아이템 레벨로 평탄화해 하나로 내려준다
+  revisit_when: 판매 중 아이템의 구매 제안 허용을 판매 등록별로 다르게 걸고 싶어지면 item_listing 에 재정의 컬럼을 더한다. item 의 값은 기본값으로 남긴다
 - id: DEC-101
   topic: 타인에게 보이는 프로필 필드 — 등급·키·몸무게는 공개, 성별은 비공개
   considered:
