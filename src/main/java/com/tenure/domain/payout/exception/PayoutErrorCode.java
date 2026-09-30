@@ -14,7 +14,7 @@ public enum PayoutErrorCode implements ErrorCode {
 	PAYOUT_403(HttpStatus.FORBIDDEN, "PAYOUT_403", "본인의 정산 계좌가 아닙니다."),
 	PAYOUT_409_PENDING_SETTLEMENT(HttpStatus.CONFLICT, "PAYOUT_409_PENDING_SETTLEMENT", "정산 대기 중인 거래가 있어 삭제할 수 없습니다."),
 	PAYOUT_409_LAST_DEFAULT(HttpStatus.CONFLICT, "PAYOUT_409_LAST_DEFAULT", "기본 정산 계좌는 삭제할 수 없습니다."),
-	PAYOUT_400_REQUIRED(HttpStatus.BAD_REQUEST, "PAYOUT_400_REQUIRED", "판매 전환을 위해 정산 계좌를 먼저 등록해주세요.");
+	PAYOUT_400_REQUIRED(HttpStatus.BAD_REQUEST, "PAYOUT_400_REQUIRED", "정산 계좌를 먼저 등록해주세요.");
 
 	private final HttpStatus status;
 	private final String code;
