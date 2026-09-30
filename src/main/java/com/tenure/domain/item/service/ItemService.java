@@ -11,6 +11,7 @@ import com.tenure.domain.item.dto.response.ItemIdResponse;
 import com.tenure.domain.item.entity.Item;
 import com.tenure.domain.item.entity.ItemOwnership;
 import com.tenure.domain.item.exception.ItemErrorCode;
+import com.tenure.domain.item.mapper.ItemMapper;
 import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.listing.enums.SaleStatus;
@@ -56,6 +57,7 @@ public class ItemService {
 	private final SizeOptionRepository sizeOptionRepository;
 	private final ItemListingRepository itemListingRepository;
 	private final TradeOrderRepository tradeOrderRepository;
+	private final ItemMapper itemMapper;
 	private final UserRepository userRepository;
 
 	/**
@@ -98,9 +100,7 @@ public class ItemService {
 				ItemOwnership.openInitial(item, registrant, ownedFrom)
 		);
 
-		return ItemIdResponse.builder()
-				.id(item.getId())
-				.build();
+		return itemMapper.toItemIdResponse(item);
 	}
 
 	/**
@@ -148,9 +148,7 @@ public class ItemService {
 			item.changeOfferAllowed(request.getOfferAllowed());
 		}
 
-		return ItemIdResponse.builder()
-				.id(item.getId())
-				.build();
+		return itemMapper.toItemIdResponse(item);
 	}
 
 	/**

@@ -10,14 +10,15 @@ import com.tenure.domain.item.dto.response.ItemSummaryResponse;
 import com.tenure.domain.item.dto.response.ItemWornWithResponse;
 import com.tenure.domain.item.entity.Item;
 import com.tenure.domain.item.entity.ItemOwnership;
+import com.tenure.domain.item.enums.RecommendationBlock;
 import com.tenure.domain.item.exception.ItemErrorCode;
+import com.tenure.domain.item.mapper.ItemMapper;
 import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.item.repository.ItemWearRecordRepository;
 import com.tenure.domain.listing.entity.ItemListing;
 import com.tenure.domain.listing.enums.SaleStatus;
 import com.tenure.domain.listing.repository.ItemListingRepository;
-import com.tenure.domain.item.enums.RecommendationBlock;
 import com.tenure.domain.post.dto.response.PostSummaryResponse;
 import com.tenure.domain.post.entity.Post;
 import com.tenure.domain.post.enums.AspectRatio;
@@ -79,6 +80,7 @@ public class ItemQueryService {
 	private final PostLikeRepository postLikeRepository;
 	private final PostSaveRepository postSaveRepository;
 	private final PostMapper postMapper;
+	private final ItemMapper itemMapper;
 	private final FileStorage fileStorage;
 
 	/** 내 옷장. 검색어는 브랜드명·아이템명 부분 일치다. */
@@ -133,7 +135,9 @@ public class ItemQueryService {
 		Map<Long, Integer> wearCounts = currentWearCountsOf(itemIds);
 
 		return slice.map(item -> toTaggableSummary(
-				item, lastWornDates.get(item.getId()), wearCounts.getOrDefault(item.getId(), 0)));
+				item,
+				lastWornDates.get(item.getId()),
+				wearCounts.getOrDefault(item.getId(), 0)));
 	}
 
 	/** 아이템 상세 (소유자 시점). */
@@ -144,27 +148,15 @@ public class ItemQueryService {
 		ItemOwnershipHistoryResponse ownerships = buildOwnershipHistory(item);
 		ItemListing listing = latestListingsOf(List.of(itemId)).get(itemId);
 
-		return ItemResponse.builder()
-				.id(item.getId())
-				.name(item.getName())
-				.brandName(item.getBrandName())
-				.rootCategoryName(item.getCategory().getParent().getName())
-				.categoryId(item.getCategory().getId())
-				.categoryName(item.getCategory().getName())
-				.coverImageUrl(fileStorage.toUrl(item.getCoverImageKey()))
-				.sizeLabel(item.getSizeLabel())
-				.wearTarget(item.getWearTarget())
-				.description(item.getDescription())
-				.firstOwnedDate(item.getFirstOwnedDate())
-				.saleStatus(saleStatusOf(listing))
-				.wishCount(item.getWishCount())
-				.offerAllowed(item.getOfferAllowed())
-				.ownerships(ownerships.getOwnerships())
-				.frequentlyWornWith(findFrequentlyWornWith(itemId))
-				.recentWornDate(ownerships.getRecentWornDate())
-				.totalWearCount(ownerships.getTotalWearCount())
-				.listing(toListingSummary(listing))
-				.build();
+		return itemMapper.toItemResponse(
+				item,
+				fileStorage.toUrl(item.getCoverImageKey()),
+				saleStatusOf(listing),
+				ownerships.getOwnerships(),
+				findFrequentlyWornWith(itemId),
+				ownerships.getRecentWornDate(),
+				ownerships.getTotalWearCount(),
+				toListingSummary(listing));
 	}
 
 	/**
@@ -192,12 +184,11 @@ public class ItemQueryService {
 
 		List<ItemHistoryPostResponse> rows = itemWearRecordRepository.findHistory(itemId, cursor, size)
 				.stream()
-				.map(row -> ItemHistoryPostResponse.builder()
-						.postId((Long) row[0])
-						.imageUrl(fileStorage.toUrl((String) row[1]))
-						.aspectRatio((AspectRatio) row[2])
-						.wornDate((LocalDate) row[3])
-						.build())
+				.map(row -> itemMapper.toItemHistoryPostResponse(
+						(Long) row[0],
+						fileStorage.toUrl((String) row[1]),
+						(AspectRatio) row[2],
+						(LocalDate) row[3]))
 				.toList();
 
 		return CursorSlice.of(rows, size, it -> Cursor.of(it.getWornDate(), it.getPostId()));
@@ -223,12 +214,11 @@ public class ItemQueryService {
 				continue;
 			}
 
-			blocks.add(ItemRecommendationResponse.builder()
-					.block(block)
-					.title(block.titleFor(item.getBrandName(), item.getName()))
-					.description(block.getDescription())
-					.posts(toCards(userId, posts))
-					.build());
+			blocks.add(itemMapper.toItemRecommendationResponse(
+					block,
+					block.titleFor(item.getBrandName(), item.getName()),
+					block.getDescription(),
+					toCards(userId, posts)));
 		}
 
 		return blocks;
@@ -242,11 +232,13 @@ public class ItemQueryService {
 		List<Long> postIds = posts.stream().map(Post::getId).toList();
 
 		// 대표 사진·좋아요·저장 여부를 한 번씩만 읽어 맞춤
+		// Map<PostId, imageKey>
 		Map<Long, String> covers = postImageRepository.findCovers(postIds).stream()
 				.collect(Collectors.toMap(
 						image -> image.getPost().getId(),
 						image -> fileStorage.toUrl(image.getImageKey())));
 
+		// 좋아요, 저장 누른 PostId
 		Set<Long> liked = new HashSet<>(postLikeRepository.findLikedPostIds(userId, postIds));
 		Set<Long> saved = new HashSet<>(postSaveRepository.findSavedPostIds(userId, postIds));
 
@@ -276,25 +268,21 @@ public class ItemQueryService {
 		}
 
 		List<ItemOwnershipResponse> cards = ownerships.stream()
-				.map(ownership -> ItemOwnershipResponse.builder()
-						.ownerNickname(nicknameOf(ownership.getOwner()))
-						.ownerProfileImageUrl(profileImageUrlOf(ownership.getOwner()))
-						.startDate(ownership.getStartDate())
-						.endDate(ownership.getEndDate())
-						.wearCount(wearCounts.getOrDefault(ownership.getId(), 0))
-						.acquiredBy(ownership.getAcquiredBy())
-						.previewImages(previews.getOrDefault(ownership.getId(), List.of()))
-						.build())
+				.map(ownership -> itemMapper.toItemOwnershipResponse(
+						ownership,
+						nicknameOf(ownership.getOwner()),
+						profileImageUrlOf(ownership.getOwner()),
+						wearCounts.getOrDefault(ownership.getId(), 0),
+						previews.getOrDefault(ownership.getId(), List.of())))
 				.toList();
 
 		int totalWearCount = wearCounts.values().stream().mapToInt(Integer::intValue).sum();
 
-		return ItemOwnershipHistoryResponse.builder()
-				.ownerships(cards)
-				.totalWearCount(totalWearCount)
-				.firstOwnedDate(item.getFirstOwnedDate())
-				.recentWornDate(lastWornDatesOf(List.of(item.getId())).get(item.getId()))
-				.build();
+		return itemMapper.toItemOwnershipHistoryResponse(
+				cards,
+				totalWearCount,
+				item.getFirstOwnedDate(),
+				lastWornDatesOf(List.of(item.getId())).get(item.getId()));
 	}
 
 	private List<ItemWornWithResponse> findFrequentlyWornWith(Long itemId) {
@@ -314,11 +302,7 @@ public class ItemQueryService {
 		return itemIds.stream()
 				.map(items::get)
 				.filter(java.util.Objects::nonNull)
-				.map(item -> ItemWornWithResponse.builder()
-						.itemId(item.getId())
-						.brandName(item.getBrandName())
-						.name(item.getName())
-						.build())
+				.map(itemMapper::toItemWornWithResponse)
 				.toList();
 	}
 
@@ -365,32 +349,15 @@ public class ItemQueryService {
 
 	/** 태그 시트 행. 판매 상태 자리는 비우고 인증 횟수를 채운다. */
 	private ItemSummaryResponse toTaggableSummary(Item item, LocalDate lastWornDate, int wearCount) {
-		return ItemSummaryResponse.builder()
-				.id(item.getId())
-				.brandName(item.getBrandName())
-				.name(item.getName())
-				.coverImageUrl(fileStorage.toUrl(item.getCoverImageKey()))
-				.saleStatus(null)
-				.wishCount(item.getWishCount())
-				.offerAllowed(item.getOfferAllowed())
-				.lastWornDate(lastWornDate)
-				.wearCount(wearCount)
-				.listing(null)
-				.build();
+		return itemMapper.toItemSummaryResponse(
+				item, fileStorage.toUrl(item.getCoverImageKey()), null, lastWornDate, wearCount, null);
 	}
 
+	/** 내 옷장 행. 인증 횟수 자리는 비우고 판매 상태를 채운다. */
 	private ItemSummaryResponse toSummary(Item item, LocalDate lastWornDate, ItemListing listing) {
-		return ItemSummaryResponse.builder()
-				.id(item.getId())
-				.brandName(item.getBrandName())
-				.name(item.getName())
-				.coverImageUrl(fileStorage.toUrl(item.getCoverImageKey()))
-				.saleStatus(saleStatusOf(listing))
-				.wishCount(item.getWishCount())
-				.offerAllowed(item.getOfferAllowed())
-				.lastWornDate(lastWornDate)
-				.listing(toListingSummary(listing))
-				.build();
+		return itemMapper.toItemSummaryResponse(
+				item, fileStorage.toUrl(item.getCoverImageKey()), saleStatusOf(listing),
+				lastWornDate, null, toListingSummary(listing));
 	}
 
 	/** 판매 등록이 없는 것과 판매를 내린 것을 화면은 똑같이 '미판매' 로 그린다. */
@@ -399,14 +366,7 @@ public class ItemQueryService {
 	}
 
 	private ItemListingSummaryResponse toListingSummary(ItemListing listing) {
-		if (listing == null) {
-			return null;
-		}
-
-		return ItemListingSummaryResponse.builder()
-				.id(listing.getId())
-				.price(listing.getPrice() == null ? null : String.valueOf(listing.getPrice()))
-				.build();
+		return itemMapper.toListingSummaryResponse(listing);
 	}
 
 	private String nicknameOf(User owner) {

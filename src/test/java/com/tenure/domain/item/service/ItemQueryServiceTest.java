@@ -18,6 +18,8 @@ import com.tenure.domain.item.entity.Item;
 import com.tenure.domain.item.entity.ItemOwnership;
 import com.tenure.domain.item.enums.WearTarget;
 import com.tenure.domain.item.exception.ItemErrorCode;
+import com.tenure.domain.item.mapper.ItemMapper;
+import com.tenure.domain.item.mapper.ItemMapperImpl;
 import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.item.repository.ItemWearRecordRepository;
@@ -45,6 +47,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -69,6 +72,9 @@ class ItemQueryServiceTest {
 	@Mock private PostLikeRepository postLikeRepository;
 	@Mock private PostSaveRepository postSaveRepository;
 	@Mock private PostMapper postMapper;
+
+	// 매핑은 검증 대상이라 mock 이 아니라 실제 생성 구현을 넣는다
+	@Spy private ItemMapper itemMapper = new ItemMapperImpl();
 	@Mock private FileStorage fileStorage;
 
 	@InjectMocks private ItemQueryService itemQueryService;

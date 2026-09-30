@@ -20,6 +20,8 @@ import com.tenure.domain.item.entity.Item;
 import com.tenure.domain.item.entity.ItemOwnership;
 import com.tenure.domain.item.enums.WearTarget;
 import com.tenure.domain.item.exception.ItemErrorCode;
+import com.tenure.domain.item.mapper.ItemMapper;
+import com.tenure.domain.item.mapper.ItemMapperImpl;
 import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.listing.enums.SaleStatus;
@@ -41,6 +43,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -65,6 +68,9 @@ class ItemServiceTest {
 	@Mock private ItemListingRepository itemListingRepository;
 	@Mock private TradeOrderRepository tradeOrderRepository;
 	@Mock private UserRepository userRepository;
+
+	// 매핑은 검증 대상이라 mock 이 아니라 실제 생성 구현을 넣는다
+	@Spy private ItemMapper itemMapper = new ItemMapperImpl();
 
 	@InjectMocks private ItemService itemService;
 
