@@ -1,7 +1,7 @@
 # Tenure API 명세
 
 > 정본 데이터 모델: [`schema.yaml`](./schema.yaml) · ERD: [`erd.md`](./erd.md)
-> 엔드포인트 **95개** · 화면 **47개 전수 커버** · Spring Boot 4.1.1 / MySQL 8
+> 엔드포인트 **105개** · 화면 **47개 전수 커버** · Spring Boot 4.1.1 / MySQL 8
 
 > 이 문서는 **코드에 없는 정보**만 담는다 — API ID, 화면↔API 매핑, CRUD 커버리지, 설계 근거.
 > 구현이 시작되면 springdoc 이 생성하는 OpenAPI 가 스키마의 정본이 된다.
@@ -115,18 +115,19 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | API-091 | `GET` | `/api/v1/items` | 내가 등록한 아이템 목록 | SCR-022 | Item, ItemListing | O |
 | API-092 | `POST` | `/api/v1/items` | 아이템 등록 | SCR-024, SCR-018 | Item, ItemImage, ItemMeasurement, ItemCondition, ItemOwnership | O |
 | API-093 | `GET` | `/api/v1/items/{itemId}` | 아이템 상세 (소유자 시점) | SCR-023 | Item, ItemImage, ItemOwnership, ItemWearRecord, ItemMeasurement, ItemCondition, ItemListing | O |
-| API-094 | `PATCH` | `/api/v1/items/{itemId}` | 아이템 상세 정보 수정 | SCR-024 | Item, ItemImage, ItemMeasurement, ItemCondition | O |
+| API-094 | `PUT` | `/api/v1/items/{itemId}` | 아이템 상세 정보 수정 (전체 폼) | SCR-024 | Item, Category | O |
+| API-116 | `PATCH` | `/api/v1/items/{itemId}/offer-allowed` | 구매 제안 허용 토글 | SCR-023, SCR-029 | Item | O |
 | API-095 | `DELETE` | `/api/v1/items/{itemId}` | 아이템 삭제 (soft) | SCR-022 | Item | O |
 | API-096 | `GET` | `/api/v1/items/{itemId}/history` | 아이템 히스토리 (등장 OOTD 그리드) | SCR-025 | ItemWearRecord, Post, PostImage | O |
 | API-097 | `GET` | `/api/v1/items/{itemId}/ownerships` | Tenure 기록 기준 (소유 구간 + 인증 횟수) | SCR-023, SCR-026 | ItemOwnership, ItemWearRecord | O |
 | API-098 | `GET` | `/api/v1/items/me/taggable` | 태그 가능한 내 아이템 (본인 보유분) | SCR-018 | Item | O |
 | API-099 | `GET` | `/api/v1/items/{itemId}/recommendations` | 아이템 기준 추천 (비슷한 스타일·함께 좋은 코디) | SCR-016 | Item, Post, Category | O |
-| API-110 | `GET` | `/api/v1/listings/{listingId}` | 상품 상세 (구매자 시점) | SCR-026, SCR-031 | ItemListing, Item, ItemOwnership, ItemWearRecord | O |
-| API-111 | `POST` | `/api/v1/items/{itemId}/listings` | 판매 전환 | SCR-027 | ItemListing, ListingFeaturedPost, ItemMeasurement, ItemCondition, PayoutAccount | O |
-| API-112 | `PATCH` | `/api/v1/listings/{listingId}` | 판매 정보 수정 (가격·배송비·수수료 부담) | SCR-027 | ItemListing | O |
-| API-113 | `PATCH` | `/api/v1/listings/{listingId}/status` | 판매 상태 변경 (판매중 / 미판매 / 판매완료) | SCR-029 | ItemListing | O |
-| API-114 | `GET` | `/api/v1/listings/{listingId}/featured-posts` | 대표 OOTD 조회 | SCR-028 | ListingFeaturedPost, Post | O |
-| API-115 | `PUT` | `/api/v1/listings/{listingId}/featured-posts` | 대표 OOTD 교체 (1~5개) | SCR-028 | ListingFeaturedPost | O |
+| API-110 | `GET` | `/api/v1/items/{itemId}/detail` | 아이템 상세 (공개 페이지) | SCR-026, SCR-031 | Item, ItemListing, ItemMeasurement, ItemCondition, ListingFeaturedPost, PostItemTag | O |
+| API-111 | `POST` | `/api/v1/items/{itemId}/listings` | 판매 전환 (아이템 정보 포함) | SCR-027 | Item, ItemListing, ListingFeaturedPost, ItemMeasurement, ItemCondition, PayoutAccount | O |
+| API-112 | `PUT` | `/api/v1/listings/{listingId}` | 판매 정보 수정 (전체 폼) | SCR-027 | Item, ItemListing, ListingFeaturedPost, ItemMeasurement, ItemCondition | O |
+| API-113 | `PATCH` | `/api/v1/items/{itemId}/sale-status` | 판매 상태 변경 (미판매 / 판매완료) | SCR-029 | Item, ItemListing | O |
+| API-114 | `GET` | `/api/v1/items/{itemId}/featured-posts` | 대표 OOTD 전체 보기 | SCR-028 | ListingFeaturedPost, Post | O |
+| API-115 | `PUT` | `/api/v1/listings/{listingId}/featured-posts` | 대표 OOTD 교체 (1~5개) | SCR-028 | ListingFeaturedPost, Post | O |
 | API-120 | `GET` | `/api/v1/wishlists` | 위시리스트 | SCR-030 | Wishlist, Item, ItemListing | O |
 | API-121 | `POST` | `/api/v1/items/{itemId}/wishlist` | 관심 등록 | SCR-026, SCR-030 | Wishlist | O |
 | API-122 | `DELETE` | `/api/v1/items/{itemId}/wishlist` | 관심 해제 | SCR-026, SCR-030 | Wishlist | O |
@@ -192,14 +193,14 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | `post_save` | API-081 (저장 탭) | 없음 | API-077 | 없음 | API-078 |
 | `post_tag_edit_log` | 없음(MVP 외) | 없음 | API-083 이 자동 생성 | 없음(append-only) | 없음(append-only) |
 | `category` | API-090 | 없음(트리로 일괄) | 없음(마스터 데이터) | 없음(마스터 데이터) | 없음(마스터 데이터) |
-| `item` | API-091 API-098 API-099 (추천) | API-093 | API-092 | API-094 (`first_owned_date` 제외 — 등록 뒤 불변) | API-095 |
+| `item` | API-091 API-098 API-099 (추천) | API-093 API-110 | API-092 | API-094 (전체 교체) API-113 API-116 | API-095 |
 | `item_image` | 없음 | 없음 | 없음 | 없음 | 없음 — 사진을 여러 장 넣는 화면도 보여주는 화면도 없다. 대표 사진은 `item.cover_image_key` 다 |
-| `item_measurement` | 없음(아이템에 중첩) | API-093 에 포함 | API-111 에 포함 | API-112 에 포함 | 없음(부모 종속) |
-| `item_condition` | 없음(아이템에 중첩) | API-093 에 포함 | API-111 에 포함 | API-112 에 포함 | 없음(부모 종속) |
+| `item_measurement` | 없음(아이템에 중첩) | API-093 API-110 에 포함 | API-111 에 포함 | API-112 에 포함 | 없음(부모 종속) |
+| `item_condition` | 없음(아이템에 중첩) | API-093 API-110 에 포함 | API-111 에 포함 | API-112 에 포함 | 없음(부모 종속) |
 | `item_ownership` | API-097 | 없음 | API-092 API-165 가 자동 생성 | 없음(append-only) | 없음(append-only) |
 | `item_wear_record` | API-096 | 없음 | API-072 가 자동 적립 | 없음(voided_at 무효화만) | 없음(append-only) |
-| `item_listing` | API-091 에 포함 | API-110 API-093 에 포함 | API-111 | API-112 API-113 | 없음(상태 변경으로 대체) |
-| `listing_featured_post` | API-114 | 없음 | API-111 에 포함 | API-115 | 없음(교체로 대체) |
+| `item_listing` | API-091 에 포함 | API-110 API-093 에 포함 | API-111 | API-112 | 없음(closed_at 으로 대체) |
+| `listing_featured_post` | API-114 | 없음 | API-111 에 포함 | API-112 에 포함 API-115 | 없음(교체로 대체) |
 | `wishlist` | API-120 | 없음 | API-121 | API-123 (알림) | API-122 |
 | `purchase_offer` | API-161 API-162 (유니온 행) | API-142 | API-141 | API-144 API-145 | API-143 (취소=상태 전이) |
 | `payment` | 없음(제안·거래에 중첩) | API-142 API-160 에 포함 | API-141 에 포함 | 없음(상태는 거래가 전이) | 없음(append-only) |
@@ -246,13 +247,13 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | SCR-020 | 마이페이지 | read, filter, paging | O | API-014 API-081 API-091 API-120 API-161 API-162 |
 | SCR-021 | 태그 일괄 수정 (MVP 외) | update | O | API-083 |
 | SCR-022 | 등록한 아이템 목록 | read, create, paging | O | API-091 API-095 |
-| SCR-023 | 등록한 아이템 상세 (소유자 시점) | read, update | O | API-093 API-096 API-097 API-113 |
+| SCR-023 | 등록한 아이템 상세 (소유자 시점) | read, update | O | API-093 API-096 API-097 API-116 |
 | SCR-024 | 아이템 등록 · 상세 정보 수정 | create, update | O | API-060 API-090 API-092 API-094 |
 | SCR-025 | 아이템 히스토리 | read, paging | O | API-096 |
-| SCR-026 | 상품 상세페이지 (구매자 시점) | read, create, delete | O | API-054 API-056 API-097 API-110 API-121 API-122 API-181 |
-| SCR-027 | 판매 전환 | create, update | O | API-030 API-111 API-112 API-114 |
-| SCR-028 | 대표 OOTD 선택 | read, create, delete | O | API-114 API-115 |
-| SCR-029 | 판매 상태 변경 | update | O | API-113 |
+| SCR-026 | 아이템 상세 (공개 페이지) | read, create, delete | O | API-054 API-056 API-110 API-113 API-121 API-122 API-181 |
+| SCR-027 | 판매 전환 · 판매 정보 수정 | create, update | O | API-030 API-081 API-090 API-093 API-111 API-112 |
+| SCR-028 | 대표 OOTD 선택 | read, create, delete | O | API-081 API-114 API-115 |
+| SCR-029 | 판매 상태 변경 | update | O | API-113 API-116 |
 | SCR-030 | 위시리스트 | read, create, delete, update, paging | O | API-120 API-121 API-122 API-123 |
 | SCR-031 | 공유하기 | read | O | API-110 |
 | SCR-032 | 구매 제안 (미판매 상품) | create | O | API-140 API-141 |
@@ -365,7 +366,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | `PAYOUT_403` | 403 | 본인의 정산 계좌가 아닙니다. | API-032, API-033, API-034 |
 | `PAYOUT_409_PENDING_SETTLEMENT` | 409 | 정산 대기 중인 거래가 있어 삭제할 수 없습니다. | API-033 |
 | `PAYOUT_409_LAST_DEFAULT` | 409 | 기본 정산 계좌는 삭제할 수 없습니다. | API-033 |
-| `PAYOUT_400_REQUIRED` | 400 | 판매 전환을 위해 정산 계좌를 먼저 등록해주세요. | API-111 |
+| `PAYOUT_400_REQUIRED` | 400 | 정산 계좌를 먼저 등록해주세요. | API-111 |
 
 ### FollowErrorCode
 
@@ -410,7 +411,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | 코드 | HTTP | 메시지 | 발생 API |
 |---|:--:|---|---|
 | `ITEM_404` | 404 | 아이템을 찾을 수 없습니다. | API-093~097 |
-| `ITEM_403` | 403 | 본인의 아이템이 아닙니다. | API-094, API-095, API-111 |
+| `ITEM_403` | 403 | 본인의 아이템이 아닙니다. | API-094, API-095, API-111, API-116 |
 | `ITEM_409_ON_SALE` | 409 | 판매 중이거나 거래가 진행 중이라 삭제할 수 없습니다. | API-095 |
 | `ITEM_400_MEASUREMENT` | 400 | 해당 카테고리에 맞지 않는 실측 항목입니다. | API-111, API-112 |
 | `ITEM_400_CATEGORY` | 400 | 세부 카테고리를 선택해주세요. | API-092, API-094 |
@@ -427,11 +428,15 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 
 | 코드 | HTTP | 메시지 | 발생 API |
 |---|:--:|---|---|
-| `LISTING_404` | 404 | 판매 상품을 찾을 수 없습니다. | API-110~115, API-141 |
-| `LISTING_403` | 403 | 본인의 판매 상품이 아닙니다. | API-112, API-113, API-115 |
-| `LISTING_400_FEATURED_RANGE` | 400 | 대표 OOTD 는 1개 이상 5개 이하로 선택해주세요. | API-111, API-115 |
+| `LISTING_404` | 404 | 판매 상품을 찾을 수 없습니다. | API-112, API-115, API-141 |
+| `LISTING_403` | 403 | 본인의 판매 상품이 아닙니다. | API-112, API-115 |
+| `LISTING_400_FEATURED_RANGE` | 400 | 대표 OOTD 는 1개 이상 5개 이하로 선택해주세요. | API-111, API-112, API-115 |
 | `LISTING_403_FEE_BEARER` | 403 | 기본 사용자는 수수료 부담과 배송비를 지정할 수 없습니다. | API-111, API-112 |
-| `LISTING_409_SOLD` | 409 | 이미 판매 완료된 상품입니다. | API-112, API-113, API-141 |
+| `LISTING_409_ALREADY_OPEN` | 409 | 이미 판매 중인 아이템입니다. | API-111 |
+| `LISTING_409_CLOSED` | 409 | 판매가 끝난 등록은 수정할 수 없습니다. | API-112, API-115 |
+| `LISTING_409_SOLD` | 409 | 이미 판매 완료된 상품입니다. | API-141 |
+| `LISTING_409_IN_TRADE` | 409 | 진행 중인 거래가 있어 판매 상태를 바꿀 수 없습니다. | API-113 |
+| `LISTING_400_STATUS` | 400 | 판매중으로 되돌릴 수 없습니다. 판매 전환을 다시 진행해주세요. | API-113 |
 
 ### WishlistErrorCode
 
@@ -2080,8 +2085,11 @@ soft delete (`deleted_at`). 판매 중인 상품의 대표 OOTD 로 걸려 있�
 응답 `{ items[{ itemId, listingId?, brandName, name, coverImageUrl, status: ON_SALE|NOT_FOR_SALE|SOLD|DELETED, price?, offerAllowed, alarmEnabled }] }`.
 
 행 우측 토글은 **하트가 아니라 벨**이다(`2791:27831`). 관심 등록과 알림 신청을 겸하므로 상태값도 `alarmEnabled` 하나만 싣는다 — 위시에 담지 않은 채 알림만 켜는 상태가 없다. 위시리스트 화면에서 알림만 끈 아이템은 여기서도 꺼진 벨로 보인다.
-삭제된 아이템은 `DELETED` 로 내려가고 화면에서 회색 처리된다. `listingId` 가 `null` 이면 판매 등록이
-한 번도 없었던 아이템이라 **CTA 버튼을 띄우지 않는다**(`구매제안 불가능 제품에 관하여는 CTA 버튼이 없다`).
+삭제된 아이템은 `DELETED` 로 내려가고 화면에서 회색 처리된다. CTA 를 띄울지는 `offerAllowed` 가
+정한다 — `구매제안 불가능 제품에 관하여는 CTA 버튼이 없다` 는 구매 제안을 막아 둔 아이템을 말한다.
+`listingId` 가 `null` 이라고 CTA 가 사라지지는 않는다. 판매 등록이 없는 미판매 아이템에도
+`구매제안하기` 가 붙는 것이 미판매 공개 페이지(`2825:57652`)이고, 그것이 `DEC-024` 로
+`offer_allowed` 를 아이템으로 올린 이유다.
 
 시트 하단에는 `관련된 OOTD 보러가기` 버튼이 있다(`2791:27798`). 이 엔드포인트가 아니라 아이템
 히스토리(`API-097`)로 가는 링크다.
@@ -2097,7 +2105,7 @@ soft delete (`deleted_at`). 판매 중인 상품의 대표 OOTD 로 걸려 있�
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `itemId` | Long | — |
-| `listingId` | Long | 최신 판매 등록. null 이면 CTA 없음 |
+| `listingId` | Long | **nullable** — 열린 판매 등록. 가격을 그릴 때만 쓴다 |
 | `brandName` | String | — |
 | `name` | String | — |
 | `coverImageUrl` | String | — |
@@ -2120,7 +2128,8 @@ soft delete (`deleted_at`). 판매 중인 상품의 대표 OOTD 로 걸려 있�
       "coverImageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg",
       "status": "<String>",
       "price": "360000",
-      "offerAllowed": true
+      "offerAllowed": true,
+      "alarmEnabled": true
     }
   ]
 }
@@ -2367,9 +2376,9 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 
 **현재 소유자 기준이다** — 등록자가 아니라 소유 구간이 열려 있는(`end_date IS NULL`) 아이템만 내려간다. 팔면 목록에서 빠진다. 등록자 기준으로 두면 행을 눌러 들어간 상세에서 수정·삭제가 403 이 되는 행이 생긴다. 마이페이지의 `아이템 N` 카운터도 같은 조건이다.
 
-페이징. 행이 그리는 것만 싣는다 — 화면에 관심 수도 구매 제안 여부도 없다. 판매 조건은 `listing { id, price }` 로 중첩하며 판매 등록이 없으면 `null` 이다.
+페이징. 행이 그리는 것만 싣는다 — 화면에 관심 수도 구매 제안 여부도 없다. 판매 조건은 `listing { id, price }` 로 중첩하며 열린 판매 등록이 없으면 `null` 이다.
 
-`saleStatus` 는 **아이템 레벨로 평탄화한 값**이다. '미판매'는 판매 등록이 아예 없는 경우와 판매를 내린 경우(최신 `item_listing.sale_status=NOT_FOR_SALE`) 둘 다이므로 서버가 하나로 합쳐 내려준다.
+`saleStatus` 는 `item.sale_status` 를 그대로 싣는다 (`DEC-026`). '미판매'가 판매 등록이 아예 없는 경우와 판매를 내린 경우 둘 다인 것은 그대로지만, 아이템이 값을 들고 있어 서버가 합칠 일이 없다.
 
 화면(`4765:53893`)에는 **검색창**이 있고 행마다 `미판매 · 최근 착용 1일 전` 처럼 **최근 착용일**이 붙는다.
 미판매 행에만 우측에 `판매 전환` 버튼이 뜬다 — `saleStatus=NOT_FOR_SALE` 일 때다.
@@ -2390,10 +2399,10 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `brandName` | String | — |
 | `name` | String | — |
 | `coverImageUrl` | String | — |
-| `saleStatus` | SaleStatus | NOT_FOR_SALE \| ON_SALE \| SOLD. 판매 등록이 없으면 NOT_FOR_SALE |
+| `saleStatus` | SaleStatus | NOT_FOR_SALE \| ON_SALE \| SOLD |
 | `lastWornDate` | LocalDate | `최근 착용 N일 전` 계산 기준. `item_wear_record` 의 최신 `worn_date`(`voided_at IS NULL`) |
-| `listing` | Object | **nullable** — 판매 등록이 없으면 null |
-| `listing.id` | Long | `API-112`·`API-113` 의 입력 키 |
+| `listing` | Object | **nullable** — 열린 판매 등록이 없으면 null |
+| `listing.id` | Long | `판매 정보 수정`(`API-112`) 의 입력 키. 열린 판매 등록이 없으면 `listing` 자체가 null |
 | `listing.price` | String | — |
 
 ```json
@@ -2479,11 +2488,13 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 
 `saleStatus` · `wishCount` · `offerAllowed` 는 아이템이 갖는다(`DEC-024`). 화면(`2825:48757`)이 미판매 아이템에도 `미판매 · 구매 제안 X` 와 `관심 14명` 을 그린다.
 
-`listing` 은 **nullable** 이다 — 판매 전환을 한 번도 하지 않은 아이템에는 `item_listing` 행이 없다. 있으면 화면은 `판매 상태 변경`(`API-113`)·`판매 정보 수정`(`API-112`) CTA 에 `listing.id` 를 쓴다.
+`listing` 은 **nullable** 이다 — 열려 있는 판매 등록(`closed_at IS NULL`)이 있을 때만 채운다. 판매 전환을 한 번도 안 했거나 판매를 내린 상태면 `null` 이다. 있으면 화면은 `판매 정보 수정`(`API-112`) CTA 에 `listing.id` 를 쓴다. `판매 상태 변경`(`API-113`)은 아이템 키를 쓰므로 `listing` 이 없어도 부를 수 있다.
 
-하단 CTA 는 `saleStatus` 로 갈린다 — 판매 중이면 `판매 페이지로`(`API-110`), 그 외에는 `공개 페이지로`(미판매 공개 페이지 `2825:58233`)다. 판매 전환 진입은 이 화면이 아니라 목록(`API-091`)의 행 버튼이다.
+`saleStatus` 는 `item.sale_status` 를 그대로 싣는다 — 평탄화하던 계산이 `DEC-026` 으로 사라졌다.
 
-판매 전환 폼의 빈칸 채우기(안내사항 `3633:34232`)는 `listing` 도메인에서 담당한다 — 실측·상태 이상은 이 화면에 없고 `API-111`·`API-112` 가 읽고 쓴다.
+하단 CTA 는 `saleStatus` 로 갈린다 — 판매 중이면 `판매 페이지로`(`2825:48650`), 그 외에는 `공개 페이지로`(`2825:48757`)다. 둘 다 `API-110` 으로 가며 키는 `itemId` 다. 판매 전환 진입은 이 화면이 아니라 목록(`API-091`)의 행 버튼과 선택 모달(`3910:43234`)이다.
+
+판매 전환 폼의 빈칸 채우기(안내사항 `3633:34232`)를 이 엔드포인트가 담당한다 — 직전 조건은 같은 아이템의 **최신 닫힌 판매 등록**에서 읽는다. 실측·상태 이상은 이 화면이 그리지 않지만 프리필에는 필요하므로 응답에 싣는다.
 
 `frequentlyWornWith` 는 `자주 같이 입은 옷` 칩이다. 같은 게시물에 함께 태그된 횟수 상위 **3건**이며 `post_item_tag` 자기 조인으로 구한다. 삭제된 아이템은 제외한다.
 
@@ -2507,7 +2518,7 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `sizeLabel` | String | — |
 | `wearTarget` | WearTarget | — |
 | `firstOwnedDate` | LocalDate | — |
-| `saleStatus` | SaleStatus | NOT_FOR_SALE \| ON_SALE \| SOLD. 판매 등록이 없으면 NOT_FOR_SALE |
+| `saleStatus` | SaleStatus | NOT_FOR_SALE \| ON_SALE \| SOLD |
 | `wishCount` | Integer | 관심 N명 |
 | `offerAllowed` | Boolean | `구매 제안 허용` 토글 상태 |
 | `ownerships[].ownerNickname` | String | — |
@@ -2523,7 +2534,7 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `recentWornDate` | LocalDate | 최근 착용 |
 | `totalWearCount` | Integer | 소유 구간 합계 — voided 제외 |
 | `listing` | Object | **nullable** — 판매 전환 이력이 없으면 null |
-| `listing.id` | Long | `API-112`·`API-113` 의 입력 키 |
+| `listing.id` | Long | `판매 정보 수정`(`API-112`) 의 입력 키. 열린 판매 등록이 없으면 `listing` 자체가 null |
 | `listing.price` | String | 미판매면 null |
 
 ```json
@@ -2577,27 +2588,37 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 
 에러 — ITEM_404, ITEM_403
 
-#### API-094 · `PATCH /api/v1/items/{itemId}`
+#### API-094 · `PUT /api/v1/items/{itemId}`
 
 아이템 상세 정보 수정. 인증 **필요**. 관련 화면 SCR-024.
 
-요청 `ItemUpdateRequest`. 실측·상태 이상은 여기서 받지 않는다 — 상세 수정 바텀시트(`2825:49332` 외 9종)에 입력란이 없고 판매 전환(`API-111`)이 담당한다. `offerAllowed` 는 여기서 바꾼다 — 미판매 아이템에는 `item_listing` 행이 없어 `API-113` 을 쓸 수 없다(`DEC-024`).
+**메서드가 `PUT` 이다.** 상세 수정 바텀시트(`2825:49332` 외 9종)는 현재 값이 전부 채워진 채 열리고
+CTA 가 `초기화` / `적용하기` 둘뿐이라, 클라이언트는 **언제나 폼 전체를 보낸다.** 부분 수정을
+지원하면 빠뜨린 필드가 조용히 옛 값으로 통과한다 — 필수로 막아 400 으로 드러나게 한다.
+
+**`coverImageKey` 는 받지 않는다.** 10종 어느 시트에도 대표 사진 입력란이 없고 상세 화면에도 교체
+버튼이 없다(`B-7`). 사진은 판매 전환·수정(`API-111`·`API-112`)에서만 바꾼다.
+
+**`offerAllowed` 도 받지 않는다.** 이 시트가 아니라 선택 모달(`3910:43234`)의 별도 항목이라
+`API-116` 으로 분리했다 — 같은 요청에 묶으면 토글만 누르는데도 폼 전체를 함께 보내야 한다.
 
 **`firstOwnedDate` 는 받지 않는다.** 등록 시점에 정해지고 그 뒤로는 누구도 바꿀 수 없다(`DEC-007`) — 그 값이 최초 소유 구간의 `start_date` 이고, 구매자가 보고 산 `Tenure 기록 기준` 의 첫 줄이다. 사후에 달라지면 기록으로 가치를 증명한다는 전제가 무너진다. 잘못 넣었으면 아이템을 지우고 다시 등록해야 하며, 그 경우 착용 기록은 승계되지 않는다.
 
-사진은 `coverImageKey` 로 교체한다. 사이즈나 카테고리를 보냈을 때만 `sizeLabel` 을 검증한다 — 둘 다 안 건드렸으면 다시 보지 않아서, 칩 세트가 나중에 바뀌어도 기존 아이템의 수정이 막히지 않는다.
+> 화면에는 아직 이 칸이 **9종에 남아 있다** — 상의(`2825:49332`)만 숨김 처리돼 있다. 디자인에서 빼야 한다(`B-11`).
+
+실측·상태 이상도 여기서 받지 않는다 — 시트에 입력란이 없고 판매 전환(`API-111`)이 담당한다.
+
+`sizeLabel` 은 매번 검증한다. 전체 교체라 카테고리와 사이즈가 늘 함께 오므로, 상의(L)를 신발로 옮기는 조합을 그 자리에서 잡는다.
 
 **요청 본문**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `name` | String |  | — | — |
-| `brandName` | String |  | — | — |
-| `categoryId` | Long |  | depth=2 | — |
-| `sizeLabel` | String |  | 대분류의 칩 세트에 있는 값 | `API-090` 의 `sizeOptions[].label` |
-| `wearTarget` | WearTarget |  | — | — |
-| `coverImageKey` | String |  | API-060 응답 | 대표 사진 교체 |
-| `offerAllowed` | Boolean |  | — | `구매 제안 허용` 토글 |
+| `name` | String | O | 1~100자 | — |
+| `brandName` | String | O | 1~100자 | — |
+| `categoryId` | Long | O | depth=2 | — |
+| `sizeLabel` | String |  | 대분류의 칩 세트에 있는 값 | `API-090` 의 `sizeOptions[].label`. 등록 때 안 골랐으면 비어 온다 |
+| `wearTarget` | WearTarget | O | — | — |
 
 **응답** (`data`)
 
@@ -2617,6 +2638,42 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 ```
 
 에러 — ITEM_403, ITEM_404, ITEM_400_CATEGORY, ITEM_400_SIZE, CATEGORY_404
+
+#### API-116 · `PATCH /api/v1/items/{itemId}/offer-allowed`
+
+구매 제안 허용 토글. 인증 **필요**. 관련 화면 SCR-023, SCR-029.
+
+선택 모달(`3910:43234`)의 항목이며 라벨이 상태에 따라 `구매 제안 허용` ↔ `구매 제안 차단`
+(`3910:43454`)으로 바뀐다. 아이템이 갖는 값이라 판매 등록이 없는 미판매 아이템에도 걸리고
+(`DEC-024`), 그래서 판매 상태 변경(`API-113`)과도 분리한다.
+
+`false` 면 미판매 공개 페이지의 `구매제안하기` CTA 가 **비활성**으로 남는다 — 버튼이 사라지지
+않는다(`2825:57760`).
+
+**요청 본문**
+
+| 필드 | 타입 | 필수 | 제약 | 설명 |
+|---|---|:--:|---|---|
+| `offerAllowed` | Boolean | O | — | — |
+
+**응답** (`data`)
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `id` | Long | — |
+
+```json
+{
+  "success": true,
+  "code": "COMMON_200",
+  "message": "요청에 성공했습니다.",
+  "data": {
+    "id": 1
+  }
+}
+```
+
+에러 — ITEM_403, ITEM_404
 
 #### API-095 · `DELETE /api/v1/items/{itemId}`
 
@@ -2842,58 +2899,82 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 
 ### 판매·위시리스트
 
-#### API-110 · `GET /api/v1/listings/{listingId}`
+#### API-110 · `GET /api/v1/items/{itemId}/detail`
 
-상품 상세 (구매자 시점). 인증 **필요**. 관련 화면 SCR-026, SCR-031.
+아이템 상세 (공개 페이지). 인증 **필요**. 관련 화면 SCR-026, SCR-031.
 
-응답 `ListingResponse` — 상품 정보 + `measurements` + `conditions` + `ownerships`(Tenure 기록 기준) + `featuredPosts[]` + `seller{ id, nickname, profileImageUrl, followerCount, grade }` + `wishCount` + `isWished` + `offerAllowed` + `myOfferStatus`. 판매 완료·미판매·구매제안 off 상태에 따라 CTA 가 달라진다.
+**조회 키가 `itemId` 다.** 판매중·미판매·판매완료가 한 화면의 상태 변형이고 프레임 6종 모두 헤더가
+`아이템 상세`다. 판매 전환을 한 번도 안 한 아이템(`2825:58233`)에는 `item_listing` 행이 아예 없어
+`listingId` 로는 열 수 없고, 이 화면으로 들어오는 동선 — 태그된 아이템(`API-079`)·위시리스트
+(`API-120`)·공유하기 — 이 전부 아이템 기준이다. 나가는 동작(관심 `API-121`·채팅 `API-181`·
+신고 `API-056`)도 마찬가지다.
 
-**판매 등록이 없는 아이템의 공개 페이지는 아직 이 엔드포인트로 열 수 없다.** 미판매 공개 페이지(`2825:58233`)는 `관심 N명` · `OOTD 인증 N회` · 스펙 그리드 · `태그된 OOTD` · 구매제안 CTA 로 구성되는데, `listingId` 가 없어 진입 키가 없다. `wishCount` 와 `offerAllowed` 가 아이템으로 올라갔으므로(`DEC-024`) 데이터는 다 있다 — `listing` 도메인을 구현할 때 조회 키를 `itemId` 로 통일할지 별도 엔드포인트를 팔지 정한다.
+**`listing` 은 nullable 이다.** 열려 있는 판매 등록(`closed_at IS NULL`)이 있을 때만 채운다.
+판매를 내리면 닫히므로 미판매·판매완료 상태에서는 `null` 이고, 그때 화면은 가격·배송비·수수료
+부담·상품 설명·실측·상태 이상 섹션을 통째로 접는다(`2825:60351`).
 
-**`itemId` 를 반드시 함께 내려준다.** 이 화면에서 나가는 동작이 전부 아이템 기준이기 때문이다 —
-관심 등록(`API-121`)·해제(`API-122`)·채팅 개설(`API-181`) 은 경로가 `/items/{itemId}/…` 이고
-신고(`API-056`)는 `targetType=ITEM` + `targetId=itemId` 다. `id`(=`listingId`)만으로는 호출할 수 없다.
+**`featuredPosts` 와 `taggedPosts` 는 배타적이다.** 판매 등록 이력이 있으면 대표 OOTD 를 그리고
+(`2825:60351` — 미판매로 내려도 남는다), 한 번도 없었으면 태그된 OOTD 로 대체한다(`2825:58233`).
+서버가 둘 중 하나만 채우고 나머지는 빈 배열로 내려준다.
+
+**상태별 CTA**
+
+| `saleStatus` | `listing` | OOTD 섹션 | CTA |
+|---|---|---|---|
+| `ON_SALE` | 있음 | `featuredPosts` | `채팅하기` · `구매하기` |
+| `NOT_FOR_SALE` (판매 이력 있음) | null | `featuredPosts` | `구매제안하기` |
+| `NOT_FOR_SALE` (이력 없음) | null | `taggedPosts` | `구매제안하기` |
+| `SOLD` | null | 있는 쪽 | 없음. 사진이 흑백 처리된다 |
+
+`offerAllowed=false` 면 `구매제안하기` 가 **비활성**으로 남는다 — 버튼이 사라지지 않는다(`2825:57760`).
 
 **경로 파라미터**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `listingId` | Long | O | — | — |
+| `itemId` | Long | O | — | — |
 
 **응답** (`data`)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
-| `id` | Long | `listingId` |
 | `itemId` | Long | 관심·채팅·신고 호출 키 |
-| `item.brandName` | String | — |
-| `item.name` | String | — |
-| `item.images[]` | String | 상품 사진 |
-| `price` | String | — |
-| `shippingFee` | String | 0 이면 판매자 부담 |
-| `feeBearer` | FeeBearer | SELLER \| BUYER \| SPLIT |
+| `brandName` | String | 히어로 `Levis / LVC 1955 501` 의 앞부분 |
+| `name` | String | — |
+| `images[]` | String | 상품 사진 |
 | `saleStatus` | SaleStatus | NOT_FOR_SALE \| ON_SALE \| SOLD |
-| `offerAllowed` | Boolean | 구매 제안 O/X |
-| `sellerNote` | String | 판매자 설명 |
-| `category.name` | String | — |
+| `offerAllowed` | Boolean | 구매 제안 O/X. 미판매 CTA 활성 여부 |
+| `wishCount` | Integer | `관심 N명` |
+| `isWished` | Boolean | 히어로 우측 벨 상태 |
+| `categoryName` | String | `Tenure 기록 기준` 의 카테고리 칸 |
 | `sizeLabel` | String | — |
 | `wearTarget` | WearTarget | — |
-| `measurements` | ProductMeasurements | 실측 입력 |
-| `conditions[]` | ConditionCode | 상태 이상 체크 |
-| `firstOwnedDate` | LocalDate | Tenure 기록 기준 |
-| `recentWornDate` | LocalDate | 최근 착용 |
-| `totalWearCount` | Integer | OOTD 인증 |
-| `ownerships[]` | Ownership | 소유자별 구간 + 인증 횟수 |
-| `featuredPosts[].postId` | Long | 대표 OOTD |
-| `featuredPosts[].imageUrl` | String | — |
+| `firstOwnedDate` | LocalDate | `최초 보유 날짜` |
+| `totalWearCount` | Integer | `OOTD 인증 N회` |
+| `listing` | Object | **nullable** — 열린 판매 등록이 없으면 null |
+| `listing.id` | Long | `API-112` 의 입력 키 |
+| `listing.price` | String | — |
+| `listing.shippingFee` | String | 0 이면 판매자 부담 |
+| `listing.feeBearer` | FeeBearer | SELLER \| BUYER \| SPLIT |
+| `listing.sellerNote` | String | 화면 라벨은 `상품 설명` |
+| `listing.measurements` | ProductMeasurements | `실측 입력 · <대분류>` |
+| `listing.conditions[]` | ConditionCode | `상태 이상 체크` |
+| `seller` | Object | **nullable** — 판매 이력이 없으면 섹션 자체가 없다 |
 | `seller.id` | Long | — |
 | `seller.nickname` | String | — |
 | `seller.profileImageUrl` | String | — |
-| `seller.followerCount` | Integer | — |
-| `seller.grade` | UserGrade | BASIC \| RECORD — 수수료·배송비 표기가 갈린다 |
-| `wishCount` | Integer | 관심 N명 |
-| `isWished` | Boolean | — |
+| `seller.followerCount` | Integer | `팔로워 10` |
+| `seller.grade` | UserGrade | BASIC \| RECORD — `레코드 사용자` 표기 |
+| `featuredPosts[]` | Object | 대표 OOTD. 없으면 빈 배열 |
+| `featuredPosts[].postId` | Long | — |
+| `featuredPosts[].imageUrl` | String | — |
+| `featuredPosts[].aspectRatio` | AspectRatio | 전체 보기가 masonry 라 함께 싣는다 |
+| `taggedPosts[]` | Object | 태그된 OOTD. 구조는 `featuredPosts` 와 같다 |
 | `myOfferStatus` | OfferStatus | 내가 보낸 제안 상태. 없으면 null |
+
+> `ownerships[]`(소유 구간 카드)는 **싣지 않는다.** 이 화면의 `Tenure 기록 기준` 은 관심·OOTD 인증·
+> 최초 보유 날짜·사이즈·착용 대상·카테고리 6칸 그리드뿐이다(`2825:57089`). 소유 구간은 소유자 시점
+> (`API-093`·`API-097`)의 `아이템 히스토리` 에만 있다.
 
 ```json
 {
@@ -2901,73 +2982,92 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
   "code": "COMMON_200",
   "message": "요청에 성공했습니다.",
   "data": {
-    "id": 1,
     "itemId": 1,
-    "item": {
-      "brandName": "<String>",
-      "name": "<String>",
-      "images": [
-        "<String>"
+    "brandName": "Levis",
+    "name": "LVC 1955 501",
+    "images": [
+      "https://cdn.tenure.app/item/2026/06/ab12.jpg"
+    ],
+    "saleStatus": "ON_SALE",
+    "offerAllowed": true,
+    "wishCount": 5,
+    "isWished": true,
+    "categoryName": "긴소매 티셔츠",
+    "sizeLabel": "L",
+    "wearTarget": "MALE",
+    "firstOwnedDate": "2026-04-20",
+    "totalWearCount": 10,
+    "listing": {
+      "id": 1,
+      "price": "128000",
+      "shippingFee": "5000",
+      "feeBearer": "SELLER",
+      "sellerNote": "<String>",
+      "measurements": "<ProductMeasurements>",
+      "conditions": [
+        "<ConditionCode>"
       ]
     },
-    "price": "360000",
-    "shippingFee": "360000",
-    "feeBearer": "<FeeBearer>",
-    "saleStatus": "<SaleStatus>",
-    "offerAllowed": true,
-    "sellerNote": "<String>",
-    "category": {
-      "name": "<String>"
+    "seller": {
+      "id": 1,
+      "nickname": "GilDong",
+      "profileImageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg",
+      "followerCount": 10,
+      "grade": "RECORD"
     },
-    "sizeLabel": "<String>",
-    "wearTarget": "<WearTarget>",
-    "measurements": "<ProductMeasurements>",
-    "conditions": [
-      "<ConditionCode>"
-    ],
-    "firstOwnedDate": "2026-06-21",
-    "recentWornDate": "2026-06-21",
-    "totalWearCount": 1,
-    "ownerships": [
-      "<Ownership>"
-    ],
     "featuredPosts": [
       {
         "postId": 1,
-        "imageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg"
+        "imageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg",
+        "aspectRatio": "RATIO_3_4"
       }
     ],
-    "seller": {
-      "id": 1,
-      "nickname": "<String>",
-      "profileImageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg",
-      "followerCount": 1,
-      "grade": "<UserGrade>"
-    },
-    "wishCount": 1,
-    "isWished": true,
-    "myOfferStatus": "<OfferStatus>"
+    "taggedPosts": [],
+    "myOfferStatus": null
   }
 }
 ```
 
-에러 — LISTING_404
+에러 — ITEM_404
 
 #### API-111 · `POST /api/v1/items/{itemId}/listings`
 
 판매 전환. 인증 **필요**. 관련 화면 SCR-027.
 
-요청 `ListingCreateRequest` — `price` `shippingFee?` `feeBearer?` `sellerNote?` `featuredPostIds[1..5]` `measurements?` `conditions[]`. **정산 계좌가 없으면 거부한다.** 기본 사용자는 `feeBearer`·`shippingFee` 를 보낼 수 없다(보내면 403).
+**아이템 정보도 함께 갱신한다.** 판매 전환 폼(`3342:32943`)은 대표 사진·브랜드명·아이템명·카테고리·
+세부 카테고리·사이즈·착용 대상을 **전부 다시 받는다.** 화면이 한 폼·한 CTA 이므로 서버가 한
+트랜잭션에서 `item` · `item_listing` · `item_measurement` · `item_condition` · `listing_featured_post`
+를 함께 쓴다. 프론트가 `API-094` 를 먼저 부르는 방식은 중간 실패 시 아이템만 바뀌고 판매 등록이
+안 된 상태가 남아 택하지 않았다.
+
+**정산 계좌가 없으면 거부한다** — 토스트 문구가 `정산 계좌를 먼저 등록해주세요.`(`4765:54024`)다.
+기본 사용자는 `feeBearer`·`shippingFee` 를 보낼 수 없다(보내면 403). 화면에서도 칩 3종이 비활성이고
+배송비 입력란이 `0원` 플레이스홀더로 잠긴다(`3342:33318`).
+
+**항상 새 행을 만든다.** 미판매로 내린 뒤 다시 눌러도 닫힌 행을 되살리지 않는다 — 그 행을 가리키는
+`purchase_offer`·`chat_room` 의 조건 스냅샷이 사후에 바뀌기 때문이다(`DEC-026`). 열려 있는 판매
+등록이 이미 있으면 409 다.
+
+**`item.sale_status` 를 `ON_SALE` 로 바꾼다.** 같은 트랜잭션에서 처리한다.
+
+**폼 프리필은 `API-093`** 이 담당한다 — 직전 조건은 같은 아이템의 최신 닫힌 판매 등록에서 읽는다
+(안내사항 `3633:34232`). 대표 OOTD 후보 목록은 `API-081`(내 게시물)로 받는다.
 
 **요청 본문**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `price` | String | O | — | 가격 |
+| `item.brandName` | String | O | 1~100자 | — |
+| `item.name` | String | O | 1~100자 | — |
+| `item.categoryId` | Long | O | depth=2 | 세부 카테고리 |
+| `item.sizeLabel` | String | O | 대분류의 size_option 값 | 판매 전환에서만 필수다 |
+| `item.wearTarget` | WearTarget | O | MALE \| FEMALE \| UNISEX | — |
+| `item.coverImageKey` | String | O | `API-060` 이 준 키 | `대표 사진` |
+| `price` | String | O | 1 이상 | 가격 |
 | `shippingFee` | String |  | BASIC 은 입력 불가 | 0 이면 판매자 부담 |
 | `feeBearer` | FeeBearer |  | BASIC 은 SELLER 고정 | SELLER \| BUYER \| SPLIT |
-| `sellerNote` | String |  | — | — |
-| `featuredPostIds[]` | Long | O | 1개 이상 5개 이하 | 대표 OOTD |
+| `sellerNote` | String |  | — | 화면 라벨은 `판매자 설명` |
+| `featuredPostIds[]` | Long | O | 1개 이상 5개 이하, 본인 게시물 | 보낸 순서가 노출 순서다 |
 | `measurements` | ProductMeasurements |  | 대분류별 필수·금지 | — |
 | `conditions[]` | ConditionCode |  | — | — |
 
@@ -2975,7 +3075,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
-| `id` | Long | — |
+| `id` | Long | `item_listing.id` |
 
 ```json
 {
@@ -2988,22 +3088,30 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 }
 ```
 
-에러 — PAYOUT_400_REQUIRED, LISTING_400_FEATURED_RANGE, LISTING_403_FEE_BEARER, ITEM_403
+에러 — PAYOUT_400_REQUIRED, LISTING_400_FEATURED_RANGE, LISTING_403_FEE_BEARER, LISTING_409_ALREADY_OPEN, ITEM_403, ITEM_400_MEASUREMENT, CATEGORY_404, POST_404
 
-#### API-112 · `PATCH /api/v1/listings/{listingId}`
+#### API-112 · `PUT /api/v1/listings/{listingId}`
 
-판매 정보 수정 (가격·배송비·수수료 부담). 인증 **필요**. 관련 화면 SCR-027.
+판매 정보 수정. 인증 **필요**. 관련 화면 SCR-027.
 
-진행 중인 제안이 있어도 이미 전송된 제안의 금액 스냅샷은 바뀌지 않는다.
+**메서드가 `PUT` 이다.** 수정 화면(`3342:33695` 레코드 / `3342:34070` 기본)은 판매 전환과 **같은
+전체 폼**이고 헤더도 `판매 전환` 그대로다. CTA 문구만 `수정하기` 로 바뀐다. 부분 수정이 아니라
+폼 전체를 다시 받으므로 `PATCH` 가 아니다. 요청 본문은 `API-111` 과 같다 — 대표 OOTD·실측·상태
+이상도 함께 교체한다.
 
-**요청 본문**
+행을 새로 만들지 않고 **이 행을 덮어쓴다.** 조건을 바꾸는 것이지 다시 파는 것이 아니다.
+이미 전송된 제안의 금액 스냅샷은 `purchase_offer` 가 자체 보유하므로 바뀌지 않는다.
+
+닫힌 판매 등록(`closed_at IS NOT NULL`)은 수정할 수 없다 — 미판매·판매완료 상태의 아이템은
+메뉴에 `수정하기` 가 뜨지 않는다(`2825:59974` 는 판매 중일 때의 메뉴다).
+
+**경로 파라미터**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `price` | String |  | — | — |
-| `shippingFee` | String |  | BASIC 은 입력 불가 | — |
-| `feeBearer` | FeeBearer |  | BASIC 은 SELLER 고정 | — |
-| `sellerNote` | String |  | — | — |
+| `listingId` | Long | O | 열려 있는 판매 등록 | — |
+
+**요청 본문** — `API-111` 과 동일 (`item` 블록 포함)
 
 **응답** (`data`)
 
@@ -3022,25 +3130,42 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 }
 ```
 
-에러 — LISTING_403, LISTING_409_SOLD, LISTING_403_FEE_BEARER
+에러 — LISTING_404, LISTING_403, LISTING_409_CLOSED, LISTING_400_FEATURED_RANGE, LISTING_403_FEE_BEARER, ITEM_400_MEASUREMENT
 
-#### API-113 · `PATCH /api/v1/listings/{listingId}/status`
+#### API-113 · `PATCH /api/v1/items/{itemId}/sale-status`
 
-판매 상태 변경 (판매중 / 미판매 / 판매완료). 인증 **필요**. 관련 화면 SCR-029.
+판매 상태 변경. 인증 **필요**. 관련 화면 SCR-029.
 
-요청 `{ saleStatus }`. `미판매 + 구매제안 off` 로 바꾸면 신규 채팅 개설이 막힌다(기존 방은 유지). `offerAllowed` 는 아이템이 갖는 값이라 `API-094` 로 바꾼다(`DEC-024`) — 미판매 아이템에는 `item_listing` 행이 없어 여기서 받을 수 없다.
+**키가 `itemId` 다** — 상태는 `item.sale_status` 가 들고 있고(`DEC-026`), 미판매 아이템에는
+가리킬 판매 등록이 없다.
+
+메뉴 모달(`2825:59974`)이 주는 선택지는 **둘뿐이다** — `미판매로 변경하기` · `판매 완료로 변경하기`.
+`판매중으로 되돌리기` 는 없다. 다시 팔려면 목록의 `판매 전환` 버튼(`2825:52336`)이나 선택 모달
+(`3910:43234`)을 거치며 그때 `API-111` 이 새 판매 등록을 만든다. 그래서 이 엔드포인트는
+`ON_SALE` 을 받지 않는다.
+
+| 요청값 | 하는 일 |
+|---|---|
+| `NOT_FOR_SALE` | 열린 판매 등록의 `closed_at` 을 찍고 `item.sale_status` 를 바꾼다 |
+| `SOLD` | 수동 판매 완료. 열린 판매 등록이 있으면 함께 닫는다 |
+
+> 거래를 통한 `SOLD` 는 이 엔드포인트가 아니다. 판매자가 제안을 수락해 **결제가 완료되는 시점**
+> (`API-144`)에 서버가 바꾸고, 발송 전 거래 취소(`API-166`)면 `ON_SALE` 로 되돌린다(`DEC-026`).
+
+`offerAllowed` 는 여기서 받지 않는다 — 아이템이 갖는 값이라 `API-094` 로 바꾼다(`DEC-024`).
+선택 모달의 라벨이 상태에 따라 `구매 제안 허용` ↔ `구매 제안 차단` 으로 바뀐다.
 
 **요청 본문**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `saleStatus` | SaleStatus | O | NOT_FOR_SALE \| ON_SALE \| SOLD | — |
+| `saleStatus` | SaleStatus | O | NOT_FOR_SALE \| SOLD | ON_SALE 은 받지 않는다 |
 
 **응답** (`data`)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
-| `id` | Long | — |
+| `itemId` | Long | — |
 | `saleStatus` | SaleStatus | — |
 
 ```json
@@ -3049,31 +3174,43 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
   "code": "COMMON_200",
   "message": "요청에 성공했습니다.",
   "data": {
-    "id": 1,
-    "saleStatus": "<SaleStatus>"
+    "itemId": 1,
+    "saleStatus": "NOT_FOR_SALE"
   }
 }
 ```
 
-에러 — LISTING_403, LISTING_409_SOLD
+토스트 — `변경되었습니다.`(`2825:60351`)
 
-#### API-114 · `GET /api/v1/listings/{listingId}/featured-posts`
+에러 — ITEM_404, ITEM_403, LISTING_400_STATUS, LISTING_409_IN_TRADE
 
-대표 OOTD 조회. 인증 **필요**. 관련 화면 SCR-028.
+#### API-114 · `GET /api/v1/items/{itemId}/featured-posts`
+
+대표 OOTD 전체 보기. 인증 **필요**. 관련 화면 SCR-028.
+
+상세의 `대표 OOTD` 우측 `>` 를 누르면 열리는 masonry 그리드다(`2825:61147`). 키가 `itemId` 인 것은
+진입한 화면이 `API-110` 이기 때문이다 — 미판매로 내린 아이템도 대표 OOTD 를 그대로 보여준다
+(`2825:60351`). 열린 판매 등록이 없으면 **가장 최근 판매 등록**의 대표 OOTD 를 내려준다.
+
+판매 등록 이력이 아예 없으면 빈 배열이다 — 그 화면은 `태그된 OOTD` 를 그리고 그쪽은
+`API-096`(아이템 히스토리)이 담당한다.
+
+**`aspectRatio` 를 싣는다.** 2열 masonry 라 카드 높이가 제각각이고, 피드(`API-070`)·아이템
+히스토리(`API-096`)와 같은 이유다.
 
 **경로 파라미터**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `listingId` | Long | O | — | — |
+| `itemId` | Long | O | — | — |
 
 **응답** (`data` 배열)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `postId` | Long | — |
-| `imageUrl` | String | — |
-| `wornDate` | LocalDate | — |
+| `imageUrl` | String | 대표 사진 |
+| `aspectRatio` | AspectRatio | masonry 높이 계산 |
 
 ```json
 {
@@ -3084,25 +3221,39 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
     {
       "postId": 1,
       "imageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg",
-      "wornDate": "2026-06-21"
+      "aspectRatio": "RATIO_3_4"
     }
   ]
 }
 ```
 
-에러 — LISTING_404
+에러 — ITEM_404
 
 #### API-115 · `PUT /api/v1/listings/{listingId}/featured-posts`
 
 대표 OOTD 교체 (1~5개). 인증 **필요**. 관련 화면 SCR-028.
 
-요청 `{ postIds[1..5] }` — 전체 교체(PUT). 본인 게시물만 가능하다.
+전체 교체다. **보낸 순서가 노출 순서**가 된다 — 선택 화면(`2825:52006`)이 고른 순서를 카드
+우상단에 `1`·`2`·`3`·`4` 배지로 표시하고 상세의 가로 스크롤이 그 순서를 따른다.
+
+**후보 목록은 이 엔드포인트가 아니다.** 선택 화면이 그리는 것은 내 게시물 전체이고
+`API-081`(내 게시물 · `게시물` 탭)이 담당한다. 판매 전환 중에는 아직 `item_listing` 이 없어
+`listingId` 로는 후보를 가져올 수도 없다.
+
+판매 전환·수정 화면 안에서 고른 경우에는 이 엔드포인트를 부르지 않는다 — `API-111`·`API-112` 의
+`featuredPostIds` 로 함께 보낸다. 이 엔드포인트는 판매 중인 상품의 대표 OOTD 만 따로 바꿀 때 쓴다.
+
+**경로 파라미터**
+
+| 필드 | 타입 | 필수 | 제약 | 설명 |
+|---|---|:--:|---|---|
+| `listingId` | Long | O | 열려 있는 판매 등록 | — |
 
 **요청 본문**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `postIds[]` | Long | O | 1~5개, 본인 게시물 | 전체 교체 |
+| `postIds[]` | Long | O | 1~5개, 본인 게시물, 중복 불가 | 보낸 순서가 노출 순서 |
 
 **응답** (`data` 배열)
 
@@ -3110,6 +3261,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 |---|---|---|
 | `postId` | Long | — |
 | `imageUrl` | String | — |
+| `aspectRatio` | AspectRatio | — |
 
 ```json
 {
@@ -3119,13 +3271,14 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
   "data": [
     {
       "postId": 1,
-      "imageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg"
+      "imageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg",
+      "aspectRatio": "RATIO_3_4"
     }
   ]
 }
 ```
 
-에러 — LISTING_403, LISTING_400_FEATURED_RANGE, POST_404
+에러 — LISTING_404, LISTING_403, LISTING_409_CLOSED, LISTING_400_FEATURED_RANGE, POST_404
 
 #### API-120 · `GET /api/v1/wishlists`
 
@@ -3134,7 +3287,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 페이징. 항목마다 `saleStatus` 배지와 `alarmEnabled` 를 함께 내려준다.
 화면 상단에 **탭 3종**이 있다 — `전체` · `판매중` · `거래중`.
 `거래중` 은 그 아이템에 진행 중인 거래(`trade_order.status` 가 `COMPLETED`·`CANCELED` 가 아닌 것)가 있는 경우다.
-`listingId` 는 **nullable** 이다 — 위시는 아이템 기준이라 판매 등록이 없는 아이템도 담긴다. 값이 있으면 항목 탭 시 상품 상세(`API-110`)로 이동하고, `null` 이면 이동할 상세가 없다.
+항목을 누르면 아이템 상세(`API-110`)로 간다. 키가 `itemId` 라 판매 등록이 없는 아이템도 열린다 — `listingId` 를 이동 키로 쓰던 제약이 `DEC-026` 으로 사라졌다.
 
 **쿼리 파라미터**
 
@@ -3150,7 +3303,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 |---|---|---|
 | `wishlistId` | Long | — |
 | `itemId` | Long | 관심 해제(`API-122`) 호출 키 |
-| `listingId` | Long | **nullable** — 상품 상세(`API-110`) 이동 키 |
+| `itemId` | Long | 아이템 상세(`API-110`) 이동 키 |
 | `brandName` | String | — |
 | `name` | String | — |
 | `coverImageUrl` | String | — |
@@ -4742,8 +4895,10 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 
 | ID | 내용 | 영향받는 API |
 |---|---|---|
-| **Q6** | `category.size_scheme` 값 목록 미확정 | `API-090` 이 `sizeScheme` 을 `null` 로 내려준다. `API-092`·`API-094` 의 `sizeLabel` 검증 규칙도 함께 미정이다 |
+| **Q7** | 인증번호 재전송 쿨다운·1일 한도 | `API-004`. 배포 전까지 정한다 |
 | **가중치** | `rank_score` 의 가중치와 배치 주기는 상수로 시작한다 | `DEC-023` 에 초기값을 적었다. 클릭 로그가 쌓이면 조정한다 — 로그가 없는 지금 맞추려는 시도는 근거가 없다 |
+
+`Q6`(카테고리별 사이즈 체계)는 2026-09-29 `DEC-025` 로 닫혔다 — `API-090` 이 `size_option` 을 함께 내려주고 `API-092`·`API-094`·`API-111` 이 그 세트로 `sizeLabel` 을 검증한다.
 
 ### 이번 점검에서 확정한 것
 
@@ -4754,6 +4909,9 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 | `DEC-009` | `email_verification` 테이블을 없애고 **Redis** 로 옮겼다. TTL 휘발 데이터인데 refresh token(`DEC-010`)과 저장소 결정이 엇갈려 있었다. `V3` 가 테이블을 내린다 |
 | `DEC-101` | `API-017` 의 노출 필드를 피그마로 확정했다 — `grade`·`heightCm`·`weightKg`·`itemCount` 를 싣고 `gender` 는 뺐다 |
 | `DEC-102` | `API-071` 태그에 `saleStatus` 를 추가했다. 말풍선이 `#판매중` 을 2행으로 붙인다 |
+| `DEC-024` | 관심 수·구매 제안 허용을 `item` 으로 올렸다. 판매 등록 전 아이템도 관심을 받고 제안을 받는다 |
+| `DEC-025` | 사이즈 칩 목록을 `size_option` 테이블로 옮겼다. `API-090` 이 카테고리 트리와 함께 내려준다 |
+| `DEC-026` | **판매 상태를 `item` 으로 올렸다.** `API-110` 의 키가 `itemId` 가 되고 `API-113` 이 아이템 경로로 옮겨갔다. `API-111`·`API-112` 는 화면대로 아이템 정보까지 받는다 |
 | `DEC-103` | 판매·구매 내역을 엔드포인트 하나로 합쳤다. `rowType` 유니온으로 4개 탭을 담는다 |
 | `DEC-104` | `API-079` 의 조회 단위를 게시물에서 **사진**으로 바꿨다 |
 | `DEC-105` | ErrorCode enum 이름을 코드 접두사에 맞췄다. 예외 없음 |
