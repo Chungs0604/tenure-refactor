@@ -192,7 +192,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | `post_save` | API-081 (저장 탭) | 없음 | API-077 | 없음 | API-078 |
 | `post_tag_edit_log` | 없음(MVP 외) | 없음 | API-083 이 자동 생성 | 없음(append-only) | 없음(append-only) |
 | `category` | API-090 | 없음(트리로 일괄) | 없음(마스터 데이터) | 없음(마스터 데이터) | 없음(마스터 데이터) |
-| `item` | API-091 API-098 API-099 (추천) | API-093 | API-092 | API-094 | API-095 |
+| `item` | API-091 API-098 API-099 (추천) | API-093 | API-092 | API-094 (`first_owned_date` 제외 — 등록 뒤 불변) | API-095 |
 | `item_image` | 없음 | 없음 | 없음 | 없음 | 없음 — 사진을 여러 장 넣는 화면도 보여주는 화면도 없다. 대표 사진은 `item.cover_image_key` 다 |
 | `item_measurement` | 없음(아이템에 중첩) | API-093 에 포함 | API-111 에 포함 | API-112 에 포함 | 없음(부모 종속) |
 | `item_condition` | 없음(아이템에 중첩) | API-093 에 포함 | API-111 에 포함 | API-112 에 포함 | 없음(부모 종속) |
@@ -415,7 +415,6 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | `ITEM_400_MEASUREMENT` | 400 | 해당 카테고리에 맞지 않는 실측 항목입니다. | API-111, API-112 |
 | `ITEM_400_CATEGORY` | 400 | 세부 카테고리를 선택해주세요. | API-092, API-094 |
 | `ITEM_400_SIZE` | 400 | 해당 카테고리에서 고를 수 없는 사이즈입니다. | API-092, API-094 |
-| `ITEM_409_TRADED` | 409 | 거래 이력이 있어 최초 보유 날짜를 바꿀 수 없습니다. | API-094 |
 | `ITEM_409_TAG_CLOSED_PERIOD` | 409 | 이미 판매된 아이템의 과거 태그는 수정할 수 없습니다. | API-073, API-083 |
 
 ### CategoryErrorCode
@@ -2589,7 +2588,9 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 
 아이템 상세 정보 수정. 인증 **필요**. 관련 화면 SCR-024.
 
-요청 `ItemUpdateRequest`. 실측·상태 이상은 여기서 받지 않는다 — 상세 수정 바텀시트(`2825:49332` 외 9종)에 입력란이 없고 판매 전환(`API-111`)이 담당한다. `offerAllowed` 는 여기서 바꾼다 — 미판매 아이템에는 `item_listing` 행이 없어 `API-113` 을 쓸 수 없다(`DEC-024`). `firstOwnedDate` 를 바꾸면 **최초 소유 구간의 `start_date` 도 함께 갱신**된다 — 단 소유 구간이 1개이고 본인이 현재 소유자일 때만 허용하며, 거래 이력이 생기면 잠긴다(`DEC-007`).
+요청 `ItemUpdateRequest`. 실측·상태 이상은 여기서 받지 않는다 — 상세 수정 바텀시트(`2825:49332` 외 9종)에 입력란이 없고 판매 전환(`API-111`)이 담당한다. `offerAllowed` 는 여기서 바꾼다 — 미판매 아이템에는 `item_listing` 행이 없어 `API-113` 을 쓸 수 없다(`DEC-024`).
+
+**`firstOwnedDate` 는 받지 않는다.** 등록 시점에 정해지고 그 뒤로는 누구도 바꿀 수 없다(`DEC-007`) — 그 값이 최초 소유 구간의 `start_date` 이고, 구매자가 보고 산 `Tenure 기록 기준` 의 첫 줄이다. 사후에 달라지면 기록으로 가치를 증명한다는 전제가 무너진다. 잘못 넣었으면 아이템을 지우고 다시 등록해야 하며, 그 경우 착용 기록은 승계되지 않는다.
 
 사진은 `coverImageKey` 로 교체한다. 사이즈나 카테고리를 보냈을 때만 `sizeLabel` 을 검증한다 — 둘 다 안 건드렸으면 다시 보지 않아서, 칩 세트가 나중에 바뀌어도 기존 아이템의 수정이 막히지 않는다.
 
@@ -2604,7 +2605,6 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `wearTarget` | WearTarget |  | — | — |
 | `coverImageKey` | String |  | API-060 응답 | 대표 사진 교체 |
 | `description` | String |  | — | — |
-| `firstOwnedDate` | LocalDate |  | 구간 1개 + 본인 소유일 때만 | 최초 구간 start_date 도 갱신 |
 | `offerAllowed` | Boolean |  | — | `구매 제안 허용` 토글 |
 
 **응답** (`data`)
@@ -2624,7 +2624,7 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 }
 ```
 
-에러 — ITEM_403, ITEM_404, ITEM_400_CATEGORY, ITEM_400_SIZE, ITEM_409_TRADED, CATEGORY_404
+에러 — ITEM_403, ITEM_404, ITEM_400_CATEGORY, ITEM_400_SIZE, CATEGORY_404
 
 #### API-095 · `DELETE /api/v1/items/{itemId}`
 
