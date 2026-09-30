@@ -26,8 +26,4 @@ public interface ItemOwnershipRepository extends JpaRepository<ItemOwnership, Lo
 	@Query("select o from ItemOwnership o join fetch o.owner "
 			+ "where o.item.id = :itemId order by o.startDate desc, o.id desc")
 	List<ItemOwnership> findAllByItemId(@Param("itemId") Long itemId);
-
-	/** 소유 구간이 하나뿐이어야 최초 보유 날짜를 고칠 수 있다 (DEC-007). */
-	@Query("select count(o) from ItemOwnership o where o.item.id = :itemId")
-	long countByItemId(@Param("itemId") Long itemId);
 }

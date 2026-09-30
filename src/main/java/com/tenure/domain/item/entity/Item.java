@@ -78,7 +78,12 @@ public class Item extends BaseEntity {
 	@Column(name = "description", columnDefinition = "TEXT")
 	private String description;
 
-	/** '최초 보유 날짜'. 예 25.02.8. 최초 item_ownership 구간의 start_date 와 같은 값이며, 거래 전까지만 수정할 수 있다 */
+	/**
+	 * '최초 보유 날짜'. 예 25.02.8. 최초 item_ownership 구간의 start_date 와 같은 값이다.
+	 *
+	 * 등록 시점에 정해지고 그 뒤로는 바꿀 수 없다 (DEC-007) — 구매자가 보고 산 'Tenure 기록 기준' 의
+	 * 첫 줄이라 사후에 달라지면 안 된다. 그래서 변경 메서드가 없다.
+	 */
 	@Column(name = "first_owned_date")
 	private LocalDate firstOwnedDate;
 
@@ -160,11 +165,6 @@ public class Item extends BaseEntity {
 		if (description != null) {
 			this.description = description;
 		}
-	}
-
-	/** 최초 보유 날짜 변경. 최초 소유 구간의 시작일도 함께 옮겨야 한다 (DEC-007). */
-	public void changeFirstOwnedDate(LocalDate firstOwnedDate) {
-		this.firstOwnedDate = firstOwnedDate;
 	}
 
 	/** '구매 제안 허용' 토글. 미판매 아이템에도 걸린다 (DEC-024). */

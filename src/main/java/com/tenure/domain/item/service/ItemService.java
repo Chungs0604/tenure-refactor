@@ -106,8 +106,8 @@ public class ItemService {
 	/**
 	 * 아이템 상세 수정.
 	 *
-	 * 최초 보유 날짜는 소유 구간이 하나일 때만 바꿀 수 있다 (DEC-007) — 거래로 승계된 구간이
-	 * 생기면 그 날짜가 이전 소유자의 구간 경계라 함부로 옮기면 기록이 어긋난다.
+	 * 최초 보유 날짜는 바꿀 수 없다 (DEC-007). 그 값이 최초 소유 구간의 시작일이고 구매자가
+	 * 보고 산 'Tenure 기록 기준' 의 첫 줄이라, 등록 뒤에는 누구도 손대지 못하게 한다.
 	 */
 	@Transactional
 	@Loggable("아이템 수정")
@@ -116,15 +116,19 @@ public class ItemService {
 		// 아이템이 현재 user의 것이 맞는지 검증
 		Item item = findOwnedItem(userId, itemId);
 
-		// 카테고리를 안 보냈으면 지금 값을 그대로 씀
+		// 카테고리를 안 보냈으면 기존 값을 그대로 씀
 		Category category = request.getCategoryId() == null
 				? item.getCategory()
 				: findLeafCategory(request.getCategoryId());
 
 		// 사이즈도 카테고리도 안 건드렸으면 다시 보지 않음 — 칩 세트가 나중에 바뀌어도 기존 아이템이 막히지 않음
 		if (request.getSizeLabel() != null || request.getCategoryId() != null) {
+
 			// 카테고리만 바뀌어도 기존 사이즈가 새 칩 세트에 없을 수 있음
-			String sizeLabel = request.getSizeLabel() == null ? item.getSizeLabel() : request.getSizeLabel();
+			String sizeLabel = request.getSizeLabel() == null
+					? item.getSizeLabel()
+					: request.getSizeLabel();
+
 			validateSizeLabel(category, sizeLabel);
 		}
 
@@ -138,16 +142,14 @@ public class ItemService {
 				request.getDescription()
 		);
 
+		// 구매 제안 변경 여부
 		if (request.getOfferAllowed() != null) {
 			item.changeOfferAllowed(request.getOfferAllowed());
 		}
 
-		// 소유 구간 시작일도 함께 옮겨야 해서 따로 처리함
-		if (request.getFirstOwnedDate() != null) {
-			changeFirstOwnedDate(item, request.getFirstOwnedDate());
-		}
-
-		return ItemIdResponse.builder().id(item.getId()).build();
+		return ItemIdResponse.builder()
+				.id(item.getId())
+				.build();
 	}
 
 	/**
@@ -159,6 +161,8 @@ public class ItemService {
 	@Transactional
 	@Loggable("아이템 삭제")
 	public void delete(Long userId, Long itemId) {
+
+		// 현재 본인의 아이템인지 확인
 		Item item = findOwnedItem(userId, itemId);
 
 		// 판매 중이면 지울 수 없음
@@ -175,26 +179,6 @@ public class ItemService {
 
 		// 태그가 '삭제된 아이템' 으로 남아야 해서 행은 지우지 않음
 		item.delete(LocalDateTime.now());
-	}
-
-	/**
-	 * 최초 보유 날짜와 최초 소유 구간의 시작일을 함께 옮긴다.
-	 *
-	 * 구간이 둘 이상이면 거래가 있었다는 뜻이라 잠긴다. 화면이 이 경우 입력을 막아야 하지만
-	 * 서버도 같은 판정을 해야 한다 — 막히지 않은 경로로 들어오면 기록이 어긋난다.
-	 */
-	private void changeFirstOwnedDate(Item item, LocalDate firstOwnedDate) {
-		// 구간이 둘 이상이면 거래가 있었다는 뜻이라 잠김
-		if (itemOwnershipRepository.countByItemId(item.getId()) > 1) {
-			log.info("소유 구간이 둘 이상이라 최초 보유 날짜를 바꿀 수 없다 itemId={}", item.getId());
-			throw new CustomException(ItemErrorCode.ITEM_409_TRADED);
-		}
-
-		item.changeFirstOwnedDate(firstOwnedDate);
-
-		// 최초 구간의 시작일은 이 값과 같아야 함
-		itemOwnershipRepository.findCurrent(item.getId())
-				.ifPresent(ownership -> ownership.moveStartDate(firstOwnedDate));
 	}
 
 	/** 소유자 본인만 고치고 지운다. 등록자여도 팔았으면 남의 옷이다. */

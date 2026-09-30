@@ -2,9 +2,7 @@ package com.tenure.domain.item.dto.request;
 
 import com.tenure.domain.item.enums.WearTarget;
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Size;
-import java.time.LocalDate;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -14,7 +12,10 @@ import lombok.NoArgsConstructor;
 /**
  * 아이템 상세 수정 요청. 보낸 항목만 바뀐다 — 비운 항목은 유지한다.
  *
- * 실측·상태 이상은 여기서 받지 않는다. 상세 수정 바텀시트에 입력란이 없고 판매 전환이 담당한다.
+ * 최초 보유 날짜는 받지 않는다. 등록 시점에 정해지고 그 뒤로는 아무도 바꿀 수 없다 (DEC-007) —
+ * 그 값이 최초 소유 구간의 시작일이고, 구매자가 보고 산 'Tenure 기록 기준' 의 첫 줄이다.
+ *
+ * 실측·상태 이상도 여기서 받지 않는다. 상세 수정 바텀시트에 입력란이 없고 판매 전환이 담당한다.
  *
  * offerAllowed 가 여기 있는 이유는 미판매 아이템에 판매 등록 행이 없어서다 — 판매 상태 변경
  * API 로는 켤 수 없다 (DEC-024).
@@ -50,11 +51,6 @@ public class ItemUpdateRequest {
 
 	@Schema(description = "제품 설명")
 	private String description;
-
-	@Schema(description = "최초 보유 날짜. 소유 구간이 1개이고 본인 소유일 때만 바꿀 수 있다",
-			example = "2026-05-26")
-	@PastOrPresent
-	private LocalDate firstOwnedDate;
 
 	@Schema(description = "구매 제안 허용 토글", example = "true")
 	private Boolean offerAllowed;

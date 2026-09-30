@@ -23,7 +23,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * 아이템의 소유 구간. 상품 상세 'Tenure 기록 기준' 섹션이 이 테이블 그대로다. 거래 완료 시 이전 행의 end_date 를 닫고 구매자 행을 새로 연다.
+ * 아이템의 소유 구간. 상품 상세 'Tenure 기록 기준' 섹션이 이 테이블 그대로다.
+ * 거래 완료 시 이전 행의 end_date 를 닫고 구매자 행을 새로 연다.
  *
  * 생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
  * 스키마에서 읽을 수 없다. @Builder 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
@@ -92,15 +93,10 @@ public class ItemOwnership extends BaseCreatedEntity {
 	}
 
 	/**
-	 * 최초 보유 날짜 정정. 최초 구간의 시작일은 item.first_owned_date 와 같은 값이어야 한다 (DEC-007).
+	 * 구간 종료. 거래 완료 시 이전 소유자의 구간을 닫는다.
 	 *
-	 * 거래가 있었으면 이 값이 이전 소유자의 구간 경계라 Service 가 먼저 막는다.
+	 * append-only 테이블에서 허용하는 **유일한** UPDATE 다 — start_date 는 등록 뒤에 바뀌지 않는다 (DEC-007).
 	 */
-	public void moveStartDate(LocalDate startDate) {
-		this.startDate = startDate;
-	}
-
-	/** 구간 종료. 거래 완료 시 이전 소유자의 구간을 닫는다 — append-only 의 허용된 UPDATE 다. */
 	public void close(LocalDate endDate) {
 		this.endDate = endDate;
 	}

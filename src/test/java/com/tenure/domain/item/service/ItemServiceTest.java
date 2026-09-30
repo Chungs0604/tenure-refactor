@@ -56,6 +56,7 @@ class ItemServiceTest {
 	private static final Long ITEM_ID = 100L;
 	private static final Long CATEGORY_ID = 116L;
 	private static final Long ROOT_CATEGORY_ID = 2L;
+	private static final LocalDate FIRST_OWNED = LocalDate.of(2025, 2, 8);
 
 	@Mock private ItemRepository itemRepository;
 	@Mock private ItemOwnershipRepository itemOwnershipRepository;
@@ -193,38 +194,20 @@ class ItemServiceTest {
 		}
 
 		@Test
-		@DisplayName("최초 보유 날짜를 바꾸면 최초 소유 구간의 시작일도 함께 옮긴다")
-		void update_firstOwnedDate_movesOwnershipStart() {
+		@DisplayName("최초 보유 날짜는 등록 뒤에 바뀌지 않는다 — 구매자가 보고 산 기록의 첫 줄이다")
+		void update_firstOwnedDate_immutable() {
 			Item item = item();
 			ItemOwnership ownership = ownershipOf(item, user());
+			LocalDate registered = item.getFirstOwnedDate();
 
 			given(itemRepository.findActiveWithCategory(ITEM_ID)).willReturn(Optional.of(item));
 			given(itemOwnershipRepository.findCurrent(ITEM_ID)).willReturn(Optional.of(ownership));
-			given(itemOwnershipRepository.countByItemId(ITEM_ID)).willReturn(1L);
 
-			LocalDate moved = LocalDate.of(2025, 2, 8);
-			itemService.update(USER_ID, ITEM_ID, ItemUpdateRequest.builder().firstOwnedDate(moved).build());
+			itemService.update(USER_ID, ITEM_ID, ItemUpdateRequest.builder().name("이름만 고침").build());
 
-			assertThat(item.getFirstOwnedDate()).isEqualTo(moved);
-			assertThat(ownership.getStartDate()).isEqualTo(moved);
-		}
-
-		@Test
-		@DisplayName("거래 이력이 있으면 최초 보유 날짜가 잠긴다 — 구간 경계가 어긋난다")
-		void update_traded_firstOwnedDateLocked() {
-			Item item = item();
-			given(itemRepository.findActiveWithCategory(ITEM_ID)).willReturn(Optional.of(item));
-			given(itemOwnershipRepository.findCurrent(ITEM_ID)).willReturn(Optional.of(ownershipOf(item, user())));
-			given(itemOwnershipRepository.countByItemId(ITEM_ID)).willReturn(2L);
-
-			ItemUpdateRequest request = ItemUpdateRequest.builder()
-					.firstOwnedDate(LocalDate.of(2025, 2, 8))
-					.build();
-
-			assertThatThrownBy(() -> itemService.update(USER_ID, ITEM_ID, request))
-					.isInstanceOf(CustomException.class)
-					.extracting(ItemServiceTest::errorCodeOf)
-					.isEqualTo(ItemErrorCode.ITEM_409_TRADED);
+			assertThat(item.getName()).isEqualTo("이름만 고침");
+			assertThat(item.getFirstOwnedDate()).isEqualTo(registered);
+			assertThat(ownership.getStartDate()).isEqualTo(FIRST_OWNED);
 		}
 
 		@Test
@@ -349,15 +332,16 @@ class ItemServiceTest {
 		}
 	}
 
+	/** 등록 시점에 최초 보유 날짜를 넣어 둔 아이템. 그 값이 최초 구간의 시작일과 같다. */
 	private static Item item() {
 		Item item = Item.register(user(), leafCategory(), "LVC 1955 501", "Levis", "L",
-				WearTarget.MALE, "item/cover.jpg", null, null);
+				WearTarget.MALE, "item/cover.jpg", null, FIRST_OWNED);
 		ReflectionTestUtils.setField(item, "id", ITEM_ID);
 		return item;
 	}
 
 	private static ItemOwnership ownershipOf(Item item, User owner) {
-		ItemOwnership ownership = ItemOwnership.openInitial(item, owner, LocalDate.now());
+		ItemOwnership ownership = ItemOwnership.openInitial(item, owner, FIRST_OWNED);
 		ReflectionTestUtils.setField(ownership, "id", 900L);
 		return ownership;
 	}

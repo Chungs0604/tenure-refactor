@@ -80,15 +80,14 @@ public interface ItemApi {
 			@Parameter(description = "아이템 id") Long itemId);
 
 	@Operation(summary = "아이템 상세 정보 수정",
-			description = "보낸 항목만 바뀐다. 최초 보유 날짜를 바꾸면 최초 소유 구간의 시작일도 함께 옮긴다 — "
-					+ "소유 구간이 하나일 때만 허용하며 거래 이력이 생기면 잠긴다. "
-					+ "구매 제안 허용 토글도 여기서 바꾼다 — 미판매 아이템에는 판매 등록 행이 없다.")
+			description = "보낸 항목만 바뀐다. **최초 보유 날짜는 바꿀 수 없다** — 등록 시점에 정해지고 "
+					+ "그 값이 구매자가 보고 산 'Tenure 기록 기준' 의 첫 줄이라 사후에 달라지면 안 된다. "
+					+ "구매 제안 허용 토글은 여기서 바꾼다 — 미판매 아이템에는 판매 등록 행이 없다.")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "수정 성공"),
 			@ApiResponse(responseCode = "400", description = "ITEM_400_CATEGORY / ITEM_400_SIZE"),
 			@ApiResponse(responseCode = "403", description = "ITEM_403 — 본인의 아이템이 아님"),
-			@ApiResponse(responseCode = "404", description = "ITEM_404 / CATEGORY_404"),
-			@ApiResponse(responseCode = "409", description = "ITEM_409_TRADED — 거래 이력이 있어 최초 보유 날짜를 바꿀 수 없음")
+			@ApiResponse(responseCode = "404", description = "ITEM_404 / CATEGORY_404")
 	})
 	ResponseEntity<BaseResponse<ItemIdResponse>> update(
 			@Parameter(hidden = true) AuthUser authUser,
