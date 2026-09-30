@@ -2736,7 +2736,7 @@ entities:
     java_type: String
     nullable: true
     source: design
-    evidence: '''제품 설명'' / ''상품 설명'''
+    evidence: '''제품 설명'' / ''상품 설명''. 다만 입력 화면도 표시 화면도 없어 API 로는 채우지 않는다 — 화면의 ''상품 설명''은 판매 전환에서 받는 item_listing.seller_note 다 (B-14). 컬럼은 남겨 두고 쓰는 화면이 생기면 연다'
   - name: firstOwnedDate
     column: first_owned_date
     db_type: DATE

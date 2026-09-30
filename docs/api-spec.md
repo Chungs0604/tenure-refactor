@@ -2367,7 +2367,7 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 
 **현재 소유자 기준이다** — 등록자가 아니라 소유 구간이 열려 있는(`end_date IS NULL`) 아이템만 내려간다. 팔면 목록에서 빠진다. 등록자 기준으로 두면 행을 눌러 들어간 상세에서 수정·삭제가 403 이 되는 행이 생긴다. 마이페이지의 `아이템 N` 카운터도 같은 조건이다.
 
-페이징. `saleStatus` · `wishCount` · `offerAllowed` 는 아이템이 갖고(`DEC-024`), 판매 조건만 `listing { id, price }` 로 중첩한다 — 판매 등록이 없으면 `null` 이다.
+페이징. 행이 그리는 것만 싣는다 — 화면에 관심 수도 구매 제안 여부도 없다. 판매 조건은 `listing { id, price }` 로 중첩하며 판매 등록이 없으면 `null` 이다.
 
 `saleStatus` 는 **아이템 레벨로 평탄화한 값**이다. '미판매'는 판매 등록이 아예 없는 경우와 판매를 내린 경우(최신 `item_listing.sale_status=NOT_FOR_SALE`) 둘 다이므로 서버가 하나로 합쳐 내려준다.
 
@@ -2391,8 +2391,6 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `name` | String | — |
 | `coverImageUrl` | String | — |
 | `saleStatus` | SaleStatus | NOT_FOR_SALE \| ON_SALE \| SOLD. 판매 등록이 없으면 NOT_FOR_SALE |
-| `wishCount` | Integer | 관심 N명 |
-| `offerAllowed` | Boolean | 구매 제안 허용 |
 | `lastWornDate` | LocalDate | `최근 착용 N일 전` 계산 기준. `item_wear_record` 의 최신 `worn_date`(`voided_at IS NULL`) |
 | `listing` | Object | **nullable** — 판매 등록이 없으면 null |
 | `listing.id` | Long | `API-112`·`API-113` 의 입력 키 |
@@ -2411,8 +2409,6 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
         "name": "<String>",
         "coverImageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg",
         "saleStatus": "<SaleStatus>",
-        "wishCount": 1,
-        "offerAllowed": true,
         "lastWornDate": "2026-06-21",
         "listing": {
           "id": 1,
@@ -2432,7 +2428,7 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 
 아이템 등록. 인증 **필요**. 관련 화면 SCR-024, SCR-018.
 
-요청 `ItemCreateRequest` — `name` `brandName` `categoryId` `sizeLabel?` `wearTarget` `coverImageKey` `description?` `firstOwnedDate?`. 생성과 동시에 `item_ownership` 최초 구간(`acquired_by=INITIAL_REGISTRATION`)을 연다.
+요청 `ItemCreateRequest` — `name` `brandName` `categoryId` `sizeLabel?` `wearTarget` `coverImageKey` `firstOwnedDate?`. 생성과 동시에 `item_ownership` 최초 구간(`acquired_by=INITIAL_REGISTRATION`)을 연다.
 
 **`firstOwnedDate` 를 비우면 소유 구간은 등록일부터 연다.** `item.first_owned_date` 는 `null` 로 남겨 '언제부터 갖고 있었는지 모른다' 와 '등록 시점부터 기록한다' 를 나눠 표현한다.
 
@@ -2452,7 +2448,6 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `sizeLabel` | String |  | 대분류의 칩 세트에 있는 값 | `API-090` 의 `sizeOptions[].label` |
 | `wearTarget` | WearTarget | O | MALE \| FEMALE \| UNISEX | 등록 폼에 필수 표시(*). DB 도 NOT NULL |
 | `coverImageKey` | String | O | API-060 응답 | 대표 사진 |
-| `description` | String |  | — | — |
 | `firstOwnedDate` | LocalDate |  | — | 비우면 소유 구간은 등록일부터 연다 |
 
 **응답** (`data`)
@@ -2511,7 +2506,6 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `categoryName` | String | — |
 | `sizeLabel` | String | — |
 | `wearTarget` | WearTarget | — |
-| `description` | String | — |
 | `firstOwnedDate` | LocalDate | — |
 | `saleStatus` | SaleStatus | NOT_FOR_SALE \| ON_SALE \| SOLD. 판매 등록이 없으면 NOT_FOR_SALE |
 | `wishCount` | Integer | 관심 N명 |
@@ -2547,7 +2541,6 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
     "coverImageUrl": "https://cdn.tenure.app/item/2026/06/ab12.jpg",
     "sizeLabel": "<String>",
     "wearTarget": "<WearTarget>",
-    "description": "<String>",
     "firstOwnedDate": "2026-06-21",
     "saleStatus": "<SaleStatus>",
     "wishCount": 14,
@@ -2604,7 +2597,6 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `sizeLabel` | String |  | 대분류의 칩 세트에 있는 값 | `API-090` 의 `sizeOptions[].label` |
 | `wearTarget` | WearTarget |  | — | — |
 | `coverImageKey` | String |  | API-060 응답 | 대표 사진 교체 |
-| `description` | String |  | — | — |
 | `offerAllowed` | Boolean |  | — | `구매 제안 허용` 토글 |
 
 **응답** (`data`)
@@ -2754,7 +2746,7 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 
 행은 `브랜드 / 아이템명` 아래에 **`최근 착용 7일 전 · OOTD 인증 : 2회`** 를 그린다(`3380:36010`, 검색 화면 `2791:33303`). `wearCount` 는 전체 누적이 아니라 **현재 소유 구간 기준**이다 — 내 옷장 맥락이라 '내가 이 옷을 얼마나 입었나' 를 보여준다. 거래로 받은 옷이면 이전 소유자의 인증은 빠진다.
 
-판매 상태는 그리지 않으므로 `saleStatus` 와 `listing` 은 `null` 이다.
+판매 상태는 그리지 않으므로 응답에 `saleStatus` 도 `listing` 도 없다.
 
 시트에는 `새 아이템 등록`(`API-092` 진입)과 검색이 함께 있고, 아이템을 **여러 개 고를 수 있다**(`선택 완료(N)`). 상단의 `분석한 결과 — 유사한 아이템 N개 찾았습니다` 블록은 `API-080`(AI 태그 후보)이며 외부 서비스 미정으로 구현하지 않는다 — 그 블록이 빠져도 `기존 아이템` + 검색으로 시트가 성립한다.
 
@@ -2776,6 +2768,8 @@ Tenure 기록 기준 (소유 구간 + 인증 횟수). 인증 **필요**. 관련 
 | `coverImageUrl` | String | — |
 | `lastWornDate` | LocalDate | `최근 착용 N일 전` 계산 기준. 인증이 없으면 null |
 | `wearCount` | Integer | `OOTD 인증 : N회`. 현재 소유 구간 기준 |
+
+응답 타입은 `API-091` 과 나눠 둔다(`TaggableItemResponse`) — 두 화면이 그리는 것이 달라 한쪽이 안 쓰는 칸을 `null` 로 싣지 않는다.
 
 ```json
 {

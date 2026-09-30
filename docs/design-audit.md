@@ -883,6 +883,31 @@ Resolute / 710 Denim
 
 **블록마다 `→` 버튼이 있다.** 전체 보기로 보이는데 그 목록 화면이 디자인에 없다.
 
+### B-14. `item.description` 은 쓰는 화면이 없다
+
+`제품 설명` · `상품 설명` · `판매자 설명` 이 나오는 프레임 **12개가 전부 `상품 상세페이지`·`판매 전환`
+섹션**이다. 아이템 화면에는 하나도 없고, 그 값은 판매 전환에서 입력한 `판매자 설명`
+(`item_listing.seller_note`)이다. 등록 폼·상세 수정에도 입력란이 없다.
+
+그런데 `API-092`·`094` 요청과 `API-093` 응답에 `description` 이 있었다. **API 에서 걷어냈다.**
+컬럼과 엔티티 필드는 남긴다 — `item_image`(`B-7`)와 같은 처리다.
+
+### B-15. 목록 DTO 를 화면별로 나눴다
+
+내 옷장(`API-091`)과 태그 시트(`API-098`)가 `ItemSummaryResponse` 를 공유해, 서로 안 쓰는 칸이
+`null` 로 나가고 있었다. `TaggableItemResponse` 를 따로 만들어 나눴다.
+
+post 도메인이 같은 기준을 이미 쓰고 있다 — `MyPostSummaryResponse` 와 `UserPostSummaryResponse` 는
+**필드가 완전히 같은데도 화면별로 따로** 둔다.
+
+같은 기준으로 `API-091` 응답에서 `wishCount` · `offerAllowed` 도 뺐다. 목록 행은
+`미판매 · 최근 착용 1일 전` 과 `판매 전환` 버튼만 그린다 — 관심 수도 구매 제안 여부도 없다.
+
+| | 싣는 것 |
+|---|---|
+| `ItemSummaryResponse` (옷장) | `id` `brandName` `name` `coverImageUrl` `saleStatus` `lastWornDate` `listing` |
+| `TaggableItemResponse` (태그 시트) | `id` `brandName` `name` `coverImageUrl` `lastWornDate` `wearCount` |
+
 ### B-9. 판매 전환이 아이템 정보를 다시 받는다
 
 판매 전환 화면에 브랜드명·아이템명·카테고리·세부 카테고리·사이즈·착용 대상이 **전부 다시** 있다.
