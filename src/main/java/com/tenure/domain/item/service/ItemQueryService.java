@@ -182,6 +182,7 @@ public class ItemQueryService {
 			throw new CustomException(ItemErrorCode.ITEM_404);
 		}
 
+		// row = {postId, 대표 사진 키, 촬영 비율, 착용일}
 		List<ItemHistoryPostResponse> rows = itemWearRecordRepository.findHistory(itemId, cursor, size)
 				.stream()
 				.map(row -> itemMapper.toItemHistoryPostResponse(
@@ -191,7 +192,8 @@ public class ItemQueryService {
 						(LocalDate) row[3]))
 				.toList();
 
-		return CursorSlice.of(rows, size, it -> Cursor.of(it.getWornDate(), it.getPostId()));
+		return CursorSlice
+				.of(rows, size, it -> Cursor.of(it.getWornDate(), it.getPostId()));
 	}
 
 	/**
@@ -216,8 +218,8 @@ public class ItemQueryService {
 
 			blocks.add(itemMapper.toItemRecommendationResponse(
 					block,
-					block.titleFor(item.getBrandName(), item.getName()),
-					block.getDescription(),
+					block.titleOf(item.getBrandName(), item.getName()),
+					block.descriptionOf(item.getCategory().getName()),
 					toCards(userId, posts)));
 		}
 
