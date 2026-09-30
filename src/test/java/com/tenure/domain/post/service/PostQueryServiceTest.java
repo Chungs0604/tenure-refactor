@@ -320,6 +320,8 @@ class PostQueryServiceTest {
 			Post post = post(author);
 			PostImage image = cover(post);
 			Item onSaleItem = item(author, ITEM_ID, "LVC 1955 501");
+			// 구매 제안 허용은 판매 등록이 아니라 아이템이 갖는다 (DEC-024)
+			ReflectionTestUtils.setField(onSaleItem, "offerAllowed", true);
 
 			ItemListing onSaleListing = listing(onSaleItem, SaleStatus.ON_SALE);
 
@@ -548,7 +550,7 @@ class PostQueryServiceTest {
 
 	private static Item item(User owner, Long id, String name) {
 		Item item = Item.register(owner, null, name, "Levis", "L",
-				WearTarget.UNISEX, "item/2026/09/a.jpg", null, LocalDate.now().minusYears(1));
+				WearTarget.UNISEX, "item/2026/09/a.jpg", LocalDate.now().minusYears(1));
 		ReflectionTestUtils.setField(item, "id", id);
 		return item;
 	}
@@ -563,7 +565,6 @@ class PostQueryServiceTest {
 		given(listing.getItem()).willReturn(item);
 		given(listing.getSaleStatus()).willReturn(saleStatus);
 		given(listing.getPrice()).willReturn(360000);
-		given(listing.getOfferAllowed()).willReturn(true);
 		return listing;
 	}
 

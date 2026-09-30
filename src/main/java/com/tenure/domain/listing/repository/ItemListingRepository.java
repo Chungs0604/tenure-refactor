@@ -1,6 +1,7 @@
 package com.tenure.domain.listing.repository;
 
 import com.tenure.domain.listing.entity.ItemListing;
+import com.tenure.domain.listing.enums.SaleStatus;
 import java.util.Collection;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -19,4 +20,16 @@ public interface ItemListingRepository extends JpaRepository<ItemListing, Long> 
 			+ "(select max(latest.id) from ItemListing latest "
 			+ "where latest.item.id in :itemIds group by latest.item.id)")
 	List<ItemListing> findLatestByItemIds(@Param("itemIds") Collection<Long> itemIds);
+
+	/**
+	 * 아이템에 이 상태의 판매 등록이 있는지.
+	 *
+	 * 아이템 삭제 판정에 쓴다 — 판매 중인 등록이 있으면 지울 수 없다.
+	 */
+	@Query("select count(l) > 0 from ItemListing l "
+			+ "where l.item.id = :itemId and l.saleStatus = :saleStatus")
+	boolean existsByItemIdAndSaleStatus(
+			@Param("itemId") Long itemId,
+			@Param("saleStatus") SaleStatus saleStatus
+	);
 }

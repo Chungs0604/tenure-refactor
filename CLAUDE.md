@@ -63,7 +63,12 @@ global/          config, exception, response
 
 ## 참조 문서
 
-- 데이터 모델: @docs/schema.yaml (정본), @docs/erd.md (사람이 읽는 뷰)
+경로만 적는다. 전부 크기가 커서 자동으로 읽어들이지 않고, 필요할 때 해당 파일을 연다.
+
+- 데이터 모델 정본: `docs/schema.yaml` — 엔티티·컬럼·제약·설계 결정(DEC-001 등)
+- 사람이 읽는 뷰: `docs/erd.md` — schema.yaml 에서 생성된다
+- API 명세: `docs/api-spec.md` — API ID 와 엔드포인트
+- 설계 감사 경위: `docs/design-audit.md`
 
 ## 이 프로젝트 고유 결정
 

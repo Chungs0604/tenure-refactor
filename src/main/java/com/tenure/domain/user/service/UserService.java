@@ -173,7 +173,7 @@ public class UserService {
 	public MyProfileResponse getMyProfile(Long userId) {
 		User user = findUser(userId);
 
-		int itemCount = itemRepository.countRegisteredItem(userId);
+		int itemCount = itemRepository.countOwnedItem(userId);
 		int wishCount = wishlistRepository.countByUserId(userId);
 
 		return userMapper.toMyProfileResponse(
@@ -229,7 +229,7 @@ public class UserService {
 			recentViewStore.add(viewerId, RecentViewTargetType.USER, userId);
 		}
 
-		int itemCount = itemRepository.countRegisteredItem(userId);
+		int itemCount = itemRepository.countOwnedItem(userId);
 
 		// 단축 평가로 본인 조회일 때는 팔로우·차단을 조회조차 하지 않는다
 		return userMapper.toUserProfileResponse(

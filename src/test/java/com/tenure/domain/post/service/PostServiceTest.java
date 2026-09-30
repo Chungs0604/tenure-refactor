@@ -634,7 +634,7 @@ class PostServiceTest {
 
 	private static Item item(User owner) {
 		return Item.register(owner, null, "LVC 1955 501", "Levis", "L",
-				WearTarget.UNISEX, "item/2026/09/a.jpg", null, LocalDate.now().minusYears(1));
+				WearTarget.UNISEX, "item/2026/09/a.jpg", LocalDate.now().minusYears(1));
 	}
 
 	private static ItemOwnership ownership(Item item, User owner) {

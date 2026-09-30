@@ -469,7 +469,7 @@ class PostRepositoryTest extends RepositorySliceTestSupport {
 		// 세부 카테고리는 V2 시드가 넣어 둔 값을 쓴다 (대분류 1~10, 세부 101~202)
 		Category category = em.find(Category.class, 101L);
 		Item item = Item.register(owner, category, "LVC 1955 501", "Levis", "L",
-				WearTarget.UNISEX, "item/2026/09/a.jpg", null, LocalDate.of(2025, 2, 8));
+				WearTarget.UNISEX, "item/2026/09/a.jpg", LocalDate.of(2025, 2, 8));
 		em.persist(item);
 		flush();
 		return item;
@@ -511,9 +511,9 @@ class PostRepositoryTest extends RepositorySliceTestSupport {
 	 */
 	private long insertListing(Item item, User seller, SaleStatus saleStatus, int price) {
 		em.createNativeQuery("insert into item_listing "
-						+ "(item_id, seller_id, sale_status, offer_allowed, price, shipping_fee, "
-						+ "fee_bearer, wish_count, created_at, updated_at) "
-						+ "values (?, ?, ?, true, ?, 0, 'SELLER', 0, now(6), now(6))")
+						+ "(item_id, seller_id, sale_status, price, shipping_fee, "
+						+ "fee_bearer, created_at, updated_at) "
+						+ "values (?, ?, ?, ?, 0, 'SELLER', now(6), now(6))")
 				.setParameter(1, item.getId())
 				.setParameter(2, seller.getId())
 				.setParameter(3, saleStatus.name())

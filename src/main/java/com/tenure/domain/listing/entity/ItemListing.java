@@ -26,6 +26,8 @@ import lombok.NoArgsConstructor;
 /**
  * 아이템의 판매 등록('판매 전환'). 아이템이 재판매될 때마다 새 행이 생기므로 Item 과 1:N 이다. 생성 전제로 판매자에게 PayoutAccount 가 있어야 한다.
  *
+ * 판매 조건만 갖는다 — 관심 수와 구매 제안 허용은 판매와 무관하게 살아 있어야 해서 Item 으로 올렸다 (DEC-024).
+ *
  * 생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
  * 스키마에서 읽을 수 없다. @Builder 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
  */
@@ -58,10 +60,6 @@ public class ItemListing extends BaseEntity {
 	@Column(name = "sale_status", nullable = false, length = 20)
 	private SaleStatus saleStatus;
 
-	/** '구매 제안 O' / '구매 제안 X', '구매 제안 허용' 토글 */
-	@Column(name = "offer_allowed", nullable = false)
-	private Boolean offerAllowed;
-
 	/** '가격' 360,000원. 미판매면 NULL */
 	@Column(name = "price")
 	private Integer price;
@@ -78,10 +76,6 @@ public class ItemListing extends BaseEntity {
 	/** '판매자 설명' */
 	@Column(name = "seller_note", columnDefinition = "TEXT")
 	private String sellerNote;
-
-	/** '관심 14명' — 화면에 수치가 표시된다. 비정규화 카운터이며 정본은 wishlist 테이블(→ 파생 컬럼 대장) */
-	@Column(name = "wish_count", nullable = false)
-	private Integer wishCount;
 
 	/** '판매 게시가 완료됐습니다.' */
 	@Column(name = "listed_at")

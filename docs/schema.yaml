@@ -1,9 +1,11 @@
-# Tenure DB 스키마 정본 (machine-readable) — v6
+# Tenure DB 스키마 정본 (machine-readable) — v8
+# v8: 사이즈 칩 목록을 size_option 테이블로 옮기고 Q6 를 닫았다(DEC-025).
+# v7: 공개 노출 속성(wish_count · offer_allowed)을 item_listing 에서 item 으로 올렸다(DEC-024).
 # v6: 목록 페이지네이션을 커서로 통일하고(DEC-022) 검색 추천 순의 정렬 키를 확정했다(DEC-023).
 # v5: 47개 화면을 전수 재판독해 30건을 바로잡았다. 경위는 docs/design-audit.md
 # 생성: figma-to-erd 규격. docs/erd.md 의 관계 요약표·화면 인벤토리·컬럼 명세 표는 이 파일에서 생성된다.
 
-version: 6
+version: 8
 generated_from:
   figma_url: https://www.figma.com/design/hnEDDkiI0V4js9JzWR2l2M/Tenure-UXUI-%EC%9E%91%EC%97%85?node-id=813-8486&m=dev
   file_key: hnEDDkiI0V4js9JzWR2l2M
@@ -940,6 +942,32 @@ enums:
   source: design
   evidence: '''사진 비율은 총 3가지입니다. 3:4, 4:5, 1:1 비율에 따라 사진을 촬영할 수 있습니다.'' + 촬영 프레임 3종'
   value_evidence_table: post
+- name: SizeScheme
+  values:
+  - TOP
+  - BOTTOM
+  - SHOE
+  - ONE_SIZE
+  labels:
+    TOP: 상의 · 아우터 · 원피스
+    BOTTOM: 하의 · 치마
+    SHOE: 신발
+    ONE_SIZE: 모자 · 가방 · 액세서리 · 쥬얼리
+  source: design
+  evidence: 상세 수정 바텀시트 10종에서 확정했다. 상의처럼 한 세트가 여러 체계를 섞어 쓰므로 체계 이름이 아니라 세트 이름이다 (DEC-025)
+  value_evidence_table: category
+- name: SizeSystem
+  values:
+  - ALPHA
+  - KR_NUMERIC
+  - EU_NUMERIC
+  - INCH
+  - MM
+  - FREE_NUMBER
+  - ONE_SIZE
+  source: design
+  evidence: 'ALPHA(XS~3XL) / KR_NUMERIC(85~115) / EU_NUMERIC(36~50) / INCH(24~40, 하의·치마) / MM(210~310, 신발) / FREE_NUMBER(0~6) / ONE_SIZE. 인치·mm·One size 는 A-14 가 찾은 4종에 없던 체계다'
+  value_evidence_table: size_option
 - name: WearTarget
   values:
   - MALE
@@ -2542,10 +2570,11 @@ entities:
   - name: sizeScheme
     column: size_scheme
     db_type: VARCHAR(30)
-    java_type: String
+    java_type: SizeScheme
+    enum: SizeScheme
     nullable: true
     source: design
-    evidence: 아이템 등록(2825:47795)·판매 전환(3342:32943)의 '사이즈' 칩에서 체계 4종을 확인했다 — ALPHA(XS·S·M·L·XL·2XL·3XL) / KR_NUMERIC(85~115) / EU_NUMERIC(36~50) / FREE_NUMBER(0~6). 어느 대분류가 어느 체계를 쓰는지는 화면이 전 체계를 한 번에 펼쳐 보여줘 확정하지 못했다(→ Q6)
+    evidence: 이 대분류가 쓰는 사이즈 칩 세트. 칩 목록은 size_option 이 갖는다. 세부 카테고리(depth=2)는 NULL 이며 부모에서 읽는다 — 상세 수정 바텀시트 10종에서 매핑을 확정했다 (Q6 해소, DEC-025)
   - name: sortOrder
     column: sort_order
     db_type: INT
@@ -2562,6 +2591,73 @@ entities:
     unique: false
   pattern: 자기 참조
   pattern_note: parent_id nullable, depth 로 2단(카테고리 > 세부 카테고리)을 고정한다. 하위가 있으면 RESTRICT 로 삭제를 막는다
+- name: SizeOption
+  table: size_option
+  domain: category
+  description: 카테고리별 사이즈 칩 목록. 값은 V15__size_option.sql 이 정본이며 애플리케이션이 만들지 않는다. 프론트가 칩을 하드코딩하지 않도록 API-090 이 카테고리 트리와 함께 내려준다 (DEC-025).
+  soft_delete: false
+  delete_policy: C
+  delete_rationale: 참조 데이터. 행을 지우는 대신 seed 를 고친다
+  source: design
+  evidence:
+  - 아이템 상세 수정 바텀시트 10종 (2825:49332 외) — 카테고리마다 펼쳐지는 칩이 다르다
+  - 안내사항 2825:49032 — '아이템 상세 정보 수정 (카테고리마다 세부 카테고리, 사이즈 다름)'
+  fields:
+  - name: id
+    column: id
+    db_type: BIGINT
+    java_type: Long
+    pk: true
+    auto_increment: true
+    nullable: false
+    source: inferred
+    evidence: PK 관례
+  - name: scheme
+    column: scheme
+    db_type: VARCHAR(20)
+    java_type: SizeScheme
+    nullable: false
+    enum: SizeScheme
+    source: design
+    evidence: 칩 세트. category.size_scheme 이 이 값을 가리킨다
+  - name: sizeSystem
+    column: size_system
+    db_type: VARCHAR(20)
+    java_type: SizeSystem
+    nullable: false
+    enum: SizeSystem
+    source: design
+    evidence: 그 칩이 속한 체계. 화면이 체계 이름을 글자로 쓰지 않고 줄바꿈으로만 구분한다
+  - name: label
+    column: label
+    db_type: VARCHAR(20)
+    java_type: String
+    nullable: false
+    source: design
+    evidence: 화면에 그대로 쓰는 칩 라벨. item.size_label 에 이 값이 복사된다
+  - name: sortOrder
+    column: sort_order
+    db_type: INT
+    java_type: Integer
+    nullable: false
+    source: inferred
+    evidence: 칩 노출 순서
+  indexes:
+  - name: uk_size_option
+    columns:
+    - scheme
+    - label
+    unique: true
+  - name: ix_size_option_order
+    columns:
+    - scheme
+    - sort_order
+    unique: false
+  constraints:
+  - rule: item.size_label 은 그 아이템 대분류의 scheme 에 속한 label 이어야 한다
+    enforced_by: application
+    source: design
+    evidence: 칩에서 고르는 값이라 자유 입력이 아니다. FK 로 묶지 않는 이유는 스냅샷이기 때문 (DEC-025)
 - name: Item
   table: item
   domain: item
@@ -2640,14 +2736,30 @@ entities:
     java_type: String
     nullable: true
     source: design
-    evidence: '''제품 설명'' / ''상품 설명'''
+    evidence: '''제품 설명'' / ''상품 설명''. 다만 입력 화면도 표시 화면도 없어 API 로는 채우지 않는다 — 화면의 ''상품 설명''은 판매 전환에서 받는 item_listing.seller_note 다 (B-14). 컬럼은 남겨 두고 쓰는 화면이 생기면 연다'
   - name: firstOwnedDate
     column: first_owned_date
     db_type: DATE
     java_type: LocalDate
     nullable: true
     source: design
-    evidence: '''최초 보유 날짜''. 예 25.02.8. 최초 item_ownership 구간의 start_date 와 같은 값이며, 거래 전까지만 수정할 수 있다'
+    evidence: '''최초 보유 날짜''. 예 25.02.8. 최초 item_ownership 구간의 start_date 와 같은 값이며, 등록 뒤에는 수정할 수 없다 (DEC-007)'
+  - name: offerAllowed
+    column: offer_allowed
+    db_type: BOOLEAN
+    java_type: Boolean
+    nullable: false
+    default: false
+    source: design
+    evidence: '미판매 상품 상세(2825:58233)의 ''구매 제안 O'' / ''구매 제안 X''. 판매 등록과 무관하게 아이템에 붙는다 (DEC-024)'
+  - name: wishCount
+    column: wish_count
+    db_type: INT
+    java_type: Integer
+    nullable: false
+    default: 0
+    source: design
+    evidence: '''관심 5명''. 판매 등록 전 아이템도 위시에 담기므로 아이템이 갖는다. 비정규화 카운터이며 정본은 wishlist (→ 파생 컬럼 대장, DEC-024)'
   - name: deletedAt
     column: deleted_at
     db_type: DATETIME(6)
@@ -2993,17 +3105,17 @@ entities:
     enforced_by: application
     source: design
     evidence: '''~ 현재'' 구간은 하나뿐'
-  - rule: append-only. DELETE 금지. UPDATE 는 두 경우만 허용한다 — (1) 거래 완료 시 end_date 를 닫을 때, (2) 최초 구간의 start_date 를 item.first_owned_date 수정에 맞춰 갱신할 때
+  - rule: append-only. DELETE 금지. UPDATE 는 거래 완료 시 end_date 를 닫는 한 가지만 허용한다
     enforced_by: application
     source: design
-    evidence: 확정 사양
-  - rule: item.first_owned_date 수정은 소유 구간이 1개이고 본인이 현재 소유자일 때만 허용한다. 거래 이력이 생기는 순간(구간이 2개 이상) 잠긴다
+    evidence: 확정 사양. start_date 는 등록 뒤에 바뀌지 않는다 (DEC-007)
+  - rule: item.first_owned_date 는 등록 뒤에 수정할 수 없다. 최초 구간의 start_date 도 마찬가지다
     enforced_by: application
     source: design
-    evidence: 이전 소유자가 자기 구간의 시작일을 고치면 구매자가 보고 산 "Tenure 기록 기준"이 사후에 달라진다. item_wear_record 의 "종료된 구간은 손대지 못한다" 규칙과 같은 원리다
+    evidence: 구매자가 보고 산 "Tenure 기록 기준"이 사후에 달라지면 안 된다. item_wear_record 의 "종료된 구간은 손대지 못한다" 규칙과 같은 원리이며, 여기서는 종료 여부와 무관하게 막는다 (DEC-007)
   pattern: 유효 구간 (temporal validity)
   pattern_note: 소유 구간이 행으로 쌓이고 end_date IS NULL 이 현재 구간이다. 같은 아이템에 구간이 겹치지 않아야 하며, 0순위 테이블이라 append-only 다
-  correction_path: 최초 구간의 start_date 만 item.first_owned_date 수정에 따라 갱신된다. 소유 구간이 1개이고 본인이 현재 소유자일 때만 허용하며, 거래 이력이 생기면 잠긴다
+  correction_path: 없다. start_date 는 등록 시점에 정해지고 바뀌지 않는다 (DEC-007). 날짜를 잘못 넣었으면 아이템을 지우고 다시 등록하는 수밖에 없다 — 그 경우 착용 기록은 승계되지 않는다
 - name: ItemWearRecord
   table: item_wear_record
   domain: item
@@ -3119,7 +3231,7 @@ entities:
 - name: ItemListing
   table: item_listing
   domain: listing
-  description: 아이템의 판매 등록('판매 전환'). 아이템이 재판매될 때마다 새 행이 생기므로 Item 과 1:N 이다. 생성 전제로 판매자에게 PayoutAccount 가 있어야 한다.
+  description: 아이템의 판매 등록('판매 전환'). 아이템이 재판매될 때마다 새 행이 생기므로 Item 과 1:N 이다. 생성 전제로 판매자에게 PayoutAccount 가 있어야 한다. 판매 조건만 갖는다 — 관심 수와 구매 제안 허용은 판매와 무관하게 살아 있어야 해서 Item 으로 올렸다 (DEC-024).
   soft_delete: false
   delete_policy: B
   delete_rationale: sale_status + closed_at 으로 상태 관리. 거래가 참조하므로 물리 삭제하지 않는다
@@ -3159,14 +3271,6 @@ entities:
     enum: SaleStatus
     source: design
     evidence: '''판매 중'' / ''미판매'' / 판매 완료 배지'
-  - name: offerAllowed
-    column: offer_allowed
-    db_type: BOOLEAN
-    java_type: Boolean
-    nullable: false
-    default: false
-    source: design
-    evidence: '''구매 제안 O'' / ''구매 제안 X'', ''구매 제안 허용'' 토글'
   - name: price
     column: price
     db_type: INT
@@ -3197,14 +3301,6 @@ entities:
     nullable: true
     source: design
     evidence: '''판매자 설명'''
-  - name: wishCount
-    column: wish_count
-    db_type: INT
-    java_type: Integer
-    nullable: false
-    default: 0
-    source: design
-    evidence: '''관심 14명'' — 화면에 수치가 표시된다. 비정규화 카운터이며 정본은 wishlist 테이블(→ 파생 컬럼 대장)'
   - name: listedAt
     column: listed_at
     db_type: DATETIME(6)
@@ -3404,9 +3500,9 @@ entities:
     column: listing_id
     db_type: BIGINT
     java_type: Long
-    nullable: false
+    nullable: true
     source: design
-    evidence: 제안 대상 판매 등록
+    evidence: 제안 대상 판매 등록. PURCHASE_OFFER(미판매 제안)는 판매 등록이 없어 NULL 이고 TRADE_INTENT 만 값을 갖는다 (DEC-024)
   - name: itemId
     column: item_id
     db_type: BIGINT
@@ -5753,10 +5849,10 @@ derived_columns:
   master: post_save
   update: 저장·취소 트랜잭션 내 증감
   reason: OOTD 상세의 '🔖 1234'
-- column: item_listing.wish_count
+- column: item.wish_count
   master: wishlist
   update: 관심 등록·해제 트랜잭션 내 증감
-  reason: 상품 상세의 '관심 14명'
+  reason: 상품 상세의 '관심 14명'. 판매 등록 전 아이템도 위시에 담기고 판매를 내렸다 다시 걸어도 수가 유지돼야 해서 item 이 갖는다 (DEC-024)
 - column: post.view_count
   master: Redis post-view:{postId}
   update: 조회 시 Redis INCR, 주기 배치가 컬럼에 더한다
@@ -5833,8 +5929,20 @@ design_decisions:
   - 수정 불가로 고정
   - item.first_owned_date 로 채우고 거래 전까지만 수정 허용
   - ownership 과 완전 분리
-  decision: item.first_owned_date 로 채우고, 거래 전까지만 수정 허용
-  rationale: 화면의 'Tenure 기록 기준' 첫 구간과 '최초 보유 날짜'가 같은 값으로 보이므로 둘을 일치시킨다. 대신 append-only 제약에 예외를 하나 연다 — 소유 구간이 1개이고 본인이 현재 소유자일 때만 최초 구간의 start_date 를 갱신할 수 있다. 거래 이력이 생기면 잠긴다. 이전 소유자가 시작일을 고치면 구매자가 보고 산 기록이 사후에 달라지기 때문이다
+  decision: item.first_owned_date 로 채우고 등록 뒤에는 누구도 수정할 수 없다 (2026-09-30 재검토)
+  rationale: |
+    화면의 'Tenure 기록 기준' 첫 구간과 '최초 보유 날짜'가 같은 값으로 보이므로 둘을 일치시킨다.
+    처음에는 '거래 전까지만 수정 허용' 으로 열어 뒀는데, item 을 구현하며 두 가지가 걸렸다.
+      1. 잠긴 상태의 화면이 어디에도 없다. 상세 수정 바텀시트 9종에 '최초 보유 날짜' 입력란이
+         평범한 편집 필드로 그려져 있고(상의만 그 칸이 없다), 거래 후 비활성 상태는 그려져 있지 않다.
+         조건부 수정을 유지하려면 그 화면을 새로 그리고 프론트가 조건을 판정해야 한다.
+      2. append-only 테이블에 예외가 둘이 된다 — 구간 종료와 start_date 정정. 0순위 테이블에
+         허용 UPDATE 가 많을수록 규칙이 흔들린다.
+    막는 쪽을 택했다. '등록 시점에 정해지고 그 뒤로는 불변' 이면 화면도 판정도 필요 없고,
+    item_ownership 의 허용 UPDATE 가 '거래 완료 시 end_date 를 닫는다' 하나로 줄며,
+    'Tenure 기록은 사후에 바뀌지 않는다' 가 조건 없이 성립한다.
+    대가는 등록 시 오타가 영구라는 것이다 — 선택 입력이므로 애매하면 비우도록 안내한다.
+  revisit_when: 등록 직후 짧은 정정 창(첫 인증이 적립되기 전 등)을 열고 싶어지면 그때 다시 본다. 그 경우에도 거래가 한 번이라도 있었으면 잠근다
 - id: DEC-008
   topic: 운송장 번호 정정
   considered:
@@ -5967,6 +6075,52 @@ design_decisions:
     키워드 없이 필터만 적용한 경우는 등급이 전부 0 이라 rank_score 만으로 정렬된다 — 사실상
     '지금 인기 있는 스타일'과 같은 성질이 된다.
   revisit_when: 개인화 가산점(팔로우 중인 작성자·내 체형과 비슷한 작성자)은 넣지 않았다. 사용자별 점수가 되어 사전 계산이 불가능해지고 정렬 이상을 디버깅하기 어려워진다. 클릭 로그가 쌓여 효과를 측정할 수 있게 되면 재검토한다. 가중치와 배치 주기도 그때 조정한다
+- id: DEC-024
+  topic: 관심 수와 구매 제안 허용을 어느 테이블에 두는가
+  considered:
+  - item_listing 에 그대로 둔다 (기존)
+  - 아이템 등록 시 item_listing 을 NOT_FOR_SALE 로 함께 만든다
+  - item 으로 올린다
+  decision: wish_count 와 offer_allowed 를 item 으로 올리고 item_listing 은 판매 조건만 갖는다. purchase_offer.listing_id 는 nullable 로 바꾼다
+  rationale: |
+    item_listing 은 성격이 다른 둘을 함께 담고 있었다 — 공개 노출 속성(관심 수·구매 제안 허용)은
+    아이템과 수명이 같고, 판매 조건(가격·배송비·수수료 부담·판매자 설명)은 판매할 때만 산다.
+    item_listing 은 재판매마다 새 행이 생기는 1:N 이라 공개 속성을 여기 두면 세 가지가 깨진다.
+      1. 갓 등록한 아이템은 listing 이 없어 관심을 받을 곳이 없다. 그런데 wishlist 는
+         '판매 등록 전 아이템도 담을 수 있어야 한다'가 전제이고 위시리스트 화면에 '미판매' 배지가 있다
+      2. OfferType.PURCHASE_OFFER 의 정의가 '미판매 제품에 대한 구매제안'인데
+         purchase_offer.listing_id 가 NOT NULL 이라 보낼 대상이 없었다
+      3. 판매를 내렸다 다시 걸면 새 listing 행이 생겨 관심 수가 0 으로 리셋된다
+    화면 근거는 미판매 상품 상세(2825:58233)다 — '관심 5명'과 '구매 제안 O/X' 를 함께 그리고,
+    구매제안 on(2825:57652)에는 하단에 '구매제안하기' CTA 가 붙고 off(2825:57760)에는 없다.
+    '등록 시 listing 을 함께 만든다'는 택하지 않았다. item_listing 생성 전제가 판매자에게
+    정산 계좌가 있는 것이라, 정산 계좌 없는 사용자가 아이템 등록조차 못 하게 된다.
+    chat_room.listing_id 가 이미 '미판매 아이템이면 NULL 가능' 이었으므로 방향은 일관된다.
+    '미판매'는 두 경로(listing 행 없음 / 최신 listing 이 NOT_FOR_SALE)로 생기므로 API 응답에서는
+    saleStatus 를 아이템 레벨로 평탄화해 하나로 내려준다
+  revisit_when: 판매 중 아이템의 구매 제안 허용을 판매 등록별로 다르게 걸고 싶어지면 item_listing 에 재정의 컬럼을 더한다. item 의 값은 기본값으로 남긴다
+- id: DEC-025
+  topic: 카테고리별 사이즈 칩을 어디에 두는가 (Q6 해소)
+  considered:
+  - category.size_scheme 한 칸에 체계 이름을 넣는다 (기존)
+  - 프론트가 칩 목록을 하드코딩한다
+  - size_option 테이블을 만들고 size_label 을 검증한다
+  decision: size_option 테이블을 신설한다. category.size_scheme 은 대분류에만 칩 세트 이름을 담고, item.size_label 은 문자열로 두되 등록·수정이 그 세트로 검증한다
+  rationale: |
+    category.size_scheme 은 VARCHAR 한 칸이라 체계를 하나만 담는데, 상세 수정 바텀시트를 열어 보니
+    상의는 네 체계(XS~3XL · 85~115 · 36~50 · 0~6)를 한꺼번에 펼친다. 한 칸으로는 화면을 그릴 수 없다.
+    게다가 그 칸이 세부 카테고리 102행에도 있어 어디가 정본인지 모호했다.
+      TOP       상의 · 아우터 · 원피스   ALPHA 7 + KR_NUMERIC 7 + EU_NUMERIC 8 + FREE_NUMBER 7 = 29칩
+      BOTTOM    하의 · 치마             ALPHA 7 + INCH 17 + FREE_NUMBER 7 = 31칩
+      SHOE      신발                    MM 210~310 = 21칩
+      ONE_SIZE  모자 · 가방 · 액세서리 · 쥬얼리  1칩
+    칩 목록을 DB 에 두면 프론트가 하드코딩하지 않아도 되고, 체계를 고치는 일이 seed UPDATE 한 번으로
+    끝난다. 또 백엔드가 size_label 을 검증할 수 있게 된다 — 칩에서 고르는 값인데 API 가 아무거나
+    받으면 그 오타가 공개 페이지와 상품 상세에 그대로 박힌다. 기록으로 가치를 증명하는 서비스라
+    아이템 원장의 품질이 중요하다.
+    item.size_label 을 FK 로 묶지는 않았다. 사이즈 체계를 나중에 손보더라도 이미 등록된 아이템의
+    기록이 흔들리면 안 된다 — 금액·배송지를 스냅샷으로 두는 것과 같은 이유다.
+  revisit_when: 대분류 안에서 세부 카테고리마다 칩이 갈리는 화면이 생기면 category.size_scheme 을 depth=2 에도 채우고 '가장 가까운 조상' 규칙으로 읽는다. 테이블 구조는 그대로 쓸 수 있다
 - id: DEC-101
   topic: 타인에게 보이는 프로필 필드 — 등급·키·몸무게는 공개, 성별은 비공개
   considered:

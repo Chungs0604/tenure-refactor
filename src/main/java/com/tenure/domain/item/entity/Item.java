@@ -74,13 +74,39 @@ public class Item extends BaseEntity {
 	@Column(name = "cover_image_key", nullable = false, length = 500)
 	private String coverImageKey;
 
-	/** '제품 설명' / '상품 설명' */
+	/**
+	 * '제품 설명' / '상품 설명'.
+	 *
+	 * 입력 화면도 표시 화면도 없어 API 로는 채우지 않는다 — 화면의 '상품 설명' 은
+	 * 판매 전환에서 받는 item_listing.seller_note 다. 컬럼은 남겨 두고 쓰는 화면이 생기면 연다.
+	 */
 	@Column(name = "description", columnDefinition = "TEXT")
 	private String description;
 
-	/** '최초 보유 날짜'. 예 25.02.8. 최초 item_ownership 구간의 start_date 와 같은 값이며, 거래 전까지만 수정할 수 있다 */
+	/**
+	 * '최초 보유 날짜'. 예 25.02.8. 최초 item_ownership 구간의 start_date 와 같은 값이다.
+	 *
+	 * 등록 시점에 정해지고 그 뒤로는 바꿀 수 없다 (DEC-007) — 구매자가 보고 산 'Tenure 기록 기준' 의
+	 * 첫 줄이라 사후에 달라지면 안 된다. 그래서 변경 메서드가 없다.
+	 */
 	@Column(name = "first_owned_date")
 	private LocalDate firstOwnedDate;
+
+	/**
+	 * '구매 제안 O' / '구매 제안 X'. 판매 등록과 무관하게 아이템에 붙는다 (DEC-024).
+	 *
+	 * 미판매 아이템에는 item_listing 행이 없는데 미판매 공개 페이지가 이 토글을 그린다.
+	 */
+	@Column(name = "offer_allowed", nullable = false)
+	private Boolean offerAllowed;
+
+	/**
+	 * '관심 N명'. 정본은 wishlist 이고 이 컬럼은 비정규화 카운터다 (DEC-024).
+	 *
+	 * 판매를 내렸다 다시 걸면 item_listing 행이 새로 생기므로 거기 두면 수가 리셋된다.
+	 */
+	@Column(name = "wish_count", nullable = false)
+	private Integer wishCount;
 
 	/** '삭제된 아이템' 상태. soft delete */
 	@Column(name = "deleted_at")
@@ -96,7 +122,7 @@ public class Item extends BaseEntity {
 	public static Item register(
 			User registrant, Category category, String name, String brandName,
 			String sizeLabel, WearTarget wearTarget, String coverImageKey,
-			String description, LocalDate firstOwnedDate
+			LocalDate firstOwnedDate
 	) {
 		return Item.builder()
 				.registrant(registrant)
@@ -106,9 +132,50 @@ public class Item extends BaseEntity {
 				.sizeLabel(sizeLabel)
 				.wearTarget(wearTarget)
 				.coverImageKey(coverImageKey)
-				.description(description)
 				.firstOwnedDate(firstOwnedDate)
+				.offerAllowed(false)
+				.wishCount(0)
 				.build();
+	}
+
+	/**
+	 * 상세 수정. 보낸 항목만 바꾼다 — 비운 항목은 유지한다.
+	 *
+	 * 최초 보유 날짜는 소유 구간이 하나이고 본인이 현재 소유자일 때만 바뀐다 (DEC-007).
+	 * 그 판정은 소유 구간을 읽어야 하므로 Service 가 하고, 여기서는 받은 값을 반영만 한다.
+	 */
+	public void update(
+			Category category, String name, String brandName, String sizeLabel,
+			WearTarget wearTarget, String coverImageKey
+	) {
+		if (category != null) {
+			this.category = category;
+		}
+		if (name != null) {
+			this.name = name;
+		}
+		if (brandName != null) {
+			this.brandName = brandName;
+		}
+		if (sizeLabel != null) {
+			this.sizeLabel = sizeLabel;
+		}
+		if (wearTarget != null) {
+			this.wearTarget = wearTarget;
+		}
+		if (coverImageKey != null) {
+			this.coverImageKey = coverImageKey;
+		}
+	}
+
+	/** '구매 제안 허용' 토글. 미판매 아이템에도 걸린다 (DEC-024). */
+	public void changeOfferAllowed(boolean offerAllowed) {
+		this.offerAllowed = offerAllowed;
+	}
+
+	/** soft delete. 태그는 남아 '삭제된 아이템' 으로 표시된다. */
+	public void delete(LocalDateTime deletedAt) {
+		this.deletedAt = deletedAt;
 	}
 
 	public boolean isDeleted() {

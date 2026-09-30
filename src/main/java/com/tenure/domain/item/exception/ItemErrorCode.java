@@ -15,6 +15,7 @@ public enum ItemErrorCode implements ErrorCode {
 	ITEM_409_ON_SALE(HttpStatus.CONFLICT, "ITEM_409_ON_SALE", "판매 중이거나 거래가 진행 중이라 삭제할 수 없습니다."),
 	ITEM_400_MEASUREMENT(HttpStatus.BAD_REQUEST, "ITEM_400_MEASUREMENT", "해당 카테고리에 맞지 않는 실측 항목입니다."),
 	ITEM_400_CATEGORY(HttpStatus.BAD_REQUEST, "ITEM_400_CATEGORY", "세부 카테고리를 선택해주세요."),
+	ITEM_400_SIZE(HttpStatus.BAD_REQUEST, "ITEM_400_SIZE", "해당 카테고리에서 고를 수 없는 사이즈입니다."),
 	ITEM_409_TAG_CLOSED_PERIOD(HttpStatus.CONFLICT, "ITEM_409_TAG_CLOSED_PERIOD", "이미 판매된 아이템의 과거 태그는 수정할 수 없습니다.");
 
 	private final HttpStatus status;
