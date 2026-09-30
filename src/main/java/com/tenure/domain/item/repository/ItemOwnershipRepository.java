@@ -15,7 +15,9 @@ public interface ItemOwnershipRepository extends JpaRepository<ItemOwnership, Lo
 	 * 태그 자격 판정과 착용 기록 적립이 모두 이 구간을 기준으로 한다 — 인증 횟수가 소유 구간별로
 	 * 집계되므로 어느 구간에 적립하는지가 화면의 'OOTD 인증 N회' 를 가른다.
 	 */
-	@Query("select o from ItemOwnership o where o.item.id = :itemId and o.endDate is null")
+	@Query("select o from ItemOwnership o " +
+			"where o.item.id = :itemId " +
+			"and o.endDate is null")
 	Optional<ItemOwnership> findCurrent(@Param("itemId") Long itemId);
 
 	/**
@@ -23,7 +25,8 @@ public interface ItemOwnershipRepository extends JpaRepository<ItemOwnership, Lo
 	 *
 	 * 소유자를 함께 읽는다. 카드마다 닉네임과 프로필 사진을 그리므로 지연 로딩이면 구간 수만큼 쿼리가 는다.
 	 */
-	@Query("select o from ItemOwnership o join fetch o.owner "
-			+ "where o.item.id = :itemId order by o.startDate desc, o.id desc")
+	@Query("select o from ItemOwnership o join fetch o.owner " +
+			"where o.item.id = :itemId " +
+			"order by o.startDate desc, o.id desc")
 	List<ItemOwnership> findAllByItemId(@Param("itemId") Long itemId);
 }

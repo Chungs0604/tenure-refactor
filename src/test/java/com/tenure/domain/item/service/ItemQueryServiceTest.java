@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.tenure.domain.category.entity.Category;
 import com.tenure.domain.item.dto.response.ItemOwnershipHistoryResponse;
@@ -135,6 +136,62 @@ class ItemQueryServiceTest {
 
 			assertThat(row.getWishCount()).isEqualTo(5);
 			assertThat(row.getOfferAllowed()).isTrue();
+		}
+	}
+
+	@Nested
+	@DisplayName("태그 가능한 내 아이템")
+	class GetTaggableItems {
+
+		@Test
+		@DisplayName("최근 착용일과 현재 구간의 인증 횟수를 함께 준다 — 행이 '최근 착용 7일 전 · OOTD 인증 : 2회' 다")
+		void taggable_carriesLastWornDateAndWearCount() {
+			givenUrlPrefix();
+			given(itemRepository.findOwnedItems(anyLong(), any(), any(), anyInt()))
+					.willReturn(List.of(item()));
+			given(itemWearRecordRepository.findLastWornDates(any()))
+					.willReturn(List.<Object[]>of(new Object[]{ITEM_ID, LocalDate.of(2026, 5, 26)}));
+			given(itemWearRecordRepository.countCurrentOwnershipWears(any()))
+					.willReturn(List.<Object[]>of(new Object[]{ITEM_ID, 2L}));
+
+			ItemSummaryResponse row = itemQueryService.getTaggableItems(USER_ID, null, null, 20)
+					.getContent().get(0);
+
+			assertThat(row.getLastWornDate()).isEqualTo(LocalDate.of(2026, 5, 26));
+			assertThat(row.getWearCount()).isEqualTo(2);
+		}
+
+		@Test
+		@DisplayName("인증이 없으면 0 회다 — 방금 등록한 아이템도 태그할 수 있다")
+		void taggable_noWearRecord_zero() {
+			givenUrlPrefix();
+			given(itemRepository.findOwnedItems(anyLong(), any(), any(), anyInt()))
+					.willReturn(List.of(item()));
+			given(itemWearRecordRepository.findLastWornDates(any())).willReturn(List.of());
+			given(itemWearRecordRepository.countCurrentOwnershipWears(any())).willReturn(List.of());
+
+			ItemSummaryResponse row = itemQueryService.getTaggableItems(USER_ID, null, null, 20)
+					.getContent().get(0);
+
+			assertThat(row.getWearCount()).isZero();
+			assertThat(row.getLastWornDate()).isNull();
+		}
+
+		@Test
+		@DisplayName("판매 상태는 그리지 않으므로 판매 등록을 읽지 않는다")
+		void taggable_doesNotTouchListing() {
+			givenUrlPrefix();
+			given(itemRepository.findOwnedItems(anyLong(), any(), any(), anyInt()))
+					.willReturn(List.of(item()));
+			given(itemWearRecordRepository.findLastWornDates(any())).willReturn(List.of());
+			given(itemWearRecordRepository.countCurrentOwnershipWears(any())).willReturn(List.of());
+
+			ItemSummaryResponse row = itemQueryService.getTaggableItems(USER_ID, null, null, 20)
+					.getContent().get(0);
+
+			assertThat(row.getSaleStatus()).isNull();
+			assertThat(row.getListing()).isNull();
+			verifyNoInteractions(itemListingRepository);
 		}
 	}
 

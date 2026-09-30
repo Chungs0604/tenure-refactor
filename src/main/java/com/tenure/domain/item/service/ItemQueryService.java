@@ -87,6 +87,7 @@ public class ItemQueryService {
 			Long userId, String keyword, Cursor cursor, int size
 	) {
 		List<Item> items = itemRepository.findOwnedItems(userId, keyword, cursor, size);
+
 		if (items.isEmpty()) {
 			return CursorSlice.empty();
 		}
@@ -95,16 +96,25 @@ public class ItemQueryService {
 
 		// 행마다 조회하면 카드 수만큼 쿼리가 늘어남
 		List<Long> itemIds = slice.getContent().stream().map(Item::getId).toList();
+
+		// 아이템 별 최근 착용 일
 		Map<Long, LocalDate> lastWornDates = lastWornDatesOf(itemIds);
+
+		// 아이템 별 최신 판매 등록
 		Map<Long, ItemListing> listings = latestListingsOf(itemIds);
 
-		return slice.map(item -> toSummary(item, lastWornDates.get(item.getId()), listings.get(item.getId())));
+		return slice.map(
+				item -> toSummary(item, lastWornDates.get(item.getId()), listings.get(item.getId()))
+		);
 	}
 
 	/**
 	 * 태그 가능한 내 아이템. 현재 소유 구간이 열려 있는 것만 내려간다 — 목록과 조건이 같다.
 	 *
-	 * 태그 시트는 판매 상태도 최근 착용일도 그리지 않으므로 요약만 만든다.
+	 * 행마다 '최근 착용 7일 전 · OOTD 인증 : 2회' 를 그린다. 인증 횟수는 전체 누적이 아니라
+	 * 현재 소유 구간 기준이다 — 내 옷장 맥락이라 '내가 이 옷을 얼마나 입었나' 를 보여준다.
+	 *
+	 * 판매 상태는 그리지 않으므로 판매 등록을 읽지 않는다.
 	 */
 	@Loggable("태그 가능한 아이템 조회")
 	public CursorSlice<ItemSummaryResponse> getTaggableItems(
@@ -115,9 +125,15 @@ public class ItemQueryService {
 			return CursorSlice.empty();
 		}
 
-		// 태그 시트는 판매 상태도 최근 착용일도 안 그리므로 추가 조회를 하지 않음
-		return CursorSlice.of(items, size, it -> Cursor.of(it.getCreatedAt(), it.getId()))
-				.map(item -> toSummary(item, null, null));
+		CursorSlice<Item> slice = CursorSlice.of(items, size, it -> Cursor.of(it.getCreatedAt(), it.getId()));
+
+		// 행마다 조회하면 아이템 수만큼 쿼리가 늘어남
+		List<Long> itemIds = slice.getContent().stream().map(Item::getId).toList();
+		Map<Long, LocalDate> lastWornDates = lastWornDatesOf(itemIds);
+		Map<Long, Integer> wearCounts = currentWearCountsOf(itemIds);
+
+		return slice.map(item -> toTaggableSummary(
+				item, lastWornDates.get(item.getId()), wearCounts.getOrDefault(item.getId(), 0)));
 	}
 
 	/** 아이템 상세 (소유자 시점). */
@@ -323,14 +339,44 @@ public class ItemQueryService {
 		return item;
 	}
 
+	/**
+	 * 아이템 별 최근 작용 일
+	 * Map<ItemId, LastWornAt)
+	 */
+	/** 현재 소유 구간의 인증 횟수. 태그 시트의 'OOTD 인증 : N회' 다. */
+	private Map<Long, Integer> currentWearCountsOf(Collection<Long> itemIds) {
+		return itemWearRecordRepository.countCurrentOwnershipWears(itemIds).stream()
+				.collect(Collectors.toMap(row -> (Long) row[0], row -> ((Number) row[1]).intValue()));
+	}
+
 	private Map<Long, LocalDate> lastWornDatesOf(Collection<Long> itemIds) {
 		return itemWearRecordRepository.findLastWornDates(itemIds).stream()
 				.collect(Collectors.toMap(row -> (Long) row[0], row -> (LocalDate) row[1]));
 	}
 
+	/**
+	 * 아이템 별 최신 판매 등록
+	 * Map<ItemId, ItemListing(판매등록)>
+	 */
 	private Map<Long, ItemListing> latestListingsOf(Collection<Long> itemIds) {
 		return itemListingRepository.findLatestByItemIds(itemIds).stream()
 				.collect(Collectors.toMap(listing -> listing.getItem().getId(), Function.identity()));
+	}
+
+	/** 태그 시트 행. 판매 상태 자리는 비우고 인증 횟수를 채운다. */
+	private ItemSummaryResponse toTaggableSummary(Item item, LocalDate lastWornDate, int wearCount) {
+		return ItemSummaryResponse.builder()
+				.id(item.getId())
+				.brandName(item.getBrandName())
+				.name(item.getName())
+				.coverImageUrl(fileStorage.toUrl(item.getCoverImageKey()))
+				.saleStatus(null)
+				.wishCount(item.getWishCount())
+				.offerAllowed(item.getOfferAllowed())
+				.lastWornDate(lastWornDate)
+				.wearCount(wearCount)
+				.listing(null)
+				.build();
 	}
 
 	private ItemSummaryResponse toSummary(Item item, LocalDate lastWornDate, ItemListing listing) {

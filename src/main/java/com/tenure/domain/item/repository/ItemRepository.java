@@ -23,7 +23,8 @@ public interface ItemRepository extends JpaRepository<Item, Long>, ItemRepositor
 	int countOwnedItem(@Param("ownerId") Long ownerId);
 
 	/** 태그 대상 아이템. 삭제된 아이템에는 새 태그를 붙일 수 없다. */
-	@Query("select i from Item i where i.id = :itemId and i.deletedAt is null")
+	@Query("select i from Item i " +
+			"where i.id = :itemId and i.deletedAt is null")
 	Optional<Item> findActive(@Param("itemId") Long itemId);
 
 	/**
@@ -35,6 +36,7 @@ public interface ItemRepository extends JpaRepository<Item, Long>, ItemRepositor
 	Optional<Item> findActiveWithCategory(@Param("itemId") Long itemId);
 
 	/** 태그된 아이템 목록·상세 말풍선. 삭제된 아이템도 화면에 회색으로 남으므로 함께 받는다. */
-	@Query("select i from Item i where i.id in :itemIds")
+	@Query("select i from Item i " +
+			"where i.id in :itemIds")
 	List<Item> findAllByIds(@Param("itemIds") Collection<Long> itemIds);
 }

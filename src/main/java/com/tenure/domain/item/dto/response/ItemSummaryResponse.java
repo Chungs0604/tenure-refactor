@@ -44,6 +44,9 @@ public class ItemSummaryResponse {
 	@Schema(description = "'최근 착용 N일 전' 계산 기준. 인증이 없으면 null", example = "2026-05-26")
 	private final LocalDate lastWornDate;
 
+	@Schema(description = "현재 소유 구간의 'OOTD 인증 N회'. 태그 시트에서만 채운다", example = "2")
+	private final Integer wearCount;
+
 	@Schema(description = "판매 조건. 판매 등록이 없으면 null")
 	private final ItemListingSummaryResponse listing;
 }

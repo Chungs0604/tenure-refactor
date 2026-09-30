@@ -8,15 +8,16 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-public interface ItemWearRecordRepository
-		extends JpaRepository<ItemWearRecord, Long>, ItemWearRecordRepositoryCustom {
+public interface ItemWearRecordRepository extends JpaRepository<ItemWearRecord, Long>, ItemWearRecordRepositoryCustom {
 
 	/**
 	 * 게시물이 적립한 인증 전체. 게시물을 지울 때 함께 무효화한다.
 	 *
 	 * 소유 구간을 함께 가져온다 — 종료된 구간의 기록은 손대지 않아야 하므로 판정에 필요하다.
 	 */
-	@Query("select r from ItemWearRecord r join fetch r.ownership where r.post.id = :postId")
+	@Query("select r from ItemWearRecord r " +
+			"join fetch r.ownership " +
+			"where r.post.id = :postId")
 	List<ItemWearRecord> findAllByPostId(@Param("postId") Long postId);
 
 	/**
@@ -28,22 +29,23 @@ public interface ItemWearRecordRepository
 	@Query("select r from ItemWearRecord r join fetch r.ownership "
 			+ "where r.post.id = :postId and r.item.id = :itemId")
 	Optional<ItemWearRecord> findByPostIdAndItemId(
-			@Param("postId") Long postId, @Param("itemId") Long itemId
+			@Param("postId") Long postId,
+			@Param("itemId") Long itemId
 	);
 	/**
 	 * 목록의 '최근 착용 N일 전'. 페이지의 아이템을 한 번에 센다 — 행마다 조회하면 카드 수만큼 쿼리가 는다.
 	 *
 	 * ix_item_wear_record_item(item_id, voided_at, worn_date) 가 그대로 받는다.
 	 */
-	@Query("select r.item.id, max(r.wornDate) from ItemWearRecord r "
-			+ "where r.item.id in :itemIds and r.voidedAt is null "
-			+ "group by r.item.id")
+	@Query("select r.item.id, max(r.wornDate) from ItemWearRecord r " +
+			"where r.item.id in :itemIds and r.voidedAt is null " +
+			"group by r.item.id")
 	List<Object[]> findLastWornDates(@Param("itemIds") Collection<Long> itemIds);
 
 	/** 소유 구간별 'OOTD 인증 N회'. ix_item_wear_record_ownership 이 등치 두 개로 받는다. */
-	@Query("select r.ownership.id, count(r) from ItemWearRecord r "
-			+ "where r.item.id = :itemId and r.voidedAt is null "
-			+ "group by r.ownership.id")
+	@Query("select r.ownership.id, count(r) from ItemWearRecord r " +
+			"where r.item.id = :itemId and r.voidedAt is null " +
+			"group by r.ownership.id")
 	List<Object[]> countByOwnership(@Param("itemId") Long itemId);
 
 	/**
@@ -62,4 +64,15 @@ public interface ItemWearRecordRepository
 			+ "          or (other.wornDate = r.wornDate and other.id > r.id))) < 3 "
 			+ "order by r.ownership.id, r.wornDate desc, r.id desc")
 	List<Object[]> findOwnershipPreviews(@Param("itemId") Long itemId);
+	/**
+	 * 현재 소유 구간의 'OOTD 인증 N회'. 태그 시트가 행마다 이 숫자를 그린다.
+	 *
+	 * 전체 누적이 아니라 지금 주인이 인증한 횟수다 — 내 옷장 맥락이라 '내가 이 옷을 얼마나
+	 * 입었나' 를 보여준다. 페이지의 아이템을 한 번에 센다.
+	 */
+	@Query("select r.item.id, count(r) from ItemWearRecord r "
+			+ "where r.item.id in :itemIds and r.voidedAt is null "
+			+ "and r.ownership.endDate is null "
+			+ "group by r.item.id")
+	List<Object[]> countCurrentOwnershipWears(@Param("itemIds") Collection<Long> itemIds);
 }
