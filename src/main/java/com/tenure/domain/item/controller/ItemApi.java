@@ -1,6 +1,7 @@
 package com.tenure.domain.item.controller;
 
 import com.tenure.domain.item.dto.request.ItemCreateRequest;
+import com.tenure.domain.item.dto.request.ItemOfferAllowedRequest;
 import com.tenure.domain.item.dto.request.ItemUpdateRequest;
 import com.tenure.domain.item.dto.response.ItemHistoryPostResponse;
 import com.tenure.domain.item.dto.response.ItemIdResponse;
@@ -81,9 +82,11 @@ public interface ItemApi {
 			@Parameter(description = "아이템 id") Long itemId);
 
 	@Operation(summary = "아이템 상세 정보 수정",
-			description = "보낸 항목만 바뀐다. **최초 보유 날짜는 바꿀 수 없다** — 등록 시점에 정해지고 "
-					+ "그 값이 구매자가 보고 산 'Tenure 기록 기준' 의 첫 줄이라 사후에 달라지면 안 된다. "
-					+ "구매 제안 허용 토글은 여기서 바꾼다 — 미판매 아이템에는 판매 등록 행이 없다.")
+			description = "**폼 전체를 교체한다.** 상세 수정 바텀시트가 현재 값이 채워진 채 열리고 "
+					+ "CTA 가 '초기화' / '적용하기' 둘뿐이라 클라이언트는 언제나 전부 보낸다. "
+					+ "**최초 보유 날짜는 바꿀 수 없다** — 등록 시점에 정해지고 그 값이 구매자가 보고 산 "
+					+ "'Tenure 기록 기준' 의 첫 줄이라 사후에 달라지면 안 된다. "
+					+ "대표 사진은 이 시트에 없어 받지 않고, 구매 제안 허용은 별도 모달이라 엔드포인트가 다르다.")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "수정 성공"),
 			@ApiResponse(responseCode = "400", description = "ITEM_400_CATEGORY / ITEM_400_SIZE"),
@@ -94,6 +97,19 @@ public interface ItemApi {
 			@Parameter(hidden = true) AuthUser authUser,
 			@Parameter(description = "아이템 id") Long itemId,
 			@Valid ItemUpdateRequest request);
+
+	@Operation(summary = "구매 제안 허용 토글",
+			description = "선택 모달의 '구매 제안 허용' ↔ '구매 제안 차단'. 아이템이 갖는 값이라 "
+					+ "판매 등록이 없는 미판매 아이템에도 걸린다.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "변경 성공"),
+			@ApiResponse(responseCode = "403", description = "ITEM_403 — 본인의 아이템이 아님"),
+			@ApiResponse(responseCode = "404", description = "ITEM_404 — 아이템을 찾을 수 없음")
+	})
+	ResponseEntity<BaseResponse<ItemIdResponse>> changeOfferAllowed(
+			@Parameter(hidden = true) AuthUser authUser,
+			@Parameter(description = "아이템 id") Long itemId,
+			@Valid ItemOfferAllowedRequest request);
 
 	@Operation(summary = "아이템 삭제",
 			description = "soft delete. 태그는 남아 '삭제된 아이템' 으로 표시된다. "

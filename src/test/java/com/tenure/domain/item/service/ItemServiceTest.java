@@ -191,10 +191,36 @@ class ItemServiceTest {
 			given(itemOwnershipRepository.findCurrent(ITEM_ID))
 					.willReturn(Optional.of(ownershipOf(item, user(OTHER_USER_ID))));
 
-			assertThatThrownBy(() -> itemService.update(USER_ID, ITEM_ID, ItemUpdateRequest.builder().build()))
+			assertThatThrownBy(() -> itemService.update(USER_ID, ITEM_ID, updateRequest("LVC 1955 501", "L")))
 					.isInstanceOf(CustomException.class)
 					.extracting(ItemServiceTest::errorCodeOf)
 					.isEqualTo(ItemErrorCode.ITEM_403);
+		}
+
+		@Test
+		@DisplayName("폼 전체를 교체한다 — 시트가 현재 값을 채워 열고 한 번에 보낸다")
+		void update_replacesWholeForm() {
+			Item item = item();
+			givenUpdatableItem(item);
+			givenSizeExists();
+
+			itemService.update(USER_ID, ITEM_ID, updateRequest("Third Cut", "L"));
+
+			assertThat(item.getName()).isEqualTo("Third Cut");
+			assertThat(item.getBrandName()).isEqualTo("Levis");
+			assertThat(item.getSizeLabel()).isEqualTo("L");
+			assertThat(item.getWearTarget()).isEqualTo(WearTarget.MALE);
+		}
+
+		@Test
+		@DisplayName("사이즈를 비워 보내면 비운다 — 부분 전송이 아니라 교체다")
+		void update_blankSize_clears() {
+			Item item = item();
+			givenUpdatableItem(item);
+
+			itemService.update(USER_ID, ITEM_ID, updateRequest("LVC 1955 501", null));
+
+			assertThat(item.getSizeLabel()).isNull();
 		}
 
 		@Test
@@ -206,8 +232,10 @@ class ItemServiceTest {
 
 			given(itemRepository.findActiveWithCategory(ITEM_ID)).willReturn(Optional.of(item));
 			given(itemOwnershipRepository.findCurrent(ITEM_ID)).willReturn(Optional.of(ownership));
+			given(categoryRepository.findLeafWithParent(CATEGORY_ID)).willReturn(Optional.of(leafCategory()));
+			givenSizeExists();
 
-			itemService.update(USER_ID, ITEM_ID, ItemUpdateRequest.builder().name("이름만 고침").build());
+			itemService.update(USER_ID, ITEM_ID, updateRequest("이름만 고침", "L"));
 
 			assertThat(item.getName()).isEqualTo("이름만 고침");
 			assertThat(item.getFirstOwnedDate()).isEqualTo(registered);
@@ -215,15 +243,56 @@ class ItemServiceTest {
 		}
 
 		@Test
-		@DisplayName("구매 제안 허용을 여기서 켠다 — 미판매 아이템에는 판매 등록 행이 없다")
-		void update_offerAllowed_toggled() {
+		@DisplayName("대표 사진은 여기서 바꾸지 않는다 — 시트에 입력란이 없다")
+		void update_doesNotTouchCoverImage() {
+			Item item = item();
+			givenUpdatableItem(item);
+			givenSizeExists();
+
+			itemService.update(USER_ID, ITEM_ID, updateRequest("Third Cut", "L"));
+
+			assertThat(item.getCoverImageKey()).isEqualTo("item/cover.jpg");
+		}
+
+		private void givenUpdatableItem(Item item) {
+			given(itemRepository.findActiveWithCategory(ITEM_ID)).willReturn(Optional.of(item));
+			given(itemOwnershipRepository.findCurrent(ITEM_ID))
+					.willReturn(Optional.of(ownershipOf(item, user())));
+			given(categoryRepository.findLeafWithParent(CATEGORY_ID))
+					.willReturn(Optional.of(leafCategory()));
+		}
+	}
+
+	@Nested
+	@DisplayName("구매 제안 허용 토글")
+	class ChangeOfferAllowed {
+
+		@Test
+		@DisplayName("상세 수정과 따로 켠다 — 선택 모달의 항목이라 폼을 함께 보내지 않는다")
+		void changeOfferAllowed_togglesAlone() {
 			Item item = item();
 			given(itemRepository.findActiveWithCategory(ITEM_ID)).willReturn(Optional.of(item));
-			given(itemOwnershipRepository.findCurrent(ITEM_ID)).willReturn(Optional.of(ownershipOf(item, user())));
+			given(itemOwnershipRepository.findCurrent(ITEM_ID))
+					.willReturn(Optional.of(ownershipOf(item, user())));
 
-			itemService.update(USER_ID, ITEM_ID, ItemUpdateRequest.builder().offerAllowed(true).build());
+			itemService.changeOfferAllowed(USER_ID, ITEM_ID, true);
 
 			assertThat(item.getOfferAllowed()).isTrue();
+			assertThat(item.getName()).isEqualTo("LVC 1955 501");
+		}
+
+		@Test
+		@DisplayName("현재 소유자가 아니면 막는다")
+		void changeOfferAllowed_notOwner_forbidden() {
+			Item item = item();
+			given(itemRepository.findActiveWithCategory(ITEM_ID)).willReturn(Optional.of(item));
+			given(itemOwnershipRepository.findCurrent(ITEM_ID))
+					.willReturn(Optional.of(ownershipOf(item, user(OTHER_USER_ID))));
+
+			assertThatThrownBy(() -> itemService.changeOfferAllowed(USER_ID, ITEM_ID, true))
+					.isInstanceOf(CustomException.class)
+					.extracting(ItemServiceTest::errorCodeOf)
+					.isEqualTo(ItemErrorCode.ITEM_403);
 		}
 	}
 
@@ -291,6 +360,17 @@ class ItemServiceTest {
 
 	private void givenSizeExists() {
 		given(sizeOptionRepository.existsBySchemeAndLabel(SizeScheme.TOP, "L")).willReturn(true);
+	}
+
+	/** 상세 수정 시트는 전체 폼이라 항상 전 필드를 보낸다. */
+	private static ItemUpdateRequest updateRequest(String name, String sizeLabel) {
+		return ItemUpdateRequest.builder()
+				.name(name)
+				.brandName("Levis")
+				.categoryId(CATEGORY_ID)
+				.sizeLabel(sizeLabel)
+				.wearTarget(WearTarget.MALE)
+				.build();
 	}
 
 	private static ItemCreateRequest request(LocalDate firstOwnedDate, String sizeLabel) {

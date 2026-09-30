@@ -152,33 +152,25 @@ public class Item extends BaseEntity {
 	}
 
 	/**
-	 * 상세 수정. 보낸 항목만 바꾼다 — 비운 항목은 유지한다.
+	 * 상세 수정. 폼 전체를 교체한다 — 보낸 것만 바꾸는 부분 수정이 아니다.
 	 *
-	 * 최초 보유 날짜는 소유 구간이 하나이고 본인이 현재 소유자일 때만 바뀐다 (DEC-007).
-	 * 그 판정은 소유 구간을 읽어야 하므로 Service 가 하고, 여기서는 받은 값을 반영만 한다.
+	 * 상세 수정 바텀시트(2825:49332 외 9종)는 현재 값이 전부 채워진 채 열리고 CTA 가
+	 * '초기화' / '적용하기' 둘뿐이라, 클라이언트가 일부만 보내는 경우가 없다. null 을
+	 * '안 보냄'으로 해석해 기존 값을 살려 두면 빠뜨린 필드가 조용히 통과한다 — 요청 DTO 가
+	 * 필수로 막고 여기서는 받은 값을 그대로 쓴다.
+	 *
+	 * 대표 사진은 받지 않는다. 이 시트에 입력란이 없고 판매 전환이 담당한다.
+	 * 최초 보유 날짜도 받지 않는다 — 등록 뒤 불변이다 (DEC-007).
 	 */
 	public void update(
-			Category category, String name, String brandName, String sizeLabel,
-			WearTarget wearTarget, String coverImageKey
+			Category category, String name, String brandName,
+			String sizeLabel, WearTarget wearTarget
 	) {
-		if (category != null) {
-			this.category = category;
-		}
-		if (name != null) {
-			this.name = name;
-		}
-		if (brandName != null) {
-			this.brandName = brandName;
-		}
-		if (sizeLabel != null) {
-			this.sizeLabel = sizeLabel;
-		}
-		if (wearTarget != null) {
-			this.wearTarget = wearTarget;
-		}
-		if (coverImageKey != null) {
-			this.coverImageKey = coverImageKey;
-		}
+		this.category = category;
+		this.name = name;
+		this.brandName = brandName;
+		this.sizeLabel = sizeLabel;
+		this.wearTarget = wearTarget;
 	}
 
 	/** '구매 제안 허용' 토글. 미판매 아이템에도 걸린다 (DEC-024). */

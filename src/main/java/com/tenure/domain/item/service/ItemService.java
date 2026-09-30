@@ -100,7 +100,7 @@ public class ItemService {
 	}
 
 	/**
-	 * 아이템 상세 수정.
+	 * 아이템 상세 수정. 시트가 전체 폼이라 받은 값으로 통째로 갈아끼운다.
 	 *
 	 * 최초 보유 날짜는 바꿀 수 없다. 그 값이 최초 소유 구간의 시작일이고 구매자가
 	 * 보고 산 'Tenure 기록 기준' 의 첫 줄이라, 등록 뒤에는 누구도 손대지 못하게 한다.
@@ -112,37 +112,33 @@ public class ItemService {
 		// 아이템이 현재 user의 것이 맞는지 검증
 		Item item = findOwnedItem(userId, itemId);
 
-		// 카테고리를 안 보냈으면 기존 값을 그대로 씀
-		Category category = request.getCategoryId() == null
-				? item.getCategory()
-				: findLeafCategory(request.getCategoryId());
+		Category category = findLeafCategory(request.getCategoryId());
 
-		// 사이즈나 카테고리를 건드렸을 때만 본다. 매번 검사하면 칩 세트를 고쳤을 때
-		// 기존 사이즈를 가진 아이템이 이름조차 못 고치게 됨
-		if (request.getSizeLabel() != null || request.getCategoryId() != null) {
-
-			// 카테고리만 바꿔도 검사가 필요함 — 상의(L)를 신발로 옮기면 L 은 신발 칩에 없음
-			String sizeLabel = request.getSizeLabel() == null
-					? item.getSizeLabel()
-					: request.getSizeLabel();
-
-			validateSizeLabel(category, sizeLabel);
-		}
+		// 카테고리만 바꿔도 검사가 필요함 — 상의(L)를 신발로 옮기면 L 은 신발 칩에 없음
+		validateSizeLabel(category, request.getSizeLabel());
 
 		item.update(
-				request.getCategoryId() == null ? null : category,
+				category,
 				request.getName(),
 				request.getBrandName(),
 				request.getSizeLabel(),
-				request.getWearTarget(),
-				request.getCoverImageKey()
+				request.getWearTarget()
 		);
 
-		// 구매 제안 변경 여부
-		if (request.getOfferAllowed() != null) {
-			item.changeOfferAllowed(request.getOfferAllowed());
-		}
+		return itemMapper.toItemIdResponse(item);
+	}
 
+	/**
+	 * 구매 제안 허용 토글.
+	 *
+	 * 상세 수정 시트가 아니라 선택 모달(3910:43234)의 항목이라 엔드포인트를 나눴다 —
+	 * 한 요청에 묶으면 토글만 누르는데도 폼 전체를 함께 보내야 한다.
+	 */
+	@Transactional
+	@Loggable("구매 제안 허용 변경")
+	public ItemIdResponse changeOfferAllowed(Long userId, Long itemId, boolean offerAllowed) {
+		Item item = findOwnedItem(userId, itemId);
+		item.changeOfferAllowed(offerAllowed);
 		return itemMapper.toItemIdResponse(item);
 	}
 
