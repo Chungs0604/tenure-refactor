@@ -59,9 +59,6 @@ public class ItemCreateRequest {
 	@Size(max = 500)
 	private String coverImageKey;
 
-	@Schema(description = "제품 설명")
-	private String description;
-
 	@Schema(description = "최초 보유 날짜. 비우면 등록일부터 보유한 것으로 본다", example = "2026-05-26")
 	@PastOrPresent
 	private LocalDate firstOwnedDate;

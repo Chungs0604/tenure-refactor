@@ -52,9 +52,6 @@ public class ItemResponse {
 	@Schema(description = "착용 대상", example = "MALE")
 	private final WearTarget wearTarget;
 
-	@Schema(description = "제품 설명")
-	private final String description;
-
 	@Schema(description = "최초 보유 날짜. 입력하지 않았으면 null", example = "2026-05-26")
 	private final LocalDate firstOwnedDate;
 

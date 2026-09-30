@@ -84,7 +84,6 @@ public class ItemService {
 				request.getSizeLabel(),
 				request.getWearTarget(),
 				request.getCoverImageKey(),
-				request.getDescription(),
 				request.getFirstOwnedDate()
 		);
 
@@ -139,8 +138,7 @@ public class ItemService {
 				request.getBrandName(),
 				request.getSizeLabel(),
 				request.getWearTarget(),
-				request.getCoverImageKey(),
-				request.getDescription()
+				request.getCoverImageKey()
 		);
 
 		// 구매 제안 변경 여부

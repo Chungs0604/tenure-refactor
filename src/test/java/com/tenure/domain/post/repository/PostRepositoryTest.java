@@ -469,7 +469,7 @@ class PostRepositoryTest extends RepositorySliceTestSupport {
 		// 세부 카테고리는 V2 시드가 넣어 둔 값을 쓴다 (대분류 1~10, 세부 101~202)
 		Category category = em.find(Category.class, 101L);
 		Item item = Item.register(owner, category, "LVC 1955 501", "Levis", "L",
-				WearTarget.UNISEX, "item/2026/09/a.jpg", null, LocalDate.of(2025, 2, 8));
+				WearTarget.UNISEX, "item/2026/09/a.jpg", LocalDate.of(2025, 2, 8));
 		em.persist(item);
 		flush();
 		return item;

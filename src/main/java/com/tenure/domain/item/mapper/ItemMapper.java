@@ -8,6 +8,7 @@ import com.tenure.domain.item.dto.response.ItemOwnershipResponse;
 import com.tenure.domain.item.dto.response.ItemRecommendationResponse;
 import com.tenure.domain.item.dto.response.ItemResponse;
 import com.tenure.domain.item.dto.response.ItemSummaryResponse;
+import com.tenure.domain.item.dto.response.TaggableItemResponse;
 import com.tenure.domain.item.dto.response.ItemWornWithResponse;
 import com.tenure.domain.item.entity.Item;
 import com.tenure.domain.item.entity.ItemOwnership;
@@ -37,23 +38,28 @@ public interface ItemMapper {
 	@Mapping(target = "id", source = "item.id")
 	ItemIdResponse toItemIdResponse(Item item);
 
-	/**
-	 * 목록 한 행. 태그 시트와 내 옷장이 같은 DTO 를 쓰되 채우는 칸이 다르다 —
-	 * 옷장은 판매 상태를, 태그 시트는 인증 횟수를 그린다.
-	 */
+	/** 내 옷장 목록의 한 행. 화면이 '미판매 · 최근 착용 1일 전' 과 판매 전환 버튼을 그린다. */
 	@Mapping(target = "id", source = "item.id")
 	@Mapping(target = "brandName", source = "item.brandName")
 	@Mapping(target = "name", source = "item.name")
-	@Mapping(target = "wishCount", source = "item.wishCount")
-	@Mapping(target = "offerAllowed", source = "item.offerAllowed")
 	@Mapping(target = "coverImageUrl", source = "coverImageUrl")
 	@Mapping(target = "saleStatus", source = "saleStatus")
 	@Mapping(target = "lastWornDate", source = "lastWornDate")
-	@Mapping(target = "wearCount", source = "wearCount")
 	@Mapping(target = "listing", source = "listing")
 	ItemSummaryResponse toItemSummaryResponse(
 			Item item, String coverImageUrl, SaleStatus saleStatus,
-			LocalDate lastWornDate, Integer wearCount, ItemListingSummaryResponse listing
+			LocalDate lastWornDate, ItemListingSummaryResponse listing
+	);
+
+	/** 태그 시트의 한 행. 화면이 '최근 착용 7일 전 · OOTD 인증 : 2회' 를 그린다. */
+	@Mapping(target = "id", source = "item.id")
+	@Mapping(target = "brandName", source = "item.brandName")
+	@Mapping(target = "name", source = "item.name")
+	@Mapping(target = "coverImageUrl", source = "coverImageUrl")
+	@Mapping(target = "lastWornDate", source = "lastWornDate")
+	@Mapping(target = "wearCount", source = "wearCount")
+	TaggableItemResponse toTaggableItemResponse(
+			Item item, String coverImageUrl, LocalDate lastWornDate, Integer wearCount
 	);
 
 	/** 아이템 상세. 화면이 '상의 · 긴소매 티셔츠' 로 두 단계를 함께 그려 대분류 이름도 싣는다. */
@@ -62,7 +68,6 @@ public interface ItemMapper {
 	@Mapping(target = "brandName", source = "item.brandName")
 	@Mapping(target = "sizeLabel", source = "item.sizeLabel")
 	@Mapping(target = "wearTarget", source = "item.wearTarget")
-	@Mapping(target = "description", source = "item.description")
 	@Mapping(target = "firstOwnedDate", source = "item.firstOwnedDate")
 	@Mapping(target = "wishCount", source = "item.wishCount")
 	@Mapping(target = "offerAllowed", source = "item.offerAllowed")

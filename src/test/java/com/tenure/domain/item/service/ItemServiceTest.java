@@ -341,7 +341,7 @@ class ItemServiceTest {
 	/** 등록 시점에 최초 보유 날짜를 넣어 둔 아이템. 그 값이 최초 구간의 시작일과 같다. */
 	private static Item item() {
 		Item item = Item.register(user(), leafCategory(), "LVC 1955 501", "Levis", "L",
-				WearTarget.MALE, "item/cover.jpg", null, FIRST_OWNED);
+				WearTarget.MALE, "item/cover.jpg", FIRST_OWNED);
 		ReflectionTestUtils.setField(item, "id", ITEM_ID);
 		return item;
 	}

@@ -168,8 +168,6 @@ class ItemControllerTest extends ControllerSliceTestSupport {
 				.name("LVC 1955 501")
 				.coverImageUrl("/uploads/item/2026/09/a.jpg")
 				.saleStatus(saleStatus)
-				.wishCount(5)
-				.offerAllowed(false)
 				.lastWornDate(LocalDate.of(2026, 5, 26))
 				.listing(price == null ? null
 						: ItemListingSummaryResponse.builder().id(300L).price(price).build())

@@ -233,7 +233,7 @@ class ItemRepositoryTest extends RepositorySliceTestSupport {
 	private Item persistItem(User registrant, Long categoryId, String name) {
 		Category category = em.find(Category.class, categoryId);
 		Item item = Item.register(registrant, category, name, "Levis", "L",
-				WearTarget.UNISEX, "item/2026/09/a.jpg", null, LocalDate.of(2025, 2, 8));
+				WearTarget.UNISEX, "item/2026/09/a.jpg", LocalDate.of(2025, 2, 8));
 		em.persist(item);
 		flush();
 		return item;

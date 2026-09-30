@@ -49,9 +49,6 @@ public class ItemUpdateRequest {
 	@Size(max = 500)
 	private String coverImageKey;
 
-	@Schema(description = "제품 설명")
-	private String description;
-
 	@Schema(description = "구매 제안 허용 토글", example = "true")
 	private Boolean offerAllowed;
 }

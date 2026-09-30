@@ -8,6 +8,7 @@ import com.tenure.domain.item.dto.response.ItemOwnershipHistoryResponse;
 import com.tenure.domain.item.dto.response.ItemRecommendationResponse;
 import com.tenure.domain.item.dto.response.ItemResponse;
 import com.tenure.domain.item.dto.response.ItemSummaryResponse;
+import com.tenure.domain.item.dto.response.TaggableItemResponse;
 import com.tenure.global.pagination.CursorResponse;
 import com.tenure.global.response.BaseResponse;
 import com.tenure.global.security.AuthUser;
@@ -134,12 +135,13 @@ public interface ItemApi {
 
 	@Operation(summary = "태그 가능한 내 아이템",
 			description = "현재 소유 구간이 열려 있는 본인 아이템만 내려간다. "
+					+ "행마다 '최근 착용 7일 전 · OOTD 인증 : 2회' 를 그리며, 인증 횟수는 현재 소유 구간 기준이다. "
 					+ "게시 후 그 아이템을 팔아도 과거 태그는 그대로 남는다.")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "조회 성공"),
 			@ApiResponse(responseCode = "400", description = "COMMON_400 — 커서 형식 오류 또는 size 범위 초과")
 	})
-	ResponseEntity<BaseResponse<CursorResponse<ItemSummaryResponse>>> getTaggableItems(
+	ResponseEntity<BaseResponse<CursorResponse<TaggableItemResponse>>> getTaggableItems(
 			@Parameter(hidden = true) AuthUser authUser,
 			@Parameter(description = "브랜드명·아이템명 부분 일치") String keyword,
 			@Parameter(description = "직전 응답의 nextCursor. 첫 페이지는 비운다") String cursor,

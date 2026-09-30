@@ -74,7 +74,12 @@ public class Item extends BaseEntity {
 	@Column(name = "cover_image_key", nullable = false, length = 500)
 	private String coverImageKey;
 
-	/** '제품 설명' / '상품 설명' */
+	/**
+	 * '제품 설명' / '상품 설명'.
+	 *
+	 * 입력 화면도 표시 화면도 없어 API 로는 채우지 않는다 — 화면의 '상품 설명' 은
+	 * 판매 전환에서 받는 item_listing.seller_note 다. 컬럼은 남겨 두고 쓰는 화면이 생기면 연다.
+	 */
 	@Column(name = "description", columnDefinition = "TEXT")
 	private String description;
 
@@ -117,7 +122,7 @@ public class Item extends BaseEntity {
 	public static Item register(
 			User registrant, Category category, String name, String brandName,
 			String sizeLabel, WearTarget wearTarget, String coverImageKey,
-			String description, LocalDate firstOwnedDate
+			LocalDate firstOwnedDate
 	) {
 		return Item.builder()
 				.registrant(registrant)
@@ -127,7 +132,6 @@ public class Item extends BaseEntity {
 				.sizeLabel(sizeLabel)
 				.wearTarget(wearTarget)
 				.coverImageKey(coverImageKey)
-				.description(description)
 				.firstOwnedDate(firstOwnedDate)
 				.offerAllowed(false)
 				.wishCount(0)
@@ -142,7 +146,7 @@ public class Item extends BaseEntity {
 	 */
 	public void update(
 			Category category, String name, String brandName, String sizeLabel,
-			WearTarget wearTarget, String coverImageKey, String description
+			WearTarget wearTarget, String coverImageKey
 	) {
 		if (category != null) {
 			this.category = category;
@@ -161,9 +165,6 @@ public class Item extends BaseEntity {
 		}
 		if (coverImageKey != null) {
 			this.coverImageKey = coverImageKey;
-		}
-		if (description != null) {
-			this.description = description;
 		}
 	}
 

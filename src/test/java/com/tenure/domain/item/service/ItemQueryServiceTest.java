@@ -14,6 +14,7 @@ import com.tenure.domain.category.entity.Category;
 import com.tenure.domain.item.dto.response.ItemOwnershipHistoryResponse;
 import com.tenure.domain.item.dto.response.ItemResponse;
 import com.tenure.domain.item.dto.response.ItemSummaryResponse;
+import com.tenure.domain.item.dto.response.TaggableItemResponse;
 import com.tenure.domain.item.entity.Item;
 import com.tenure.domain.item.entity.ItemOwnership;
 import com.tenure.domain.item.enums.WearTarget;
@@ -125,23 +126,22 @@ class ItemQueryServiceTest {
 		}
 
 		@Test
-		@DisplayName("관심 수와 구매 제안 허용은 아이템에서 읽는다 — 판매 등록이 없어도 값이 있다")
-		void publicAttributes_comeFromItem() {
+		@DisplayName("화면이 그리는 것만 싣는다 — 판매 등록이 없으면 listing 만 빈다")
+		void list_carriesOnlyWhatScreenDraws() {
 			givenUrlPrefix();
-			Item item = item();
-			ReflectionTestUtils.setField(item, "wishCount", 5);
-			ReflectionTestUtils.setField(item, "offerAllowed", true);
-
 			given(itemRepository.findOwnedItems(anyLong(), any(), any(), anyInt()))
-					.willReturn(List.of(item));
-			given(itemWearRecordRepository.findLastWornDates(any())).willReturn(List.of());
+					.willReturn(List.of(item()));
+			given(itemWearRecordRepository.findLastWornDates(any()))
+					.willReturn(List.<Object[]>of(new Object[]{ITEM_ID, LocalDate.of(2026, 5, 26)}));
 			given(itemListingRepository.findLatestByItemIds(any())).willReturn(List.of());
 
 			ItemSummaryResponse row = itemQueryService.getMyItems(USER_ID, null, null, 20)
 					.getContent().get(0);
 
-			assertThat(row.getWishCount()).isEqualTo(5);
-			assertThat(row.getOfferAllowed()).isTrue();
+			// 관심 수·구매 제안은 목록 화면이 그리지 않아 DTO 에 칸 자체가 없다
+			assertThat(row).hasNoNullFieldsOrPropertiesExcept("listing");
+			assertThat(row.getSaleStatus()).isEqualTo(SaleStatus.NOT_FOR_SALE);
+			assertThat(row.getLastWornDate()).isEqualTo(LocalDate.of(2026, 5, 26));
 		}
 	}
 
@@ -160,7 +160,7 @@ class ItemQueryServiceTest {
 			given(itemWearRecordRepository.countCurrentOwnershipWears(any()))
 					.willReturn(List.<Object[]>of(new Object[]{ITEM_ID, 2L}));
 
-			ItemSummaryResponse row = itemQueryService.getTaggableItems(USER_ID, null, null, 20)
+			TaggableItemResponse row = itemQueryService.getTaggableItems(USER_ID, null, null, 20)
 					.getContent().get(0);
 
 			assertThat(row.getLastWornDate()).isEqualTo(LocalDate.of(2026, 5, 26));
@@ -176,7 +176,7 @@ class ItemQueryServiceTest {
 			given(itemWearRecordRepository.findLastWornDates(any())).willReturn(List.of());
 			given(itemWearRecordRepository.countCurrentOwnershipWears(any())).willReturn(List.of());
 
-			ItemSummaryResponse row = itemQueryService.getTaggableItems(USER_ID, null, null, 20)
+			TaggableItemResponse row = itemQueryService.getTaggableItems(USER_ID, null, null, 20)
 					.getContent().get(0);
 
 			assertThat(row.getWearCount()).isZero();
@@ -192,11 +192,11 @@ class ItemQueryServiceTest {
 			given(itemWearRecordRepository.findLastWornDates(any())).willReturn(List.of());
 			given(itemWearRecordRepository.countCurrentOwnershipWears(any())).willReturn(List.of());
 
-			ItemSummaryResponse row = itemQueryService.getTaggableItems(USER_ID, null, null, 20)
+			TaggableItemResponse row = itemQueryService.getTaggableItems(USER_ID, null, null, 20)
 					.getContent().get(0);
 
-			assertThat(row.getSaleStatus()).isNull();
-			assertThat(row.getListing()).isNull();
+			// 판매 상태를 담을 칸 자체가 DTO 에 없다
+			assertThat(row).hasNoNullFieldsOrPropertiesExcept("lastWornDate");
 			verifyNoInteractions(itemListingRepository);
 		}
 	}
@@ -306,7 +306,7 @@ class ItemQueryServiceTest {
 
 	private static Item item() {
 		Item item = Item.register(user(USER_ID), leafCategory(), "LVC 1955 501", "Levis", "L",
-				WearTarget.MALE, "item/cover.jpg", null, null);
+				WearTarget.MALE, "item/cover.jpg", null);
 		ReflectionTestUtils.setField(item, "id", ITEM_ID);
 		ReflectionTestUtils.setField(item, "createdAt", java.time.LocalDateTime.now());
 		return item;

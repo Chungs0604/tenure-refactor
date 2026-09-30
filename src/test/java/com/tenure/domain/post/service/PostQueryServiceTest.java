@@ -550,7 +550,7 @@ class PostQueryServiceTest {
 
 	private static Item item(User owner, Long id, String name) {
 		Item item = Item.register(owner, null, name, "Levis", "L",
-				WearTarget.UNISEX, "item/2026/09/a.jpg", null, LocalDate.now().minusYears(1));
+				WearTarget.UNISEX, "item/2026/09/a.jpg", LocalDate.now().minusYears(1));
 		ReflectionTestUtils.setField(item, "id", id);
 		return item;
 	}

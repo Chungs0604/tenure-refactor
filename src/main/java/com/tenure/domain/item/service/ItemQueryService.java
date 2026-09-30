@@ -8,6 +8,7 @@ import com.tenure.domain.item.dto.response.ItemRecommendationResponse;
 import com.tenure.domain.item.dto.response.ItemResponse;
 import com.tenure.domain.item.dto.response.ItemSummaryResponse;
 import com.tenure.domain.item.dto.response.ItemWornWithResponse;
+import com.tenure.domain.item.dto.response.TaggableItemResponse;
 import com.tenure.domain.item.entity.Item;
 import com.tenure.domain.item.entity.ItemOwnership;
 import com.tenure.domain.item.enums.RecommendationBlock;
@@ -119,7 +120,7 @@ public class ItemQueryService {
 	 * 판매 상태는 그리지 않으므로 판매 등록을 읽지 않는다.
 	 */
 	@Loggable("태그 가능한 아이템 조회")
-	public CursorSlice<ItemSummaryResponse> getTaggableItems(
+	public CursorSlice<TaggableItemResponse> getTaggableItems(
 			Long userId, String keyword, Cursor cursor, int size
 	) {
 		List<Item> items = itemRepository.findOwnedItems(userId, keyword, cursor, size);
@@ -134,7 +135,7 @@ public class ItemQueryService {
 		Map<Long, LocalDate> lastWornDates = lastWornDatesOf(itemIds);
 		Map<Long, Integer> wearCounts = currentWearCountsOf(itemIds);
 
-		return slice.map(item -> toTaggableSummary(
+		return slice.map(item -> toTaggableItem(
 				item,
 				lastWornDates.get(item.getId()),
 				wearCounts.getOrDefault(item.getId(), 0)));
@@ -350,16 +351,16 @@ public class ItemQueryService {
 	}
 
 	/** 태그 시트 행. 판매 상태 자리는 비우고 인증 횟수를 채운다. */
-	private ItemSummaryResponse toTaggableSummary(Item item, LocalDate lastWornDate, int wearCount) {
-		return itemMapper.toItemSummaryResponse(
-				item, fileStorage.toUrl(item.getCoverImageKey()), null, lastWornDate, wearCount, null);
+	private TaggableItemResponse toTaggableItem(Item item, LocalDate lastWornDate, int wearCount) {
+		return itemMapper.toTaggableItemResponse(
+				item, fileStorage.toUrl(item.getCoverImageKey()), lastWornDate, wearCount);
 	}
 
 	/** 내 옷장 행. 인증 횟수 자리는 비우고 판매 상태를 채운다. */
 	private ItemSummaryResponse toSummary(Item item, LocalDate lastWornDate, ItemListing listing) {
 		return itemMapper.toItemSummaryResponse(
 				item, fileStorage.toUrl(item.getCoverImageKey()), saleStatusOf(listing),
-				lastWornDate, null, toListingSummary(listing));
+				lastWornDate, toListingSummary(listing));
 	}
 
 	/** 판매 등록이 없는 것과 판매를 내린 것을 화면은 똑같이 '미판매' 로 그린다. */

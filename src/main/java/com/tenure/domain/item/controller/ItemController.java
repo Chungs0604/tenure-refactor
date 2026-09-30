@@ -8,6 +8,7 @@ import com.tenure.domain.item.dto.response.ItemOwnershipHistoryResponse;
 import com.tenure.domain.item.dto.response.ItemRecommendationResponse;
 import com.tenure.domain.item.dto.response.ItemResponse;
 import com.tenure.domain.item.dto.response.ItemSummaryResponse;
+import com.tenure.domain.item.dto.response.TaggableItemResponse;
 import com.tenure.domain.item.service.ItemQueryService;
 import com.tenure.domain.item.service.ItemService;
 import com.tenure.global.pagination.CursorCodec;
@@ -69,13 +70,13 @@ public class ItemController implements ItemApi {
 	// 태그 가능한 내 아이템
 	@Override
 	@GetMapping("/me/taggable")
-	public ResponseEntity<BaseResponse<CursorResponse<ItemSummaryResponse>>> getTaggableItems(
+	public ResponseEntity<BaseResponse<CursorResponse<TaggableItemResponse>>> getTaggableItems(
 			@AuthenticationPrincipal AuthUser authUser,
 			@RequestParam(required = false) String keyword,
 			@RequestParam(required = false) String cursor,
 			@RequestParam(defaultValue = "20") int size
 	) {
-		CursorSlice<ItemSummaryResponse> slice = itemQueryService.getTaggableItems(
+		CursorSlice<TaggableItemResponse> slice = itemQueryService.getTaggableItems(
 				authUser.id(), keyword, cursorCodec.decode(cursor), size);
 
 		return ResponseEntity.ok(BaseResponse.success(cursorCodec.toResponse(slice)));
