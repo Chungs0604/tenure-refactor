@@ -22,6 +22,7 @@ import com.tenure.domain.item.enums.WearTarget;
 import com.tenure.domain.item.exception.ItemErrorCode;
 import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
+import com.tenure.domain.listing.enums.SaleStatus;
 import com.tenure.domain.listing.repository.ItemListingRepository;
 import com.tenure.domain.order.repository.TradeOrderRepository;
 import com.tenure.domain.user.entity.User;
@@ -259,7 +260,8 @@ class ItemServiceTest {
 		void delete_onSale_rejected() {
 			Item item = item();
 			givenDeletableItem(item);
-			given(itemListingRepository.existsOnSale(ITEM_ID)).willReturn(true);
+			given(itemListingRepository.existsByItemIdAndSaleStatus(ITEM_ID, SaleStatus.ON_SALE))
+					.willReturn(true);
 
 			assertThatThrownBy(() -> itemService.delete(USER_ID, ITEM_ID))
 					.isInstanceOf(CustomException.class)
@@ -287,7 +289,8 @@ class ItemServiceTest {
 		private void givenDeletableItem(Item item) {
 			given(itemRepository.findActiveWithCategory(ITEM_ID)).willReturn(Optional.of(item));
 			given(itemOwnershipRepository.findCurrent(ITEM_ID)).willReturn(Optional.of(ownershipOf(item, user())));
-			given(itemListingRepository.existsOnSale(ITEM_ID)).willReturn(false);
+			given(itemListingRepository.existsByItemIdAndSaleStatus(ITEM_ID, SaleStatus.ON_SALE))
+					.willReturn(false);
 			given(tradeOrderRepository.existsInProgress(anyLong(), any())).willReturn(false);
 		}
 	}

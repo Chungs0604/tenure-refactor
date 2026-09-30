@@ -13,6 +13,7 @@ import com.tenure.domain.item.entity.ItemOwnership;
 import com.tenure.domain.item.exception.ItemErrorCode;
 import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
+import com.tenure.domain.listing.enums.SaleStatus;
 import com.tenure.domain.listing.repository.ItemListingRepository;
 import com.tenure.domain.order.enums.OrderStatus;
 import com.tenure.domain.order.repository.TradeOrderRepository;
@@ -161,7 +162,7 @@ public class ItemService {
 		Item item = findOwnedItem(userId, itemId);
 
 		// 판매 중이면 지울 수 없음
-		if (itemListingRepository.existsOnSale(itemId)) {
+		if (itemListingRepository.existsByItemIdAndSaleStatus(itemId, SaleStatus.ON_SALE)) {
 			log.info("판매 중이라 삭제할 수 없다 itemId={}", itemId);
 			throw new CustomException(ItemErrorCode.ITEM_409_ON_SALE);
 		}
