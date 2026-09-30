@@ -25,7 +25,7 @@ import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.item.repository.ItemWearRecordRepository;
 import com.tenure.domain.listing.entity.ItemListing;
-import com.tenure.domain.listing.enums.SaleStatus;
+import com.tenure.domain.item.enums.SaleStatus;
 import com.tenure.domain.listing.repository.ItemListingRepository;
 import com.tenure.domain.post.mapper.PostMapper;
 import com.tenure.domain.post.repository.PostImageRepository;
@@ -85,13 +85,13 @@ class ItemQueryServiceTest {
 	class GetMyItems {
 
 		@Test
-		@DisplayName("판매 등록이 없으면 미판매로 내려간다 — 화면이 두 갈래를 구분하지 않아도 된다")
+		@DisplayName("판매 등록이 없으면 아이템의 미판매 상태가 그대로 내려간다")
 		void neverListed_notForSale() {
 			givenUrlPrefix();
 			given(itemRepository.findOwnedItems(anyLong(), any(), any(), anyInt()))
 					.willReturn(List.of(item()));
 			given(itemWearRecordRepository.findLastWornDates(any())).willReturn(List.of());
-			given(itemListingRepository.findLatestByItemIds(any())).willReturn(List.of());
+			given(itemListingRepository.findOpenByItemIds(any())).willReturn(List.of());
 
 			CursorSlice<ItemSummaryResponse> slice =
 					itemQueryService.getMyItems(USER_ID, null, null, 20);
@@ -102,19 +102,20 @@ class ItemQueryServiceTest {
 		}
 
 		@Test
-		@DisplayName("판매 등록이 있으면 그 상태와 가격을 싣는다")
+		@DisplayName("열린 판매 등록이 있으면 아이템 상태와 그 가격을 함께 싣는다")
 		void listed_carriesStatusAndPrice() {
 			givenUrlPrefix();
 			Item item = item();
+			item.changeSaleStatus(SaleStatus.ON_SALE);
 
 			// mock 안에서 mock 을 만들면 스터빙이 겹쳐 Mockito 가 미완성으로 본다
-			ItemListing listing = listing(item, SaleStatus.ON_SALE);
+			ItemListing listing = listing(item);
 
 			given(itemRepository.findOwnedItems(anyLong(), any(), any(), anyInt()))
 					.willReturn(List.of(item));
 			given(itemWearRecordRepository.findLastWornDates(any()))
 					.willReturn(List.<Object[]>of(new Object[]{ITEM_ID, LocalDate.of(2026, 5, 26)}));
-			given(itemListingRepository.findLatestByItemIds(any())).willReturn(List.of(listing));
+			given(itemListingRepository.findOpenByItemIds(any())).willReturn(List.of(listing));
 
 			ItemSummaryResponse row = itemQueryService.getMyItems(USER_ID, null, null, 20)
 					.getContent().get(0);
@@ -133,7 +134,7 @@ class ItemQueryServiceTest {
 					.willReturn(List.of(item()));
 			given(itemWearRecordRepository.findLastWornDates(any()))
 					.willReturn(List.<Object[]>of(new Object[]{ITEM_ID, LocalDate.of(2026, 5, 26)}));
-			given(itemListingRepository.findLatestByItemIds(any())).willReturn(List.of());
+			given(itemListingRepository.findOpenByItemIds(any())).willReturn(List.of());
 
 			ItemSummaryResponse row = itemQueryService.getMyItems(USER_ID, null, null, 20)
 					.getContent().get(0);
@@ -235,7 +236,7 @@ class ItemQueryServiceTest {
 					new Object[]{ownership.getId(), "post/a.jpg"},
 					new Object[]{ownership.getId(), "post/b.jpg"}));
 			given(itemWearRecordRepository.findLastWornDates(any())).willReturn(List.of());
-			given(itemListingRepository.findLatestByItemIds(any())).willReturn(List.of());
+			given(itemListingRepository.findOpenByItemId(ITEM_ID)).willReturn(Optional.empty());
 			given(postItemTagRepository.findFrequentlyWornWith(anyLong(), any())).willReturn(List.of());
 
 			ItemResponse response = itemQueryService.getItem(USER_ID, ITEM_ID);
@@ -312,11 +313,10 @@ class ItemQueryServiceTest {
 		return item;
 	}
 
-	private static ItemListing listing(Item item, SaleStatus saleStatus) {
+	private static ItemListing listing(Item item) {
 		ItemListing listing = mock(ItemListing.class);
 		given(listing.getId()).willReturn(LISTING_ID);
 		given(listing.getItem()).willReturn(item);
-		given(listing.getSaleStatus()).willReturn(saleStatus);
 		given(listing.getPrice()).willReturn(360000);
 		return listing;
 	}

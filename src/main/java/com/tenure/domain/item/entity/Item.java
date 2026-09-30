@@ -1,6 +1,7 @@
 package com.tenure.domain.item.entity;
 
 import com.tenure.domain.category.entity.Category;
+import com.tenure.domain.item.enums.SaleStatus;
 import com.tenure.domain.item.enums.WearTarget;
 import com.tenure.domain.user.entity.User;
 import com.tenure.global.entity.BaseEntity;
@@ -93,6 +94,17 @@ public class Item extends BaseEntity {
 	private LocalDate firstOwnedDate;
 
 	/**
+	 * 히어로 하단 배지 '판매 중' / '미판매' / '판매 완료' (DEC-026).
+	 *
+	 * 판매 등록이 없는 아이템도 '미판매' 와 '판매 완료' 를 표시하므로 아이템이 갖는다 —
+	 * 미판매 공개 페이지(2825:58233)에는 item_listing 행이 아예 없고,
+	 * 미판매 아이템이 구매 제안으로 팔린 뒤의 화면(3465:33567)도 마찬가지다.
+	 */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "sale_status", nullable = false, length = 20)
+	private SaleStatus saleStatus;
+
+	/**
 	 * '구매 제안 O' / '구매 제안 X'. 판매 등록과 무관하게 아이템에 붙는다 (DEC-024).
 	 *
 	 * 미판매 아이템에는 item_listing 행이 없는데 미판매 공개 페이지가 이 토글을 그린다.
@@ -133,6 +145,7 @@ public class Item extends BaseEntity {
 				.wearTarget(wearTarget)
 				.coverImageKey(coverImageKey)
 				.firstOwnedDate(firstOwnedDate)
+				.saleStatus(SaleStatus.NOT_FOR_SALE)
 				.offerAllowed(false)
 				.wishCount(0)
 				.build();
@@ -171,6 +184,21 @@ public class Item extends BaseEntity {
 	/** '구매 제안 허용' 토글. 미판매 아이템에도 걸린다 (DEC-024). */
 	public void changeOfferAllowed(boolean offerAllowed) {
 		this.offerAllowed = offerAllowed;
+	}
+
+	/**
+	 * 판매 상태 전이 (DEC-026).
+	 *
+	 * 네 지점에서 부른다 — 판매 전환(ON_SALE) · 미판매로 변경(NOT_FOR_SALE) ·
+	 * 결제 완료(SOLD) · 거래 취소(ON_SALE 복구). 판매 완료로 변경 메뉴는 수동 SOLD 다.
+	 * 전이 가능 여부는 판매 등록·거래를 함께 봐야 알 수 있어 Service 가 판정한다.
+	 */
+	public void changeSaleStatus(SaleStatus saleStatus) {
+		this.saleStatus = saleStatus;
+	}
+
+	public boolean isOnSale() {
+		return saleStatus == SaleStatus.ON_SALE;
 	}
 
 	/** soft delete. 태그는 남아 '삭제된 아이템' 으로 표시된다. */

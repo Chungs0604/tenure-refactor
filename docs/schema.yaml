@@ -1,11 +1,13 @@
-# Tenure DB 스키마 정본 (machine-readable) — v8
+# Tenure DB 스키마 정본 (machine-readable) — v9
+# v9: 판매 상태를 item 으로 올리고 item_listing 을 판매 조건 스냅샷으로 좁혔다(DEC-026).
+#     trade_order.listing_id 가 nullable 이 되어 미판매 아이템의 거래가 성립한다.
 # v8: 사이즈 칩 목록을 size_option 테이블로 옮기고 Q6 를 닫았다(DEC-025).
 # v7: 공개 노출 속성(wish_count · offer_allowed)을 item_listing 에서 item 으로 올렸다(DEC-024).
 # v6: 목록 페이지네이션을 커서로 통일하고(DEC-022) 검색 추천 순의 정렬 키를 확정했다(DEC-023).
 # v5: 47개 화면을 전수 재판독해 30건을 바로잡았다. 경위는 docs/design-audit.md
 # 생성: figma-to-erd 규격. docs/erd.md 의 관계 요약표·화면 인벤토리·컬럼 명세 표는 이 파일에서 생성된다.
 
-version: 8
+version: 9
 generated_from:
   figma_url: https://www.figma.com/design/hnEDDkiI0V4js9JzWR2l2M/Tenure-UXUI-%EC%9E%91%EC%97%85?node-id=813-8486&m=dev
   file_key: hnEDDkiI0V4js9JzWR2l2M
@@ -26,7 +28,7 @@ conventions:
   datetime: DATETIME(6), java_type LocalDateTime
   enum: VARCHAR + 애플리케이션 enum. DB ENUM 타입 미사용
   audit: 모든 테이블에 created_at. 변경 가능한 테이블에 updated_at
-  soft_delete: "4분류로 관리한다. (A) deleted_at 컬럼 보유: post, item — 삭제 후에도 다른 화면에서 참조되어야 하는 것. (B) 상태 컬럼으로 대체: user.status, item_listing.sale_status, chat_room_member.left_at,\n    purchase_offer.status, trade_order.status — deleted_at 을 중복으로 두지 않는다.\n(C) 하드 삭제: 취소가 곧 삭제이며 이력 가치가 없는 것(wishlist, post_like, post_save,\n    follow, user_block, search_history, recent_view, notification), 부모에 종속된 것,\n    스냅샷 덕에 참조가 끊기지 않는 것(shipping_address, payout_account).\n(D) 삭제 금지(append-only): trade_order, payment, settlement, order_status_history,\n    item_ownership, item_wear_record, purchase_offer, user_agreement, report, user_grade_history.\nA 분류 테이블을 가리키는 FK 는 전부 RESTRICT 로 고정한다."
+  soft_delete: "4분류로 관리한다. (A) deleted_at 컬럼 보유: post, item — 삭제 후에도 다른 화면에서 참조되어야 하는 것. (B) 상태 컬럼으로 대체: user.status, item_listing.closed_at, chat_room_member.left_at,\n    purchase_offer.status, trade_order.status — deleted_at 을 중복으로 두지 않는다.\n(C) 하드 삭제: 취소가 곧 삭제이며 이력 가치가 없는 것(wishlist, post_like, post_save,\n    follow, user_block, search_history, recent_view, notification), 부모에 종속된 것,\n    스냅샷 덕에 참조가 끊기지 않는 것(shipping_address, payout_account).\n(D) 삭제 금지(append-only): trade_order, payment, settlement, order_status_history,\n    item_ownership, item_wear_record, purchase_offer, user_agreement, report, user_grade_history.\nA 분류 테이블을 가리키는 FK 는 전부 RESTRICT 로 고정한다."
 domain_packages:
   note: |
     각 엔티티의 domain 필드가 가리키는 패키지다. com.tenure.domain.<이름> 아래에
@@ -468,14 +470,16 @@ screens:
   - item_id
   sort: worn_date DESC
 - id: SCR-026
-  name: 상품 상세페이지 (구매자 시점)
-  purpose: 상품 정보·Tenure 기록 기준·판매자 정보 조회, 관심 등록, 구매 진입
+  name: 아이템 상세 (공개 페이지)
+  purpose: 판매 조건·Tenure 기록 기준·판매자 정보 조회, 관심 등록, 구매 진입. 판매중/미판매/판매완료가 한 화면의 상태 변형이다
   auth_required: true
   entities:
   - Item
   - ItemListing
-  - ItemOwnership
-  - ItemWearRecord
+  - ItemMeasurement
+  - ItemCondition
+  - ListingFeaturedPost
+  - PostItemTag
   - Wishlist
   - Report
   - UserBlock
@@ -484,12 +488,32 @@ screens:
   - create
   - delete
   figma_section: 상품 상세페이지
-  evidence: '''판매 상품 상세페이지'', ''미판매 상품 상세 + 구매제안 on'', ''미판매 상품 상세 - 구매제안 off'', ''판매 완료 상세 페이지'', ''Tenure 기록 기준'''
+  evidence: '''판매 상품 상세페이지''(2825:57089), ''미판매 상품 상세 + 구매제안 on''(2825:57652), ''미판매 상품 상세 - 구매제안 off''(2825:57760), ''미판매 상품 상세 페이지''(2825:58233), ''판매 완료 상세 페이지''(2825:58566), ''판매 완료 상세 페이지 - 미판매였던 아이템''(3465:33567). 프레임 6종 모두 헤더가 ''아이템 상세''다'
+  variants:
+  - state: ON_SALE
+    sections: 히어로(가격) · 판매자 정보 · 상품 설명 · Tenure 기록 기준 · 실측 · 상태 이상 체크 · 대표 OOTD
+    cta: 채팅하기 · 구매하기
+  - state: 'NOT_FOR_SALE (판매를 내린 아이템 — listing 이력 있음)'
+    sections: 히어로('미판매') · Tenure 기록 기준 · 대표 OOTD
+    cta: 구매제안하기 (offer_allowed=false 면 비활성)
+    evidence: 2825:60351 — 판매 조건 섹션 4종이 사라지고 대표 OOTD 는 남는다
+  - state: 'NOT_FOR_SALE (판매 전환을 한 번도 안 한 아이템)'
+    sections: 히어로('미판매') · Tenure 기록 기준 · 태그된 OOTD
+    cta: 구매제안하기 (offer_allowed=false 면 비활성)
+    evidence: 2825:58233 — 대표 OOTD 가 없어 태그된 OOTD(post_item_tag)로 대체된다
+  - state: SOLD
+    sections: 히어로(흑백 처리 + '판매 완료' 초록 배지) · 판매자 정보 · Tenure 기록 기준 · 대표 OOTD 또는 태그된 OOTD
+    cta: 없음
+    evidence: 2825:58566(판매중이였던) · 3465:33567(미판매였던)
+  note: 소유 구간(ItemOwnership) 카드는 이 화면에 없다 — 'Tenure 기록 기준'은 관심·OOTD 인증·최초 보유 날짜·사이즈·착용 대상·카테고리 6칸 그리드뿐이다. 소유 구간은 소유자 시점(SCR-023)의 '아이템 히스토리'에만 있다
 - id: SCR-027
-  name: 판매 전환
-  purpose: 아이템을 판매 등록. 가격·배송비·수수료 부담·대표 OOTD·실측·상태 입력
+  name: 판매 전환 · 판매 정보 수정
+  purpose: 아이템을 판매 등록한다. 아이템 정보까지 다시 받는 전체 폼이다
   auth_required: true
   entities:
+  - Item
+  - ItemImage
+  - Category
   - ItemListing
   - ListingFeaturedPost
   - ItemMeasurement
@@ -498,8 +522,16 @@ screens:
   actions:
   - create
   - update
-  figma_section: 등록한 아이템
-  evidence: '''판매 전환 CTA 터치시 화면'', ''다 작성된 판매 전환 페이지 - 레코드 사용자 입장'', ''- 기본 사용자 입장'', ''판매 게시가 완료됐습니다.'', ''정산 계좌 없는 상태에서 판매 전환 누르면 토스트 메시지 뜨면서 화면 안 넘어가게'''
+  figma_section: 등록한 아이템 / 상품 상세페이지
+  evidence: '''판매 전환 CTA 터치시 화면''(3342:32578), ''다 작성된 판매 전환 페이지 - 레코드 사용자 입장''(3342:32943), ''- 기본 사용자 입장''(3342:33318), ''판매 게시가 완료됐습니다.''(2825:51746), ''정산 계좌를 먼저 등록해주세요.''(4765:54024)'
+  form_fields: 대표 사진* · 브랜드명* · 아이템명* · 카테고리* · 세부 카테고리* · 사이즈* · 착용 대상* · 수수료 부담* · 배송비* · 가격* · 대표 OOTD(1개 이상)* · 실측 입력 · 상태 이상 체크 · 판매자 설명
+  note: |
+    수정 화면(3342:33695 레코드 / 3342:34070 기본)은 헤더도 '판매 전환'으로 같고 필드 구성이
+    동일하다. CTA 문구만 '판매하기' / '수정하기'로 갈린다. 앞 7개 필드는 item 의 것이라
+    판매 전환·수정이 아이템도 함께 갱신한다 (B-9 해소).
+    기본 사용자는 수수료 부담 칩 3종이 비활성이고 배송비 입력란이 '0원' 플레이스홀더로 잠긴다 —
+    그 둘만 필수 표시(*)가 빠진다.
+    '최초 보유 날짜'는 이 폼에 없다. 등록 뒤 불변이라 맞다 (DEC-007 · B-10)
 - id: SCR-028
   name: 대표 OOTD 선택
   purpose: 판매 등록에 걸 OOTD 게시물을 1~5개 고른다
@@ -512,17 +544,30 @@ screens:
   - create
   - delete
   figma_section: 등록한 아이템
-  evidence: '''대표 OOTD 최대 5개 선택 화면'', ''대표 OOTD 프로토타입'', ''대표 OOTD (1개 이상)'''
+  evidence: '''대표 OOTD 최대 5개 선택 화면''(2825:52006) — 헤더 ''대표 OOTD (최대 5개)'', 내 게시물 masonry 2열, 고른 순서를 카드 우상단에 1·2·3·4 배지로 표시, 하단 CTA ''선택 완료''. ''대표 OOTD 프로토타입''(2825:51979). 전체 보기 화면은 ''대표 OOTD''(2825:61147)'
+  note: |
+    선택 화면이 그리는 것은 후보 목록(내 게시물 전체)이다. 판매 전환 중에는 아직 item_listing 이
+    없으므로 /listings/{listingId}/featured-posts 로는 후보를 가져올 수 없다 — 후보는 내 게시물
+    목록(API-081)으로 받고, 고른 결과는 판매 전환·수정 요청의 featuredPostIds 로 함께 보낸다.
+    masonry 라 후보·조회 응답 모두 aspectRatio 가 필요하다 (B-5 와 같은 이유)
 - id: SCR-029
   name: 판매 상태 변경
-  purpose: 판매중 / 미판매 / 판매 완료 전환, 구매 제안 허용 토글
+  purpose: 미판매 / 판매 완료 전환, 구매 제안 허용 토글
   auth_required: true
   entities:
+  - Item
   - ItemListing
   actions:
   - update
   figma_section: 상품 상세페이지 / 등록한 아이템
-  evidence: '''미판매로 변경시 화면'', ''판매 완료로 변경'', ''구매 제안 허용'', ''메뉴 모달'''
+  evidence: '판매 중 아이템의 ⋮ 메뉴 모달(2825:59974)은 ''수정하기'' / ''미판매로 변경하기'' / ''판매 완료로 변경하기'' / ''닫기'' 4행이다. 결과 화면은 ''미판매로 변경시 화면''(2825:60351)과 ''판매 완료로 변경''(2825:60457), 토스트는 ''변경되었습니다.'''
+  note: |
+    메뉴에 '판매 등록 삭제'가 없다 — 상태 변경이 삭제를 대신한다(delete_policy B).
+    '판매중으로 되돌리기'도 없다. 미판매 아이템을 다시 팔려면 목록의 '판매 전환' 버튼
+    (2825:52336)이나 선택 모달(3910:43234)을 거치며, 그때 새 item_listing 이 생긴다.
+    구매 제안 허용 토글은 미판매 아이템의 선택 모달에 있고 라벨이 상태에 따라
+    '구매 제안 허용'(3910:43234) ↔ '구매 제안 차단'(3910:43454)으로 바뀐다.
+    item.offer_allowed 라서 판매 상태 변경이 아니라 아이템 수정으로 처리한다 (DEC-024)
 - id: SCR-030
   name: 위시리스트
   purpose: 관심 등록한 아이템 목록, 알림 on/off
@@ -545,14 +590,15 @@ screens:
   sort: created_at DESC
 - id: SCR-031
   name: 공유하기
-  purpose: 상품 상세를 외부 앱/링크로 공유
+  purpose: 아이템 공개 페이지를 외부 앱/링크로 공유
   auth_required: true
   entities:
-  - ItemListing
+  - Item
   actions:
   - read
   figma_section: 공유하기
-  evidence: '''공유하기 모달'', ''링크 복사 클릭 시 토스트 메시지''. 저장 대상 없음'
+  evidence: '''공유하기 모달''(2825:60651) — ''링크 복사'' / ''다른 앱에 공유'' / ''닫기''. ''링크 복사 클릭 시 토스트 메시지''(2825:60720). 저장 대상 없음'
+  note: 모달이 미판매 상품 위에서 열린다(2825:60651 배경의 히어로가 '미판매'). 공유 대상은 판매 등록이 아니라 아이템 공개 페이지이므로 링크 키는 itemId 다
 - id: SCR-032
   name: 구매 제안 (미판매 상품)
   purpose: 제안 금액 입력 후 전송. 아이템당 1회
@@ -1009,8 +1055,8 @@ enums:
     ON_SALE: 판매 중
     SOLD: 판매 완료
   source: design
-  evidence: '상품 상세 프레임 4종: ''판매 상품 상세페이지'' / ''미판매 상품 상세 + 구매제안 on'' / ''미판매 상품 상세 - 구매제안 off'' / ''판매 완료 상세 페이지''. 상태 변경 프레임 ''미판매로 변경시 화면'' ''판매 완료로 변경'''
-  value_evidence_table: item_listing
+  evidence: '상품 상세 프레임 4종: ''판매 상품 상세페이지'' / ''미판매 상품 상세 + 구매제안 on'' / ''미판매 상품 상세 - 구매제안 off'' / ''판매 완료 상세 페이지''. 상태 변경 프레임 ''미판매로 변경시 화면'' ''판매 완료로 변경''. 거래 진행 중을 나타내는 값은 없다 — 위시리스트의 ''거래중'' 탭(2825:45934)은 trade_order 조인으로 파생시킨다'
+  value_evidence_table: item
 - name: FeeBearer
   values:
   - SELLER
@@ -2198,7 +2244,7 @@ entities:
     enforced_by: application
     source: design
     evidence: 게시물 미리보기(3380:33759)의 버튼은 '태그 수정'과 '게시하기' 둘뿐이다. v3 의 content 컬럼은 홈 헤더 인사말 '안녕하세요 SSU님!'을 본문 예시로 잘못 인용해 생긴 것이라 v5 에서 제거했다
-  - rule: 판매 중(item_listing.sale_status=ON_SALE)인 상품의 대표 OOTD로 걸린 게시물은 삭제 불가
+  - rule: 판매 중(item.sale_status=ON_SALE)인 아이템의 대표 OOTD로 걸린 게시물은 삭제 불가
     enforced_by: application
     source: inferred
     evidence: '''대표 OOTD (1개 이상)'' 제약과 충돌하므로. 판매 종료 후에는 삭제 가능'
@@ -2744,6 +2790,15 @@ entities:
     nullable: true
     source: design
     evidence: '''최초 보유 날짜''. 예 25.02.8. 최초 item_ownership 구간의 start_date 와 같은 값이며, 등록 뒤에는 수정할 수 없다 (DEC-007)'
+  - name: saleStatus
+    column: sale_status
+    db_type: VARCHAR(20)
+    java_type: SaleStatus
+    nullable: false
+    default: NOT_FOR_SALE
+    enum: SaleStatus
+    source: design
+    evidence: '히어로 하단 배지 ''판매 중''(2825:57089) / ''미판매''(2825:58233) / ''판매 완료''(2825:58566). 세 화면 모두 헤더가 ''아이템 상세''이고 판매 등록이 없는 아이템도 ''미판매''·''판매 완료''를 표시하므로 아이템이 갖는다 (DEC-026)'
   - name: offerAllowed
     column: offer_allowed
     db_type: BOOLEAN
@@ -2793,11 +2848,25 @@ entities:
     - registrant_id
     - deleted_at
     unique: false
+  - name: ix_item_sale_status
+    columns:
+    - sale_status
+    - deleted_at
+    unique: false
+    note: 검색 필터의 판매 상태 3모드(2825:38802). DEC-026 으로 상태가 아이템에 오면서 item_listing 조인이 사라졌다
   constraints:
   - rule: 판매 중이거나 진행 중 거래가 있으면 삭제 불가
     enforced_by: application
     source: inferred
     evidence: 거래 무결성. 화면에 명시 문구는 없음
+  - rule: 'sale_status 전이는 네 곳에서만 일어난다 — 판매 전환(→ON_SALE) · 미판매로 변경(→NOT_FOR_SALE) · 결제 완료(→SOLD) · 거래 취소(→ON_SALE 복구). 판매 완료로 변경 메뉴는 수동 SOLD 다'
+    enforced_by: application
+    source: design
+    evidence: 메뉴 모달(2825:59974)의 '미판매로 변경하기'·'판매 완료로 변경하기' + 목록(2825:52336)의 '판매 전환' 버튼 (DEC-026)
+  - rule: sale_status=ON_SALE 이면 closed_at 이 비어 있는 item_listing 이 정확히 1개 있어야 한다
+    enforced_by: application
+    source: inferred
+    evidence: 판매 중 상세가 가격·배송비·수수료 부담을 그리려면 열린 판매 등록이 있어야 한다 (DEC-026)
 - name: ItemImage
   table: item_image
   domain: item
@@ -3231,10 +3300,10 @@ entities:
 - name: ItemListing
   table: item_listing
   domain: listing
-  description: 아이템의 판매 등록('판매 전환'). 아이템이 재판매될 때마다 새 행이 생기므로 Item 과 1:N 이다. 생성 전제로 판매자에게 PayoutAccount 가 있어야 한다. 판매 조건만 갖는다 — 관심 수와 구매 제안 허용은 판매와 무관하게 살아 있어야 해서 Item 으로 올렸다 (DEC-024).
+  description: 아이템을 어떤 조건으로 팔았는지를 담는 판매 조건 스냅샷('판매 전환'). 판매 전환을 누를 때마다 새 행이 생기므로 Item 과 1:N 이고, 열린 행(closed_at IS NULL)은 아이템당 최대 1개다. 생성 전제로 판매자에게 PayoutAccount 가 있어야 한다. 판매 상태(sale_status)는 판매 등록이 없는 아이템도 '미판매'·'판매 완료'를 표시해야 해서 Item 으로 올렸다 (DEC-026). 관심 수와 구매 제안 허용도 같은 이유로 Item 에 있다 (DEC-024).
   soft_delete: false
   delete_policy: B
-  delete_rationale: sale_status + closed_at 으로 상태 관리. 거래가 참조하므로 물리 삭제하지 않는다
+  delete_rationale: closed_at 으로 판매 종료를 표시한다. 거래·제안·채팅이 조건 스냅샷으로 참조하므로 물리 삭제하지 않는다
   source: design
   evidence:
   - 등록한 아이템 > 판매 전환
@@ -3263,21 +3332,13 @@ entities:
     nullable: false
     source: design
     evidence: '''판매자 정보'' 섹션'
-  - name: saleStatus
-    column: sale_status
-    db_type: VARCHAR(20)
-    java_type: SaleStatus
-    nullable: false
-    enum: SaleStatus
-    source: design
-    evidence: '''판매 중'' / ''미판매'' / 판매 완료 배지'
   - name: price
     column: price
     db_type: INT
     java_type: Integer
-    nullable: true
+    nullable: false
     source: design
-    evidence: '''가격'' 360,000원. 미판매면 NULL'
+    evidence: '''가격'' 320,000원 (필수 표시 *). 판매 전환 폼에서 반드시 받으므로 NOT NULL 이다 — 미판매는 행이 없거나 닫힌 행이지 가격이 빈 행이 아니다 (DEC-026)'
   - name: shippingFee
     column: shipping_fee
     db_type: INT
@@ -3305,16 +3366,16 @@ entities:
     column: listed_at
     db_type: DATETIME(6)
     java_type: LocalDateTime
-    nullable: true
+    nullable: false
     source: design
-    evidence: '''판매 게시가 완료됐습니다.'''
+    evidence: '''판매 게시가 완료됐습니다.''(2825:51746) — 행이 생기는 순간이 곧 게시 시각이라 NOT NULL 이다'
   - name: closedAt
     column: closed_at
     db_type: DATETIME(6)
     java_type: LocalDateTime
     nullable: true
     source: design
-    evidence: '''미판매로 변경시 화면'' — 판매 내림 시각'
+    evidence: '''미판매로 변경시 화면''(2825:60351) — 판매를 내린 시각. NULL 이면 열려 있는 판매 등록이고 아이템당 1개뿐이다 (DEC-026)'
   - name: createdAt
     column: created_at
     db_type: DATETIME(6)
@@ -3333,15 +3394,20 @@ entities:
   - name: ix_item_listing_item
     columns:
     - item_id
-    - created_at
+    - closed_at
     unique: false
+    note: 열린 판매 등록 1건을 찾는 조회가 가장 잦다. 폼 프리필은 같은 인덱스로 item_id 만 훑는다
   - name: ix_item_listing_seller
     columns:
     - seller_id
-    - sale_status
+    - listed_at
     unique: false
-    note: 판매 내역 탭
+    note: 판매자별 게시 이력. sale_status 가 Item 으로 가면서(DEC-026) 상태 필터는 여기서 못 건다
   constraints:
+  - rule: item_id 당 closed_at IS NULL 인 행은 최대 1개다
+    enforced_by: application
+    source: inferred
+    evidence: 열린 판매 등록이 둘이면 상세가 어느 가격을 그릴지 정할 수 없다. 미판매로 내릴 때 closed_at 을 찍으므로 자연히 유지된다 (DEC-026)
   - rule: 생성 시 판매자에게 payout_account 가 1개 이상 있어야 한다
     enforced_by: application
     source: design
@@ -3354,6 +3420,15 @@ entities:
     enforced_by: application
     source: design
     evidence: 확정 사양
+  - rule: 닫힌 행(closed_at IS NOT NULL)은 다시 열지 않는다. 미판매로 내린 뒤 판매 전환을 다시 누르면 새 행을 만든다
+    enforced_by: application
+    source: inferred
+    evidence: |
+      행을 되살려 UPDATE 하면 그 행을 가리키는 purchase_offer·chat_room 의 조건 스냅샷이
+      사후에 바뀐다. CLAUDE.md 의 '금액은 거래 시점 스냅샷이며 원본이 바뀌어도 거래는 불변'
+      원칙과 충돌한다. 화면은 목록 행 버튼(2825:52336)과 선택 모달(3910:43234) 모두 '판매 전환'
+      하나뿐이라 신규·재등록을 구분하지 않는다 — 서버가 항상 새 행으로 처리한다.
+      폼 프리필은 같은 아이템의 최신 닫힌 행에서 읽는다 (안내사항 3633:34232) (DEC-026)
 - name: ListingFeaturedPost
   table: listing_featured_post
   domain: listing
@@ -3395,8 +3470,15 @@ entities:
     java_type: Integer
     nullable: false
     default: 0
+    source: design
+    evidence: '선택 화면(2825:52006)이 고른 순서를 카드 우상단에 1·2·3·4 배지로 표시한다. 상세의 가로 스크롤이 그 순서를 그대로 따른다'
+  - name: createdAt
+    column: created_at
+    db_type: DATETIME(6)
+    java_type: LocalDateTime
+    nullable: false
     source: inferred
-    evidence: 노출 순서
+    evidence: 감사 컬럼 관례. v8 까지 빠져 있었다
   indexes:
   - name: uk_listing_featured_post
     columns:
@@ -3904,9 +3986,9 @@ entities:
     column: listing_id
     db_type: BIGINT
     java_type: Long
-    nullable: false
-    source: inferred
-    evidence: 판매 등록 참조
+    nullable: true
+    source: design
+    evidence: '거래가 성립한 판매 조건 스냅샷. 미판매 아이템의 구매 제안(purchase_offer.listing_id IS NULL)에서 시작한 거래는 여기도 NULL 이다 — 그런 거래를 거친 아이템도 ''판매 완료 상세 - 미판매였던 아이템''(3465:33567) 화면을 갖는다. 판매 상태는 item.sale_status 가 들고 있으므로 이 값이 없어도 화면이 성립한다 (DEC-026)'
   - name: itemId
     column: item_id
     db_type: BIGINT
@@ -5853,6 +5935,14 @@ derived_columns:
   master: wishlist
   update: 관심 등록·해제 트랜잭션 내 증감
   reason: 상품 상세의 '관심 14명'. 판매 등록 전 아이템도 위시에 담기고 판매를 내렸다 다시 걸어도 수가 유지돼야 해서 item 이 갖는다 (DEC-024)
+- column: item.sale_status
+  master: item_listing (열린 행의 유무) + trade_order (결제 완료 여부)
+  update: 판매 전환·미판매로 변경·결제 완료·거래 취소 네 지점에서 같은 트랜잭션 안에 쓴다
+  reason: |
+    엄밀히는 파생이지만 컬럼으로 둔다. 배지를 그리는 화면이 내 옷장·위시리스트·태그 시트·
+    검색 결과·아이템 상세로 다섯이고, 파생으로 두면 그 전부가 item_listing 과 trade_order 를
+    함께 조인해야 한다. 판매 등록이 한 번도 없던 아이템의 '판매 완료'(3465:33567)는 조인으로는
+    item_listing 을 거치지도 못한다 (DEC-026)
 - column: post.view_count
   master: Redis post-view:{postId}
   update: 조회 시 Redis INCR, 주기 배치가 컬럼에 더한다
@@ -6098,6 +6188,7 @@ design_decisions:
     chat_room.listing_id 가 이미 '미판매 아이템이면 NULL 가능' 이었으므로 방향은 일관된다.
     '미판매'는 두 경로(listing 행 없음 / 최신 listing 이 NOT_FOR_SALE)로 생기므로 API 응답에서는
     saleStatus 를 아이템 레벨로 평탄화해 하나로 내려준다
+  superseded_by: 평탄화는 DEC-026 에서 sale_status 를 item 컬럼으로 올리며 사라졌다. 관심 수·구매 제안 허용을 옮긴 판단 자체는 유효하다
   revisit_when: 판매 중 아이템의 구매 제안 허용을 판매 등록별로 다르게 걸고 싶어지면 item_listing 에 재정의 컬럼을 더한다. item 의 값은 기본값으로 남긴다
 - id: DEC-025
   topic: 카테고리별 사이즈 칩을 어디에 두는가 (Q6 해소)
@@ -6121,6 +6212,34 @@ design_decisions:
     item.size_label 을 FK 로 묶지는 않았다. 사이즈 체계를 나중에 손보더라도 이미 등록된 아이템의
     기록이 흔들리면 안 된다 — 금액·배송지를 스냅샷으로 두는 것과 같은 이유다.
   revisit_when: 대분류 안에서 세부 카테고리마다 칩이 갈리는 화면이 생기면 category.size_scheme 을 depth=2 에도 채우고 '가장 가까운 조상' 규칙으로 읽는다. 테이블 구조는 그대로 쓸 수 있다
+- id: DEC-026
+  topic: 판매 상태(sale_status)를 어느 테이블에 두는가
+  considered:
+  - item_listing 에 그대로 둔다 (기존)
+  - item_listing 에 두고 없는 경우는 trade_order 조인으로 판정한다
+  - item 으로 올리고 item_listing 은 조건 스냅샷만 갖는다
+  decision: sale_status 를 item 으로 올린다. item_listing 은 가격·배송비·수수료 부담·판매자 설명과 listed_at·closed_at 만 갖고, trade_order.listing_id 는 nullable 로 바꾼다
+  rationale: |
+    상태를 판매 등록 행이 들고 있으면 등록이 없는 아이템은 상태를 표현할 수 없다.
+    그런데 화면에는 그런 아이템이 둘 있다.
+      1. 미판매 공개 페이지(2825:58233) — 판매 전환을 한 번도 안 한 아이템에 '미판매' 배지가 붙는다
+      2. 판매 완료 상세 - 미판매였던 아이템(3465:33567) — 미판매 아이템이 구매 제안으로 팔린 뒤의
+         화면이다. listing 행이 없는데 '판매 완료'를 표시한다
+    2번은 trade_order.listing_id 가 NOT NULL 이라 거래를 만드는 것부터 막혀 있었다 —
+    purchase_offer.listing_id 만 nullable 로 바꾼 DEC-024 가 거기까지 따라가지 못했다.
+    세 화면의 헤더가 전부 '아이템 상세'이고 판매중/미판매/판매완료가 한 화면의 상태 변형으로
+    그려진다는 것이 결정적이다. 상태는 아이템의 것이고 item_listing 은 '어떤 조건으로 팔았는가'다.
+    조인으로 판정하는 안은 택하지 않았다. 배지를 그리는 화면이 내 옷장·위시리스트·태그 시트·
+    검색 결과·아이템 상세로 다섯인데 전부 두 테이블을 더 붙여야 하고, listing 도메인이 order
+    도메인에 의존하게 된다. wish_count 를 이미 비정규화 컬럼으로 둔 것과 같은 판단이다.
+    SOLD 로 넘어가는 시점은 결제 완료(판매자의 제안 수락)다. CLAUDE.md 가 '제안 시 승인 →
+    판매자 수락 시 확정(captured_at)'이므로 수락하는 순간 돈이 빠져나가고 그 아이템은 더 살 수
+    없다 — '판매 완료' 배지가 뜻하는 바와 시점이 같다. 구매 확정은 타임라인 4단계(정산 직전)라
+    그때까지 ON_SALE 로 두면 4~7일 동안 남들 눈에 판매중으로 보인다. 발송 전 거래 취소(API-166)
+    시에는 ON_SALE 로 되돌린다.
+    수락~확정 사이의 '거래중'은 enum 값으로 두지 않는다. 배지는 화면에 3종뿐이고 거래중은
+    위시리스트 탭(2825:45934)에만 있으므로 trade_order 조인으로 파생시킨다(A-10 과 같다)
+  revisit_when: 거래중을 배지로도 그리게 되면 SaleStatus 에 IN_TRADE 를 더한다. 그때는 위시리스트 탭의 조인도 이 값으로 대체된다
 - id: DEC-101
   topic: 타인에게 보이는 프로필 필드 — 등급·키·몸무게는 공개, 성별은 비공개
   considered:
@@ -6137,7 +6256,8 @@ design_decisions:
   - 태그에 상태를 싣지 않음
   - 별도 API 로 조회
   decision: 태그 응답에 sale_status 를 함께 내려준다
-  rationale: 피그마 OOTD 상세(2791:27177)의 말풍선(2791:27203)이 `Levis LVC 1955` 아래에 `#판매중` 해시태그를 2행으로 붙인다. 같은 화면의 다른 말풍선에는 2행이 없으므로 ON_SALE 일 때만 그린다. API-071 의 images[].tags[] 에 saleStatus 를 실어 클라이언트가 말풍선 높이를 결정하게 한다. 판매 등록이 없는 아이템은 null 이다
+  rationale: 피그마 OOTD 상세(2791:27177)의 말풍선(2791:27203)이 `Levis LVC 1955` 아래에 `#판매중` 해시태그를 2행으로 붙인다. 같은 화면의 다른 말풍선에는 2행이 없으므로 ON_SALE 일 때만 그린다. API-071 의 images[].tags[] 에 saleStatus 를 실어 클라이언트가 말풍선 높이를 결정하게 한다
+  amended: 'DEC-026 으로 sale_status 가 item 컬럼이 되면서 값이 항상 있다. 이전에는 판매 등록이 없는 아이템을 null 로 내려보냈는데, 이제 NOT_FOR_SALE 로 내려간다 — 클라이언트 판정은 그대로 ''ON_SALE 일 때만 2행''이다'
 - id: DEC-103
   topic: 판매·구매 내역 목록의 구성
   considered:
@@ -6186,7 +6306,8 @@ design_decisions:
   - 제거
   - 인덱스를 쓰는 검색 API 신설
   decision: 제거함
-  rationale: 두 인덱스는 아이템 키워드 검색과 판매 중 상품 둘러보기를 전제로 만들었는데, 확정된 화면 인벤토리에 그런 화면이 없다. 검색 결과(SCR-046)의 탭은 게시물과 계정 2종뿐이고 아이템은 게시물의 태그를 통해서만 도달한다. API 명세 97개 중 두 인덱스를 쓰는 엔드포인트가 하나도 없다. 쓰지 않는 인덱스는 쓰기 비용만 남기므로 스킬 5-2 ⑥(과도한 인덱스 경계)을 따라 제거한다. 아이템 키워드 조회는 API-098(태그 가능한 내 아이템)뿐이고 이것은 소유자 기준이라 ix_item_registrant 가 받는다. 판매 상태 필터(API-200)는 게시물에서 아이템으로 내려가는 방향이라 ix_item_listing_item 이 받는다
+  rationale: 두 인덱스는 아이템 키워드 검색과 판매 중 상품 둘러보기를 전제로 만들었는데, 확정된 화면 인벤토리에 그런 화면이 없다. 검색 결과(SCR-046)의 탭은 게시물과 계정 2종뿐이고 아이템은 게시물의 태그를 통해서만 도달한다. API 명세 전체에서 두 인덱스를 쓰는 엔드포인트가 하나도 없다. 쓰지 않는 인덱스는 쓰기 비용만 남기므로 스킬 5-2 ⑥(과도한 인덱스 경계)을 따라 제거한다. 아이템 키워드 조회는 API-098(태그 가능한 내 아이템)과 내 옷장(API-091)이고 둘 다 소유자 기준이라 ix_item_registrant 가 받는다
+  amended: DEC-026 으로 sale_status 가 item 컬럼이 되면서 판매 상태 필터(API-200)는 item_listing 을 거치지 않는다. ix_item_sale_status(sale_status, deleted_at) 를 item 에 뒀다 — 제거한 ix_item_listing_browse 를 되살린 것이 아니라 조인이 사라진 자리에 새로 둔 것이다
   revisit_when: 아이템/상품 검색 탭이나 판매 중 상품 둘러보기 화면이 디자인되면 그때 다시 추가한다. 컬럼 구성은 위 정의를 그대로 쓰면 된다
 open_questions:
 - id: Q7

@@ -8,7 +8,7 @@ import com.tenure.domain.item.enums.WearRecordVoidReason;
 import com.tenure.domain.item.enums.WearTarget;
 import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemWearRecordRepository;
-import com.tenure.domain.listing.enums.SaleStatus;
+import com.tenure.domain.item.enums.SaleStatus;
 import com.tenure.domain.listing.repository.ItemListingRepository;
 import com.tenure.domain.listing.repository.ListingFeaturedPostRepository;
 import com.tenure.domain.post.entity.Post;
@@ -348,31 +348,56 @@ class PostRepositoryTest extends RepositorySliceTestSupport {
 		}
 
 		@Test
-		@DisplayName("아이템별 최신 판매 등록을 하나씩 골라 온다 — 재판매마다 행이 쌓인다")
-		void findLatestByItemIds_returnsLatestPerItem() {
+		@DisplayName("열린 판매 등록만 골라 온다 — 판매를 내린 행은 쌓여도 빠진다")
+		void findOpenByItemIds_skipsClosedRows() {
 			Item item = persistItem(me);
-			insertListing(item, me, SaleStatus.SOLD, 300000);
-			long latestId = insertListing(item, me, SaleStatus.ON_SALE, 360000);
+			insertClosedListing(item, me, 300000);
+			long openId = insertOpenListing(item, me, 360000);
 
-			assertThat(itemListingRepository.findLatestByItemIds(List.of(item.getId())))
+			assertThat(itemListingRepository.findOpenByItemIds(List.of(item.getId())))
 					.extracting(listing -> listing.getId())
-					.containsExactly(latestId);
+					.containsExactly(openId);
 		}
 
 		@Test
-		@DisplayName("판매 중인 상품의 대표 OOTD 면 true, 판매가 끝난 등록이면 false 다")
-		void existsByPostIdAndSaleStatus_dependsOnSaleStatus() {
+		@DisplayName("판매 등록을 모두 내렸으면 열린 행이 없다")
+		void findOpenByItemIds_allClosed_returnsEmpty() {
 			Item item = persistItem(me);
+			insertClosedListing(item, me, 300000);
+
+			assertThat(itemListingRepository.findOpenByItemIds(List.of(item.getId()))).isEmpty();
+		}
+
+		@Test
+		@DisplayName("판매 중인 아이템의 대표 OOTD 면 true, 상태가 다르면 false 다")
+		void existsByPostIdAndSaleStatus_dependsOnItemSaleStatus() {
+			Item item = persistItem(me);
+			item.changeSaleStatus(SaleStatus.ON_SALE);
 			Post post = persistPost(me, LocalDate.of(2026, 6, 1));
 			flush();
 
-			long onSaleId = insertListing(item, me, SaleStatus.ON_SALE, 360000);
-			insertFeaturedPost(onSaleId, post.getId());
+			long openId = insertOpenListing(item, me, 360000);
+			insertFeaturedPost(openId, post.getId());
 
 			assertThat(listingFeaturedPostRepository
 					.existsByPostIdAndSaleStatus(post.getId(), SaleStatus.ON_SALE)).isTrue();
 			assertThat(listingFeaturedPostRepository
 					.existsByPostIdAndSaleStatus(post.getId(), SaleStatus.SOLD)).isFalse();
+		}
+
+		@Test
+		@DisplayName("판매를 내린 등록의 대표 OOTD 는 지울 수 있다 — 열린 행만 본다")
+		void existsByPostIdAndSaleStatus_closedListing_isFalse() {
+			Item item = persistItem(me);
+			item.changeSaleStatus(SaleStatus.ON_SALE);
+			Post post = persistPost(me, LocalDate.of(2026, 6, 1));
+			flush();
+
+			long closedId = insertClosedListing(item, me, 360000);
+			insertFeaturedPost(closedId, post.getId());
+
+			assertThat(listingFeaturedPostRepository
+					.existsByPostIdAndSaleStatus(post.getId(), SaleStatus.ON_SALE)).isFalse();
 		}
 
 		@Test
@@ -509,15 +534,25 @@ class PostRepositoryTest extends RepositorySliceTestSupport {
 	 * 판매 등록을 직접 넣는다 — listing 도메인에 아직 팩토리가 없다. 여기서 확인하는 것은
 	 * '아이템별 최신 한 건' 을 고르는 쿼리라 행의 출처는 중요하지 않다.
 	 */
-	private long insertListing(Item item, User seller, SaleStatus saleStatus, int price) {
+	/** 열린 판매 등록. closed_at 이 비어 있는 행은 아이템당 하나다 (DEC-026). */
+	private long insertOpenListing(Item item, User seller, int price) {
+		return insertListing(item, seller, price, false);
+	}
+
+	/** 판매를 내린 뒤 남은 행. */
+	private long insertClosedListing(Item item, User seller, int price) {
+		return insertListing(item, seller, price, true);
+	}
+
+	private long insertListing(Item item, User seller, int price, boolean closed) {
 		em.createNativeQuery("insert into item_listing "
-						+ "(item_id, seller_id, sale_status, price, shipping_fee, "
-						+ "fee_bearer, created_at, updated_at) "
-						+ "values (?, ?, ?, ?, 0, 'SELLER', now(6), now(6))")
+						+ "(item_id, seller_id, price, shipping_fee, fee_bearer, "
+						+ "listed_at, closed_at, created_at, updated_at) "
+						+ "values (?, ?, ?, 0, 'SELLER', now(6), ?, now(6), now(6))")
 				.setParameter(1, item.getId())
 				.setParameter(2, seller.getId())
-				.setParameter(3, saleStatus.name())
-				.setParameter(4, price)
+				.setParameter(3, price)
+				.setParameter(4, closed ? java.time.LocalDateTime.now() : null)
 				.executeUpdate();
 
 		return ((Number) em.createNativeQuery("select max(id) from item_listing").getSingleResult())
@@ -525,8 +560,9 @@ class PostRepositoryTest extends RepositorySliceTestSupport {
 	}
 
 	private void insertFeaturedPost(long listingId, long postId) {
-		em.createNativeQuery("insert into listing_featured_post (listing_id, post_id, sort_order) "
-						+ "values (?, ?, 0)")
+		em.createNativeQuery("insert into listing_featured_post "
+						+ "(listing_id, post_id, sort_order, created_at) "
+						+ "values (?, ?, 0, now(6))")
 				.setParameter(1, listingId)
 				.setParameter(2, postId)
 				.executeUpdate();

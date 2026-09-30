@@ -55,9 +55,15 @@ public class TradeOrder extends BaseEntity {
 	@JoinColumn(name = "offer_id", nullable = false)
 	private PurchaseOffer offer;
 
-	/** 판매 등록 참조 */
-	@ManyToOne(fetch = FetchType.LAZY, optional = false)
-	@JoinColumn(name = "listing_id", nullable = false)
+	/**
+	 * 거래가 성립한 판매 조건 스냅샷.
+	 *
+	 * 미판매 아이템의 구매 제안에서 시작한 거래는 NULL 이다 (DEC-026) — 그런 제안은
+	 * purchase_offer.listing_id 도 NULL 이라 가져올 판매 등록이 없다. 판매 상태는
+	 * item.sale_status 가 들고 있으므로 이 값이 없어도 '판매 완료' 화면이 성립한다.
+	 */
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "listing_id")
 	private ItemListing listing;
 
 	/** 거래 상세 상단 상품 정보 */

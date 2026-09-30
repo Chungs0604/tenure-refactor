@@ -2,7 +2,6 @@ package com.tenure.domain.post.mapper;
 
 import com.tenure.domain.item.entity.Item;
 import com.tenure.domain.listing.entity.ItemListing;
-import com.tenure.domain.listing.enums.SaleStatus;
 import com.tenure.domain.post.dto.response.MyPostSummaryResponse;
 import com.tenure.domain.post.dto.response.PostAuthorResponse;
 import com.tenure.domain.post.dto.response.PostImageResponse;
@@ -64,10 +63,10 @@ public interface PostMapper {
 	@Mapping(target = "itemId", source = "tag.item.id")
 	@Mapping(target = "itemName", source = "tag.item.name")
 	@Mapping(target = "brandName", source = "tag.item.brandName")
-	@Mapping(target = "saleStatus", source = "saleStatus")
+	@Mapping(target = "saleStatus", source = "tag.item.saleStatus")
 	@Mapping(target = "posX", source = "tag.posX")
 	@Mapping(target = "posY", source = "tag.posY")
-	PostTagResponse toPostTagResponse(PostItemTag tag, SaleStatus saleStatus);
+	PostTagResponse toPostTagResponse(PostItemTag tag);
 
 	@Mapping(target = "id", source = "post.id")
 	@Mapping(target = "imageUrl", source = "imageUrl")

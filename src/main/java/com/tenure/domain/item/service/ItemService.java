@@ -14,8 +14,6 @@ import com.tenure.domain.item.exception.ItemErrorCode;
 import com.tenure.domain.item.mapper.ItemMapper;
 import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
-import com.tenure.domain.listing.enums.SaleStatus;
-import com.tenure.domain.listing.repository.ItemListingRepository;
 import com.tenure.domain.order.enums.OrderStatus;
 import com.tenure.domain.order.repository.TradeOrderRepository;
 import com.tenure.domain.user.entity.User;
@@ -55,7 +53,6 @@ public class ItemService {
 	private final ItemOwnershipRepository itemOwnershipRepository;
 	private final CategoryRepository categoryRepository;
 	private final SizeOptionRepository sizeOptionRepository;
-	private final ItemListingRepository itemListingRepository;
 	private final TradeOrderRepository tradeOrderRepository;
 	private final ItemMapper itemMapper;
 	private final UserRepository userRepository;
@@ -162,8 +159,8 @@ public class ItemService {
 		// 현재 본인의 아이템인지 확인
 		Item item = findOwnedItem(userId, itemId);
 
-		// 판매 중이면 지울 수 없음
-		if (itemListingRepository.existsByItemIdAndSaleStatus(itemId, SaleStatus.ON_SALE)) {
+		// 판매 중이면 지울 수 없음. 상태는 아이템이 들고 있어 판매 등록을 읽지 않는다 (DEC-026)
+		if (item.isOnSale()) {
 			log.info("판매 중이라 삭제할 수 없다 itemId={}", itemId);
 			throw new CustomException(ItemErrorCode.ITEM_409_ON_SALE);
 		}

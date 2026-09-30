@@ -1,7 +1,7 @@
 package com.tenure.domain.item.dto.response;
 
 import com.tenure.domain.item.enums.WearTarget;
-import com.tenure.domain.listing.enums.SaleStatus;
+import com.tenure.domain.item.enums.SaleStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDate;
 import java.util.List;

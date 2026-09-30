@@ -1,9 +1,9 @@
 package com.tenure.domain.listing.repository;
 
 import com.tenure.domain.listing.entity.ItemListing;
-import com.tenure.domain.listing.enums.SaleStatus;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -11,25 +11,27 @@ import org.springframework.data.repository.query.Param;
 public interface ItemListingRepository extends JpaRepository<ItemListing, Long> {
 
 	/**
-	 * 아이템별 최신 판매 등록.(현재 아이템의 판매 여부)
+	 * 아이템별 열린 판매 등록. 지금 걸려 있는 판매 조건이다.
 	 *
-	 * 아이템은 재판매될 때마다 등록 행이 새로 생기므로(1:N) 화면에 쓰는 것은 가장 최근 한 건이다.
-	 * 상세 말풍선의 '#판매중' 표기와 태그된 아이템 목록의 CTA 판정이 이 값을 본다.
+	 * 판매를 내리면 closed_at 을 찍고 다시 걸 때 새 행을 만들므로(DEC-026) 열린 행은
+	 * 아이템당 최대 하나다. 없으면 키가 없다 — 판매 전환을 한 번도 안 했거나 판매를 내린 상태다.
+	 *
+	 * 판매 상태 자체는 item.sale_status 가 들고 있다. 이 조회는 가격·배송비처럼
+	 * 판매 등록에만 있는 값을 그릴 때 쓴다.
 	 */
-	@Query("select l from ItemListing l where l.item.id in :itemIds and l.id in "
-			+ "(select max(latest.id) from ItemListing latest "
-			+ "where latest.item.id in :itemIds group by latest.item.id)")
-	List<ItemListing> findLatestByItemIds(@Param("itemIds") Collection<Long> itemIds);
+	@Query("select l from ItemListing l where l.item.id in :itemIds and l.closedAt is null")
+	List<ItemListing> findOpenByItemIds(@Param("itemIds") Collection<Long> itemIds);
+
+	/** 아이템 하나의 열린 판매 등록. */
+	@Query("select l from ItemListing l where l.item.id = :itemId and l.closedAt is null")
+	Optional<ItemListing> findOpenByItemId(@Param("itemId") Long itemId);
 
 	/**
-	 * 아이템에 이 상태의 판매 등록이 있는지.
+	 * 아이템의 가장 최근 판매 등록. 닫힌 것도 포함한다.
 	 *
-	 * 아이템 삭제 판정에 쓴다 — 판매 중인 등록이 있으면 지울 수 없다.
+	 * 판매 전환 폼의 빈칸을 직전 조건으로 채울 때 쓴다 — '아이템에 관하여 이미 등록된 정보가
+	 * 있다면 미리 빈칸에 작성되어있습니다'(안내사항 3633:34232).
 	 */
-	@Query("select count(l) > 0 from ItemListing l "
-			+ "where l.item.id = :itemId and l.saleStatus = :saleStatus")
-	boolean existsByItemIdAndSaleStatus(
-			@Param("itemId") Long itemId,
-			@Param("saleStatus") SaleStatus saleStatus
-	);
+	@Query("select l from ItemListing l where l.item.id = :itemId order by l.listedAt desc, l.id desc limit 1")
+	Optional<ItemListing> findLatestByItemId(@Param("itemId") Long itemId);
 }

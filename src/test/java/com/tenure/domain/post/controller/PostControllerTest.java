@@ -14,7 +14,7 @@ import com.tenure.domain.post.dto.response.PostResponse;
 import com.tenure.domain.post.dto.response.PostSaveResponse;
 import com.tenure.domain.post.dto.response.PostSummaryResponse;
 import com.tenure.domain.post.dto.response.PostTagResponse;
-import com.tenure.domain.listing.enums.SaleStatus;
+import com.tenure.domain.item.enums.SaleStatus;
 import com.tenure.domain.post.enums.AspectRatio;
 import com.tenure.domain.post.enums.FeedTab;
 import com.tenure.domain.post.exception.PostErrorCode;

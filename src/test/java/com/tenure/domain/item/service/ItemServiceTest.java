@@ -24,8 +24,7 @@ import com.tenure.domain.item.mapper.ItemMapper;
 import com.tenure.domain.item.mapper.ItemMapperImpl;
 import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
-import com.tenure.domain.listing.enums.SaleStatus;
-import com.tenure.domain.listing.repository.ItemListingRepository;
+import com.tenure.domain.item.enums.SaleStatus;
 import com.tenure.domain.order.repository.TradeOrderRepository;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.user.enums.Gender;
@@ -65,7 +64,6 @@ class ItemServiceTest {
 	@Mock private ItemOwnershipRepository itemOwnershipRepository;
 	@Mock private CategoryRepository categoryRepository;
 	@Mock private SizeOptionRepository sizeOptionRepository;
-	@Mock private ItemListingRepository itemListingRepository;
 	@Mock private TradeOrderRepository tradeOrderRepository;
 	@Mock private UserRepository userRepository;
 
@@ -249,8 +247,7 @@ class ItemServiceTest {
 		void delete_onSale_rejected() {
 			Item item = item();
 			givenDeletableItem(item);
-			given(itemListingRepository.existsByItemIdAndSaleStatus(ITEM_ID, SaleStatus.ON_SALE))
-					.willReturn(true);
+			item.changeSaleStatus(SaleStatus.ON_SALE);
 
 			assertThatThrownBy(() -> itemService.delete(USER_ID, ITEM_ID))
 					.isInstanceOf(CustomException.class)
@@ -278,8 +275,6 @@ class ItemServiceTest {
 		private void givenDeletableItem(Item item) {
 			given(itemRepository.findActiveWithCategory(ITEM_ID)).willReturn(Optional.of(item));
 			given(itemOwnershipRepository.findCurrent(ITEM_ID)).willReturn(Optional.of(ownershipOf(item, user())));
-			given(itemListingRepository.existsByItemIdAndSaleStatus(ITEM_ID, SaleStatus.ON_SALE))
-					.willReturn(false);
 			given(tradeOrderRepository.existsInProgress(anyLong(), any())).willReturn(false);
 		}
 	}

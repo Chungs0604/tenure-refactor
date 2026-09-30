@@ -26,7 +26,8 @@ class FlywayMigrationTest extends IntegrationTestSupport {
 
 	/** 정본 docs/schema.yaml 기준 수치. 스키마를 바꾸면 이 숫자도 같이 바뀐다. */
 	private static final int EXPECTED_TABLES = 39;
-	private static final int EXPECTED_COLUMNS = 320;
+	// V16 기준 — item.sale_status 와 listing_featured_post.created_at 이 늘고 item_listing.sale_status 가 빠져 순증 1 (DEC-026)
+	private static final int EXPECTED_COLUMNS = 321;
 	private static final int EXPECTED_FOREIGN_KEYS = 69;
 
 	@Autowired

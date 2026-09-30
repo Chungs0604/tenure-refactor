@@ -19,7 +19,7 @@ import com.tenure.domain.item.dto.response.ItemSummaryResponse;
 import com.tenure.domain.item.exception.ItemErrorCode;
 import com.tenure.domain.item.service.ItemQueryService;
 import com.tenure.domain.item.service.ItemService;
-import com.tenure.domain.listing.enums.SaleStatus;
+import com.tenure.domain.item.enums.SaleStatus;
 import com.tenure.global.exception.CustomException;
 import com.tenure.global.pagination.Cursor;
 import com.tenure.global.pagination.CursorCodec;
