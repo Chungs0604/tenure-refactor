@@ -106,7 +106,7 @@ public class ItemService {
 	/**
 	 * 아이템 상세 수정.
 	 *
-	 * 최초 보유 날짜는 바꿀 수 없다 (DEC-007). 그 값이 최초 소유 구간의 시작일이고 구매자가
+	 * 최초 보유 날짜는 바꿀 수 없다. 그 값이 최초 소유 구간의 시작일이고 구매자가
 	 * 보고 산 'Tenure 기록 기준' 의 첫 줄이라, 등록 뒤에는 누구도 손대지 못하게 한다.
 	 */
 	@Transactional
@@ -121,10 +121,11 @@ public class ItemService {
 				? item.getCategory()
 				: findLeafCategory(request.getCategoryId());
 
-		// 사이즈도 카테고리도 안 건드렸으면 다시 보지 않음 — 칩 세트가 나중에 바뀌어도 기존 아이템이 막히지 않음
+		// 사이즈나 카테고리를 건드렸을 때만 본다. 매번 검사하면 칩 세트를 고쳤을 때
+		// 기존 사이즈를 가진 아이템이 이름조차 못 고치게 됨
 		if (request.getSizeLabel() != null || request.getCategoryId() != null) {
 
-			// 카테고리만 바뀌어도 기존 사이즈가 새 칩 세트에 없을 수 있음
+			// 카테고리만 바꿔도 검사가 필요함 — 상의(L)를 신발로 옮기면 L 은 신발 칩에 없음
 			String sizeLabel = request.getSizeLabel() == null
 					? item.getSizeLabel()
 					: request.getSizeLabel();
