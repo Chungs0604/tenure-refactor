@@ -40,6 +40,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -144,9 +145,14 @@ public class ItemQueryService {
 	/** 아이템 상세 (소유자 시점). */
 	@Loggable("아이템 상세 조회")
 	public ItemResponse getItem(Long userId, Long itemId) {
-		Item item = findOwnedItem(userId, itemId);
+		Item item = itemRepository.findActiveWithCategory(itemId)
+				.orElseThrow(() -> new CustomException(ItemErrorCode.ITEM_404));
 
-		ItemOwnershipHistoryResponse ownerships = buildOwnershipHistory(item);
+		// 소유 구간은 카드에도 쓰이므로 한 번만 읽어 소유자 판정에 함께 쓴다
+		List<ItemOwnership> periods = itemOwnershipRepository.findAllByItemId(itemId);
+		requireCurrentOwner(userId, itemId, periods);
+
+		ItemOwnershipHistoryResponse ownerships = buildOwnershipHistory(item, periods);
 		ItemListing listing = latestListingsOf(List.of(itemId)).get(itemId);
 
 		return itemMapper.toItemResponse(
@@ -168,7 +174,7 @@ public class ItemQueryService {
 		Item item = itemRepository.findActive(itemId)
 				.orElseThrow(() -> new CustomException(ItemErrorCode.ITEM_404));
 
-		return buildOwnershipHistory(item);
+		return buildOwnershipHistory(item, itemOwnershipRepository.findAllByItemId(itemId));
 	}
 
 	/**
@@ -207,24 +213,40 @@ public class ItemQueryService {
 		Item item = itemRepository.findActiveWithCategory(itemId)
 				.orElseThrow(() -> new CustomException(ItemErrorCode.ITEM_404));
 
-		List<ItemRecommendationResponse> blocks = new ArrayList<>();
+		// 블록마다 카드를 조립하면 대표 사진·좋아요·저장 조회가 블록 수만큼 반복됨
+		Map<RecommendationBlock, List<Post>> postsByBlock = new LinkedHashMap<>();
 
 		for (RecommendationBlock block : RecommendationBlock.values()) {
 			List<Post> posts = itemRepository.findRecommendedPosts(userId, item, block, BLOCK_SIZE);
 
 			// 제목만 있고 카드가 없는 줄은 그리지 않음
-			if (posts.isEmpty()) {
-				continue;
+			if (!posts.isEmpty()) {
+				postsByBlock.put(block, posts);
 			}
-
-			blocks.add(itemMapper.toItemRecommendationResponse(
-					block,
-					block.titleOf(item.getBrandName(), item.getName()),
-					block.descriptionOf(item.getCategory().getName()),
-					toCards(userId, posts)));
 		}
 
-		return blocks;
+		if (postsByBlock.isEmpty()) {
+			return List.of();
+		}
+
+		// 블록을 넘나들며 같은 게시물이 나올 수 있어 한 번만 읽는다
+		List<Post> distinctPosts = postsByBlock.values().stream()
+				.flatMap(List::stream)
+				.collect(Collectors.toMap(Post::getId, Function.identity(), (first, second) -> first,
+						LinkedHashMap::new))
+				.values().stream()
+				.toList();
+
+		Map<Long, PostSummaryResponse> cards = toCards(userId, distinctPosts).stream()
+				.collect(Collectors.toMap(PostSummaryResponse::getId, Function.identity()));
+
+		return postsByBlock.entrySet().stream()
+				.map(entry -> itemMapper.toItemRecommendationResponse(
+						entry.getKey(),
+						entry.getKey().titleOf(item.getBrandName(), item.getName()),
+						entry.getKey().descriptionOf(item.getCategory().getName()),
+						entry.getValue().stream().map(post -> cards.get(post.getId())).toList()))
+				.toList();
 	}
 
 	/**
@@ -257,9 +279,7 @@ public class ItemQueryService {
 	/**
 	 * 소유 구간 카드 조립. 인증 횟수와 미리보기 사진을 한 번씩만 읽어 구간에 맞춘다.
 	 */
-	private ItemOwnershipHistoryResponse buildOwnershipHistory(Item item) {
-		List<ItemOwnership> ownerships = itemOwnershipRepository.findAllByItemId(item.getId());
-
+	private ItemOwnershipHistoryResponse buildOwnershipHistory(Item item, List<ItemOwnership> ownerships) {
 		Map<Long, Integer> wearCounts = itemWearRecordRepository.countByOwnership(item.getId()).stream()
 				.collect(Collectors.toMap(row -> (Long) row[0], row -> ((Number) row[1]).intValue()));
 
@@ -311,19 +331,18 @@ public class ItemQueryService {
 
 	/**
 	 * 소유자 본인의 아이템만 연다. 판 아이템을 열면 403 이다 — 그 화면에는 수정·삭제 진입이 있다.
+	 *
+	 * 이미 읽어 둔 구간 목록에서 찾는다 — 열린 구간은 아이템당 하나뿐이라 따로 조회할 이유가 없다.
 	 */
-	private Item findOwnedItem(Long userId, Long itemId) {
-		Item item = itemRepository.findActiveWithCategory(itemId)
-				.orElseThrow(() -> new CustomException(ItemErrorCode.ITEM_404));
+	private void requireCurrentOwner(Long userId, Long itemId, List<ItemOwnership> periods) {
+		boolean owned = periods.stream()
+				.filter(period -> period.getEndDate() == null)
+				.anyMatch(period -> period.getOwner().getId().equals(userId));
 
-		itemOwnershipRepository.findCurrent(itemId)
-				.filter(ownership -> ownership.getOwner().getId().equals(userId))
-				.orElseThrow(() -> {
-					log.info("현재 소유자가 아니다 userId={} itemId={}", userId, itemId);
-					return new CustomException(ItemErrorCode.ITEM_403);
-				});
-
-		return item;
+		if (!owned) {
+			log.info("현재 소유자가 아니다 userId={} itemId={}", userId, itemId);
+			throw new CustomException(ItemErrorCode.ITEM_403);
+		}
 	}
 
 	/**
