@@ -14,6 +14,7 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
 	 * depth 를 조건에 넣어 대분류 id 를 보낸 요청을 여기서 걸러낸다 — 화면은 세부 카테고리까지
 	 * 고르게 하고, 대분류만 보내면 ITEM_400_CATEGORY 다.
 	 */
-	@Query("select c from Category c join fetch c.parent where c.id = :categoryId and c.depth = 2")
+	@Query("select c from Category c join fetch c.parent " +
+			"where c.id = :categoryId and c.depth = 2")
 	Optional<Category> findLeafWithParent(@Param("categoryId") Long categoryId);
 }

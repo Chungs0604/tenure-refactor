@@ -1,5 +1,6 @@
 package com.tenure.domain.category.entity;
 
+import com.tenure.domain.category.enums.MeasurementScheme;
 import com.tenure.domain.category.enums.SizeScheme;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -59,6 +60,16 @@ public class Category {
 	@Enumerated(EnumType.STRING)
 	@Column(name = "size_scheme", length = 30)
 	private SizeScheme sizeScheme;
+
+	/**
+	 * 이 대분류가 받는 실측 항목 세트.
+	 *
+	 * size_scheme 으로 대신할 수 없다 — 하의와 치마가 둘 다 BOTTOM 인데 실측이 다르다.
+	 * 세부 카테고리(depth=2)는 NULL 이며 부모에서 읽는다.
+	 */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "measurement_scheme", length = 20)
+	private MeasurementScheme measurementScheme;
 
 	/** 드롭다운 노출 순서 */
 	@Column(name = "sort_order", nullable = false)
