@@ -51,4 +51,16 @@ public class ListingFeaturedPost extends BaseCreatedEntity {
 	@Column(name = "sort_order", nullable = false)
 	private Integer sortOrder;
 
+	/**
+	 * 대표 OOTD 한 칸. sortOrder 는 클라이언트가 보낸 순서 그대로다 —
+	 * 상세의 가로 스크롤이 선택 화면의 배지 순서를 따른다.
+	 */
+	public static ListingFeaturedPost of(ItemListing listing, Post post, int sortOrder) {
+		return ListingFeaturedPost.builder()
+				.listing(listing)
+				.post(post)
+				.sortOrder(sortOrder)
+				.build();
+	}
+
 }

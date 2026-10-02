@@ -26,4 +26,7 @@ public interface WishlistRepository extends JpaRepository<Wishlist, Long> {
 			@Param("userId") Long userId,
 			@Param("itemIds") Collection<Long> itemIds
 	);
+
+	/** 히어로 우측 벨 상태. 담기만 하고 알림을 껐어도 관심 등록은 되어 있다. */
+	boolean existsByUserIdAndItemId(Long userId, Long itemId);
 }

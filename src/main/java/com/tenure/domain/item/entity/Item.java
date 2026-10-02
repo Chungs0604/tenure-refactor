@@ -173,6 +173,16 @@ public class Item extends BaseEntity {
 		this.wearTarget = wearTarget;
 	}
 
+	/**
+	 * 대표 사진 교체.
+	 *
+	 * 상세 수정 시트에는 입력란이 없어 아이템 수정으로는 바꿀 수 없다 (B-7) —
+	 * 판매 전환·수정(3342:32943)에만 '대표 사진*' 칸이 있다.
+	 */
+	public void changeCoverImage(String coverImageKey) {
+		this.coverImageKey = coverImageKey;
+	}
+
 	/** '구매 제안 허용' 토글. 미판매 아이템에도 걸린다 (DEC-024). */
 	public void changeOfferAllowed(boolean offerAllowed) {
 		this.offerAllowed = offerAllowed;

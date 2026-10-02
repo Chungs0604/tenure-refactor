@@ -32,6 +32,7 @@ public interface ItemListingRepository extends JpaRepository<ItemListing, Long> 
 	 * 판매 전환 폼의 빈칸을 직전 조건으로 채울 때 쓴다 — '아이템에 관하여 이미 등록된 정보가
 	 * 있다면 미리 빈칸에 작성되어있습니다'(안내사항 3633:34232).
 	 */
-	@Query("select l from ItemListing l where l.item.id = :itemId order by l.listedAt desc, l.id desc limit 1")
+	@Query("select l from ItemListing l join fetch l.seller "
+			+ "where l.item.id = :itemId order by l.listedAt desc, l.id desc limit 1")
 	Optional<ItemListing> findLatestByItemId(@Param("itemId") Long itemId);
 }

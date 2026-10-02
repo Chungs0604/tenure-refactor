@@ -6,6 +6,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import com.tenure.domain.post.entity.Post;
 
 public interface PostItemTagRepository extends JpaRepository<PostItemTag, Long> {
 
@@ -38,4 +39,14 @@ public interface PostItemTagRepository extends JpaRepository<PostItemTag, Long> 
 			+ "group by other.item.id "
 			+ "order by count(distinct other.postImage.post.id) desc, other.item.id asc")
 	List<Object[]> findFrequentlyWornWith(@Param("itemId") Long itemId, Pageable pageable);
+
+	/**
+	 * 이 아이템이 태그된 OOTD. 판매 등록 이력이 없는 아이템의 상세가 '태그된 OOTD' 로 그린다.
+	 *
+	 * 한 게시물의 여러 사진에 같은 아이템이 태그될 수 있어 distinct 로 묶는다.
+	 */
+	@Query("select distinct p from PostItemTag t join t.postImage i join i.post p "
+			+ "where t.item.id = :itemId and p.deletedAt is null "
+			+ "order by p.wornDate desc, p.id desc")
+	List<Post> findTaggedPosts(@Param("itemId") Long itemId, Pageable pageable);
 }

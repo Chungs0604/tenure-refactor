@@ -82,4 +82,68 @@ public class ItemListing extends BaseEntity {
 	@Column(name = "closed_at")
 	private LocalDateTime closedAt;
 
+	/**
+	 * 판매 전환. 아이템당 열린 행이 하나뿐인지는 Service 가 확인한다 —
+	 * 다른 행을 읽어야 알 수 있어 엔티티가 판정할 수 없다.
+	 *
+	 * 기본 사용자는 수수료 부담과 배송비를 고를 수 없다(화면에서 잠겨 있다). 그 판정은
+	 * 판매자의 등급을 봐야 하므로 Service 가 하고, 여기서는 받은 값을 반영만 한다.
+	 */
+	public static ItemListing open(
+			Item item, User seller, Integer price, Integer shippingFee,
+			FeeBearer feeBearer, String sellerNote, LocalDateTime listedAt
+	) {
+		return ItemListing.builder()
+				.item(item)
+				.seller(seller)
+				.price(price)
+				.shippingFee(shippingFee)
+				.feeBearer(feeBearer)
+				.sellerNote(sellerNote)
+				.listedAt(listedAt)
+				.build();
+	}
+
+	/**
+	 * 판매 조건 수정. 수정 화면이 판매 전환과 같은 전체 폼이라 넷을 통째로 갈아끼운다.
+	 *
+	 * 이미 전송된 제안의 금액은 purchase_offer 가 자체 스냅샷으로 들고 있어 바뀌지 않는다.
+	 */
+	public void changeTerms(
+			Integer price, Integer shippingFee, FeeBearer feeBearer, String sellerNote
+	) {
+		this.price = price;
+		this.shippingFee = shippingFee;
+		this.feeBearer = feeBearer;
+		this.sellerNote = sellerNote;
+	}
+
+	/**
+	 * 판매를 내린다. 닫힌 행은 다시 열지 않는다 — 다시 팔려면 새 행을 만든다 (DEC-026).
+	 *
+	 * 이 행을 가리키는 purchase_offer·chat_room 의 조건 스냅샷이 사후에 바뀌면 안 되기 때문이다.
+	 */
+	public void close(LocalDateTime closedAt) {
+		this.closedAt = closedAt;
+	}
+
+	public boolean isClosed() {
+		return closedAt != null;
+	}
+
+	/**
+	 * 지금 걸려 있는 판매 등록인지.
+	 *
+	 * 열린 행은 아이템당 최대 하나이고 늘 최신 행이다 — 판매 전환이 열린 행이 있으면 거부하므로,
+	 * 더 늦게 만들어진 행이 있다는 것은 그 전 행이 닫혔다는 뜻이다. 조회는 이 성질을 써서
+	 * 최신 행 한 번만 읽고 열림 여부를 가린다.
+	 */
+	public boolean isOpen() {
+		return closedAt == null;
+	}
+
+	public boolean isSeller(Long userId) {
+		return seller.getId().equals(userId);
+	}
+
 }

@@ -5,6 +5,8 @@ import com.tenure.domain.item.enums.SaleStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import java.util.List;
+import org.springframework.data.jpa.repository.Modifying;
 
 public interface ListingFeaturedPostRepository extends JpaRepository<ListingFeaturedPost, Long> {
 
@@ -23,4 +25,18 @@ public interface ListingFeaturedPostRepository extends JpaRepository<ListingFeat
 	boolean existsByPostIdAndSaleStatus(
 			@Param("postId") Long postId, @Param("saleStatus") SaleStatus saleStatus
 	);
+
+	/**
+	 * 판매 등록의 대표 OOTD. 선택 순서대로 그린다.
+	 *
+	 * 게시물을 함께 읽는다 — 상세가 사진과 비율을 그리므로 행마다 다시 조회하면 N+1 이 된다.
+	 */
+	@Query("select f from ListingFeaturedPost f join fetch f.post "
+			+ "where f.listing.id = :listingId order by f.sortOrder")
+	List<ListingFeaturedPost> findAllByListingId(@Param("listingId") Long listingId);
+
+	/** 전체 교체라 비우고 다시 넣는다. */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("delete from ListingFeaturedPost f where f.listing.id = :listingId")
+	void deleteAllByListingId(@Param("listingId") Long listingId);
 }
