@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -47,6 +48,17 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.test.util.ReflectionTestUtils;
+import com.tenure.domain.item.repository.ItemMeasurementRepository;
+import com.tenure.domain.item.repository.ItemConditionRepository;
+import com.tenure.domain.category.enums.MeasurementField;
+import com.tenure.domain.category.enums.MeasurementScheme;
+import com.tenure.domain.item.entity.ItemMeasurement;
+import com.tenure.domain.item.enums.ConditionCode;
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+import com.tenure.domain.item.dto.request.ItemForm;
+import com.tenure.domain.item.entity.ItemCondition;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -61,9 +73,8 @@ class ItemServiceTest {
 	private static final LocalDate FIRST_OWNED = LocalDate.of(2025, 2, 8);
 
 	@Mock private ItemRepository itemRepository;
+	@Mock private ItemFormApplier itemFormApplier;
 	@Mock private ItemOwnershipRepository itemOwnershipRepository;
-	@Mock private CategoryRepository categoryRepository;
-	@Mock private SizeOptionRepository sizeOptionRepository;
 	@Mock private TradeOrderRepository tradeOrderRepository;
 	@Mock private UserRepository userRepository;
 
@@ -82,7 +93,6 @@ class ItemServiceTest {
 		@DisplayName("아이템과 최초 소유 구간을 함께 만든다 — 구간이 없으면 게시물에 태그할 수 없다")
 		void create_opensInitialOwnership() {
 			givenUserAndCategory();
-			givenSizeExists();
 
 			itemService.create(USER_ID, request(LocalDate.of(2026, 5, 26), "L"));
 
@@ -95,7 +105,6 @@ class ItemServiceTest {
 		@DisplayName("최초 보유 날짜를 비우면 소유 구간은 등록일부터 열고 아이템의 날짜는 비워 둔다")
 		void create_noFirstOwnedDate_opensFromToday() {
 			givenUserAndCategory();
-			givenSizeExists();
 
 			ArgumentCaptor<Item> itemCaptor = ArgumentCaptor.forClass(Item.class);
 
@@ -112,7 +121,6 @@ class ItemServiceTest {
 		@DisplayName("구매 제안 허용은 꺼진 채로 시작한다")
 		void create_offerAllowedDefaultsFalse() {
 			givenUserAndCategory();
-			givenSizeExists();
 
 			ArgumentCaptor<Item> itemCaptor = ArgumentCaptor.forClass(Item.class);
 
@@ -122,62 +130,17 @@ class ItemServiceTest {
 			assertThat(itemCaptor.getValue().getOfferAllowed()).isFalse();
 			assertThat(itemCaptor.getValue().getWishCount()).isZero();
 		}
-
 		@Test
-		@DisplayName("카테고리에 없는 사이즈는 막는다 — 공개 페이지에 오타가 남으면 안 된다")
-		void create_sizeNotInScheme_rejected() {
-			givenUserAndCategory();
-			given(sizeOptionRepository.existsBySchemeAndLabel(SizeScheme.TOP, "999XL")).willReturn(false);
-
-			assertThatThrownBy(() -> itemService.create(USER_ID, request(null, "999XL")))
-					.isInstanceOf(CustomException.class)
-					.extracting(ItemServiceTest::errorCodeOf)
-					.isEqualTo(ItemErrorCode.ITEM_400_SIZE);
-
-			verify(itemRepository, never()).save(any());
-		}
-
-		@Test
-		@DisplayName("사이즈를 비우면 검증하지 않는다 — 등록 폼에 필수 표시가 없다")
-		void create_noSizeLabel_skipsValidation() {
+		@DisplayName("카테고리·사이즈 검증은 ItemFormApplier 에 맡긴다")
+		void create_delegatesValidationToApplier() {
 			givenUserAndCategory();
 
-			itemService.create(USER_ID, request(null, null));
+			itemService.create(USER_ID, request(null, "L"));
 
-			verify(sizeOptionRepository, never()).existsBySchemeAndLabel(any(), anyString());
-		}
-
-		@Test
-		@DisplayName("대분류 id 를 보내면 막는다 — 화면은 세부 카테고리까지 고르게 한다")
-		void create_rootCategory_rejected() {
-			given(userRepository.findById(USER_ID)).willReturn(Optional.of(user()));
-			given(categoryRepository.findLeafWithParent(ROOT_CATEGORY_ID)).willReturn(Optional.empty());
-			given(categoryRepository.existsById(ROOT_CATEGORY_ID)).willReturn(true);
-
-			ItemCreateRequest request = ItemCreateRequest.builder()
-					.name("LVC 1955 501").brandName("Levis").categoryId(ROOT_CATEGORY_ID)
-					.wearTarget(WearTarget.MALE).coverImageKey("item/cover.jpg")
-					.build();
-
-			assertThatThrownBy(() -> itemService.create(USER_ID, request))
-					.isInstanceOf(CustomException.class)
-					.extracting(ItemServiceTest::errorCodeOf)
-					.isEqualTo(ItemErrorCode.ITEM_400_CATEGORY);
-		}
-
-		@Test
-		@DisplayName("없는 카테고리는 404 다")
-		void create_unknownCategory_notFound() {
-			given(userRepository.findById(USER_ID)).willReturn(Optional.of(user()));
-			given(categoryRepository.findLeafWithParent(CATEGORY_ID)).willReturn(Optional.empty());
-			given(categoryRepository.existsById(CATEGORY_ID)).willReturn(false);
-
-			assertThatThrownBy(() -> itemService.create(USER_ID, request(null, null)))
-					.isInstanceOf(CustomException.class)
-					.extracting(ItemServiceTest::errorCodeOf)
-					.isEqualTo(CategoryErrorCode.CATEGORY_404);
+			verify(itemFormApplier).resolveCategory(CATEGORY_ID, "L");
 		}
 	}
+
 
 	@Nested
 	@DisplayName("아이템 수정")
@@ -198,29 +161,20 @@ class ItemServiceTest {
 		}
 
 		@Test
-		@DisplayName("폼 전체를 교체한다 — 시트가 현재 값을 채워 열고 한 번에 보낸다")
-		void update_replacesWholeForm() {
+		@DisplayName("폼 전체를 ItemFormApplier 에 넘긴다 — 반영 규칙은 거기가 정본이다")
+		void update_delegatesWholeFormToApplier() {
 			Item item = item();
 			givenUpdatableItem(item);
-			givenSizeExists();
 
 			itemService.update(USER_ID, ITEM_ID, updateRequest("Third Cut", "L"));
 
-			assertThat(item.getName()).isEqualTo("Third Cut");
-			assertThat(item.getBrandName()).isEqualTo("Levis");
-			assertThat(item.getSizeLabel()).isEqualTo("L");
-			assertThat(item.getWearTarget()).isEqualTo(WearTarget.MALE);
-		}
+			ArgumentCaptor<ItemForm> captor = ArgumentCaptor.forClass(ItemForm.class);
+			verify(itemFormApplier).apply(eq(item), captor.capture());
 
-		@Test
-		@DisplayName("사이즈를 비워 보내면 비운다 — 부분 전송이 아니라 교체다")
-		void update_blankSize_clears() {
-			Item item = item();
-			givenUpdatableItem(item);
-
-			itemService.update(USER_ID, ITEM_ID, updateRequest("LVC 1955 501", null));
-
-			assertThat(item.getSizeLabel()).isNull();
+			assertThat(captor.getValue().getName()).isEqualTo("Third Cut");
+			assertThat(captor.getValue().getBrandName()).isEqualTo("Levis");
+			assertThat(captor.getValue().getSizeLabel()).isEqualTo("L");
+			assertThat(captor.getValue().getWearTarget()).isEqualTo(WearTarget.MALE);
 		}
 
 		@Test
@@ -232,12 +186,10 @@ class ItemServiceTest {
 
 			given(itemRepository.findActiveWithCategory(ITEM_ID)).willReturn(Optional.of(item));
 			given(itemOwnershipRepository.findCurrent(ITEM_ID)).willReturn(Optional.of(ownership));
-			given(categoryRepository.findLeafWithParent(CATEGORY_ID)).willReturn(Optional.of(leafCategory()));
-			givenSizeExists();
+			given(itemFormApplier.apply(any(), any())).willReturn(leafCategory());
 
 			itemService.update(USER_ID, ITEM_ID, updateRequest("이름만 고침", "L"));
 
-			assertThat(item.getName()).isEqualTo("이름만 고침");
 			assertThat(item.getFirstOwnedDate()).isEqualTo(registered);
 			assertThat(ownership.getStartDate()).isEqualTo(FIRST_OWNED);
 		}
@@ -247,7 +199,6 @@ class ItemServiceTest {
 		void update_doesNotTouchCoverImage() {
 			Item item = item();
 			givenUpdatableItem(item);
-			givenSizeExists();
 
 			itemService.update(USER_ID, ITEM_ID, updateRequest("Third Cut", "L"));
 
@@ -258,8 +209,7 @@ class ItemServiceTest {
 			given(itemRepository.findActiveWithCategory(ITEM_ID)).willReturn(Optional.of(item));
 			given(itemOwnershipRepository.findCurrent(ITEM_ID))
 					.willReturn(Optional.of(ownershipOf(item, user())));
-			given(categoryRepository.findLeafWithParent(CATEGORY_ID))
-					.willReturn(Optional.of(leafCategory()));
+			given(itemFormApplier.apply(any(), any())).willReturn(leafCategory());
 		}
 	}
 
@@ -350,7 +300,8 @@ class ItemServiceTest {
 
 	private void givenUserAndCategory() {
 		given(userRepository.findById(USER_ID)).willReturn(Optional.of(user()));
-		given(categoryRepository.findLeafWithParent(CATEGORY_ID)).willReturn(Optional.of(leafCategory()));
+		given(itemFormApplier.resolveCategory(any(), any())).willReturn(leafCategory());
+		given(itemFormApplier.apply(any(), any())).willReturn(leafCategory());
 		given(itemRepository.save(any(Item.class))).willAnswer(invocation -> {
 			Item saved = invocation.getArgument(0);
 			ReflectionTestUtils.setField(saved, "id", ITEM_ID);
@@ -358,8 +309,21 @@ class ItemServiceTest {
 		});
 	}
 
-	private void givenSizeExists() {
-		given(sizeOptionRepository.existsBySchemeAndLabel(SizeScheme.TOP, "L")).willReturn(true);
+
+	private static ItemForm form(String name, String sizeLabel) {
+		return ItemForm.builder()
+				.categoryId(CATEGORY_ID)
+				.name(name)
+				.brandName("Levis")
+				.sizeLabel(sizeLabel)
+				.wearTarget(WearTarget.MALE)
+				.build();
+	}
+
+	private static Category leafCategory(MeasurementScheme scheme) {
+		Category leaf = leafCategory();
+		ReflectionTestUtils.setField(leaf.getParent(), "measurementScheme", scheme);
+		return leaf;
 	}
 
 	/** 상세 수정 시트는 전체 폼이라 항상 전 필드를 보낸다. */
@@ -391,6 +355,7 @@ class ItemServiceTest {
 		ReflectionTestUtils.setField(root, "id", ROOT_CATEGORY_ID);
 		ReflectionTestUtils.setField(root, "depth", 1);
 		ReflectionTestUtils.setField(root, "sizeScheme", SizeScheme.TOP);
+		ReflectionTestUtils.setField(root, "measurementScheme", MeasurementScheme.TOP);
 
 		Category leaf = newCategory();
 		ReflectionTestUtils.setField(leaf, "id", CATEGORY_ID);

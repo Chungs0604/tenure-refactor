@@ -48,4 +48,13 @@ public class ItemCondition {
 	@Column(name = "condition_code", nullable = false, length = 30)
 	private ConditionCode conditionCode;
 
+
+	/** 상태 이상 체크 한 칸. 코드마다 행이 하나씩 생긴다. */
+	public static ItemCondition of(Item item, ConditionCode conditionCode) {
+		return ItemCondition.builder()
+				.item(item)
+				.conditionCode(conditionCode)
+				.build();
+	}
+
 }

@@ -29,6 +29,18 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.tenure.domain.category.enums.MeasurementField;
+import com.tenure.domain.category.enums.MeasurementScheme;
+import com.tenure.domain.item.dto.request.ItemForm;
+import com.tenure.domain.item.entity.ItemCondition;
+import com.tenure.domain.item.entity.ItemMeasurement;
+import com.tenure.domain.item.enums.ConditionCode;
+import com.tenure.domain.item.repository.ItemConditionRepository;
+import com.tenure.domain.item.repository.ItemMeasurementRepository;
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 아이템 등록·수정·삭제.
@@ -51,8 +63,7 @@ public class ItemService {
 
 	private final ItemRepository itemRepository;
 	private final ItemOwnershipRepository itemOwnershipRepository;
-	private final CategoryRepository categoryRepository;
-	private final SizeOptionRepository sizeOptionRepository;
+	private final ItemFormApplier itemFormApplier;
 	private final TradeOrderRepository tradeOrderRepository;
 	private final ItemMapper itemMapper;
 	private final UserRepository userRepository;
@@ -67,10 +78,9 @@ public class ItemService {
 	@Loggable("아이템 등록")
 	public ItemIdResponse create(Long userId, ItemCreateRequest request) {
 		User registrant = findUser(userId);
-		Category category = findLeafCategory(request.getCategoryId());
-
-		// 칩에서 고른 값인지 확인함
-		validateSizeLabel(category, request.getSizeLabel());
+		// 세부 카테고리인지·칩에서 고른 사이즈인지 확인함
+		Category category = itemFormApplier.resolveCategory(
+				request.getCategoryId(), request.getSizeLabel());
 
 		// 아이템 저장
 		Item registerItem = Item.register(
@@ -112,18 +122,13 @@ public class ItemService {
 		// 아이템이 현재 user의 것이 맞는지 검증
 		Item item = findOwnedItem(userId, itemId);
 
-		Category category = findLeafCategory(request.getCategoryId());
-
-		// 카테고리만 바꿔도 검사가 필요함 — 상의(L)를 신발로 옮기면 L 은 신발 칩에 없음
-		validateSizeLabel(category, request.getSizeLabel());
-
-		item.update(
-				category,
-				request.getName(),
-				request.getBrandName(),
-				request.getSizeLabel(),
-				request.getWearTarget()
-		);
+		itemFormApplier.apply(item, ItemForm.builder()
+				.categoryId(request.getCategoryId())
+				.name(request.getName())
+				.brandName(request.getBrandName())
+				.sizeLabel(request.getSizeLabel())
+				.wearTarget(request.getWearTarget())
+				.build());
 
 		return itemMapper.toItemIdResponse(item);
 	}
@@ -193,35 +198,5 @@ public class ItemService {
 	private User findUser(Long userId) {
 		return userRepository.findById(userId)
 				.orElseThrow(() -> new CustomException(UserErrorCode.USER_404));
-	}
-
-	/** 대분류 id 를 보냈거나 없는 id 를 보내면 여기서 갈린다. */
-	private Category findLeafCategory(Long categoryId) {
-		return categoryRepository.findLeafWithParent(categoryId)
-				.orElseThrow(() -> {
-					log.info("세부 카테고리가 아니거나 존재하지 않는다 categoryId={}", categoryId);
-					return new CustomException(
-							categoryRepository.existsById(categoryId)
-									? ItemErrorCode.ITEM_400_CATEGORY
-									: CategoryErrorCode.CATEGORY_404);
-				});
-	}
-
-	/**
-	 * 사이즈는 대분류마다 고를 수 있는 값이 다르다. 칩에서 고른 값만 통과시켜 공개 페이지와
-	 * 상품 상세에 오타가 남지 않게 한다.
-	 */
-	private void validateSizeLabel(Category leaf, String sizeLabel) {
-		if (sizeLabel == null || sizeLabel.isBlank()) {
-			return;
-		}
-
-		// 칩 세트는 세부 카테고리가 아니라 대분류가 가짐
-		SizeScheme scheme = leaf.getParent().getSizeScheme();
-		if (scheme == null || !sizeOptionRepository.existsBySchemeAndLabel(scheme, sizeLabel)) {
-			log.info("카테고리에 없는 사이즈다 categoryId={} scheme={} sizeLabel={}",
-					leaf.getId(), scheme, sizeLabel);
-			throw new CustomException(ItemErrorCode.ITEM_400_SIZE);
-		}
 	}
 }
