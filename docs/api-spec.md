@@ -2320,7 +2320,9 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 
 카테고리 트리 (대분류 10 · 세부 102). 인증 **필요**. 관련 화면 SCR-024, SCR-047.
 
-응답은 `{ id, name, depth, sizeScheme, sizeOptions[], children[] }` 배열이다. 대분류 10종 · 세부 102종. id 는 `V2__seed_category.sql` 의 고정값이다(대분류 1~10, 세부 101~202).
+응답은 `{ id, name, depth, sizeScheme, measurementScheme, sizeOptions[], children[] }` 배열이다. 대분류 10종 · 세부 102종. id 는 `V2__seed_category.sql` 의 고정값이다(대분류 1~10, 세부 101~202).
+
+`measurementScheme` 은 판매 전환 화면이 **어느 실측 입력란을 그릴지**를 정한다(`DEC-027`). `sizeScheme` 으로 대신할 수 없다 — 하의와 치마가 둘 다 `BOTTOM` 인데 실측이 다르다. 서버도 같은 값으로 검증하므로 프론트가 표를 따로 들 필요가 없다.
 
 **`sizeOptions` 는 대분류에만 실린다** — 세부 카테고리는 부모의 칩을 그대로 쓰므로 빈 배열이다. 아이템 등록·수정은 여기서 받은 `label` 을 `sizeLabel` 로 그대로 보내고, 서버가 그 세트에 속한 값인지 확인한다(`DEC-025`).
 
@@ -2339,6 +2341,8 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
 | `name` | String | 대분류 10종 / 세부 102종 |
 | `depth` | Integer | 1 \| 2 |
 | `sizeScheme` | SizeScheme | TOP \| BOTTOM \| SHOE \| ONE_SIZE. 세부 카테고리는 null |
+| `measurementScheme` | MeasurementScheme | TOP \| BOTTOM \| SKIRT \| NONE. 세부 카테고리는 null, NONE 이면 실측을 받지 않는다 |
+| `measurementFields[]` | MeasurementField | 이 대분류가 받는 실측 항목. **판매 전환 요청의 `measurements` 키가 된다.** 세부 카테고리는 빈 배열 |
 | `sizeOptions[].label` | String | 칩 라벨. `sizeLabel` 에 이 값을 그대로 보낸다 |
 | `sizeOptions[].sizeSystem` | SizeSystem | ALPHA \| KR_NUMERIC \| EU_NUMERIC \| INCH \| MM \| FREE_NUMBER \| ONE_SIZE. 화면은 이 값이 바뀌는 지점에서 줄을 바꾼다 |
 | `children[]` | Category | 하위 카테고리 |
@@ -2354,6 +2358,8 @@ AI 아이템 분석 (태그 후보 조회). 인증 **필요**. 관련 화면 SCR
       "name": "<String>",
       "depth": 1,
       "sizeScheme": "TOP",
+      "measurementScheme": "TOP",
+      "measurementFields": ["SHOULDER_WIDTH", "CHEST_WIDTH", "SLEEVE_LENGTH", "TOTAL_LENGTH"],
       "sizeOptions": [
         {
           "label": "L",
@@ -2957,7 +2963,8 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 | `listing.shippingFee` | String | 0 이면 판매자 부담 |
 | `listing.feeBearer` | FeeBearer | SELLER \| BUYER \| SPLIT |
 | `listing.sellerNote` | String | 화면 라벨은 `상품 설명` |
-| `listing.measurements` | ProductMeasurements | `실측 입력 · <대분류>` |
+| `listing.measurementScheme` | MeasurementScheme | 실측 섹션 헤더(`실측 입력 · 바지`)를 그리는 키. `categoryName` 은 세부 카테고리라 이 헤더를 못 그린다 |
+| `listing.measurements` | Map<MeasurementField, Number> | `실측 입력 · <대분류>`. **채운 항목만 담긴다** — 안 쓰는 칸은 키가 없다 |
 | `listing.conditions[]` | ConditionCode | `상태 이상 체크` |
 | `seller` | Object | **nullable** — 판매 이력이 없으면 섹션 자체가 없다 |
 | `seller.id` | Long | — |
@@ -3003,7 +3010,12 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
       "shippingFee": "5000",
       "feeBearer": "SELLER",
       "sellerNote": "<String>",
-      "measurements": "<ProductMeasurements>",
+      "measurements": {
+        "SHOULDER_WIDTH": 45.0,
+        "CHEST_WIDTH": 52.0,
+        "SLEEVE_LENGTH": 61.0,
+        "TOTAL_LENGTH": 70.0
+      },
       "conditions": [
         "<ConditionCode>"
       ]
@@ -3040,6 +3052,16 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 를 함께 쓴다. 프론트가 `API-094` 를 먼저 부르는 방식은 중간 실패 시 아이템만 바뀌고 판매 등록이
 안 된 상태가 남아 택하지 않았다.
 
+**실측은 맵이다.** 이름 붙은 10개 필드가 아니라 `MeasurementField` 를 키로 쓴다 — 대분류마다
+쓰는 항목이 4~6개뿐이라 이름 필드로 두면 요청에도 응답에도 `null` 이 여섯 개씩 낀다.
+프론트는 `API-090` 의 `measurementFields` 로 받은 목록대로 입력란을 그리고 **같은 키로 돌려보낸다.**
+**전부 채울 필요는 없다** — 치수를 모르는 칸은 비우거나 블록 자체를 생략한다. 막는 것은 세트 밖의 항목뿐이다.
+
+```json
+"measurements": { "SHOULDER_WIDTH": 45.0, "CHEST_WIDTH": 52.0,
+                  "SLEEVE_LENGTH": 61.0, "TOTAL_LENGTH": 70.0 }
+```
+
 **정산 계좌가 없으면 거부한다** — 토스트 문구가 `정산 계좌를 먼저 등록해주세요.`(`4765:54024`)다.
 기본 사용자는 `feeBearer`·`shippingFee` 를 보낼 수 없다(보내면 403). 화면에서도 칩 3종이 비활성이고
 배송비 입력란이 `0원` 플레이스홀더로 잠긴다(`3342:33318`).
@@ -3068,7 +3090,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 | `feeBearer` | FeeBearer |  | BASIC 은 SELLER 고정 | SELLER \| BUYER \| SPLIT |
 | `sellerNote` | String |  | — | 화면 라벨은 `판매자 설명` |
 | `featuredPostIds[]` | Long | O | 1개 이상 5개 이하, 본인 게시물 | 보낸 순서가 노출 순서다 |
-| `measurements` | ProductMeasurements |  | 대분류별 필수·금지 | — |
+| `measurements` | Map<MeasurementField, Number> |  | 키가 `API-090` 의 `measurementFields` **안에 들어야** 한다 | **일부만 채워도 되고 통째로 비워도 된다** — 입력란에 필수 표시가 없다. 세트 밖의 키가 오면 400 |
 | `conditions[]` | ConditionCode |  | — | — |
 
 **응답** (`data`)
@@ -3151,6 +3173,16 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 
 > 거래를 통한 `SOLD` 는 이 엔드포인트가 아니다. 판매자가 제안을 수락해 **결제가 완료되는 시점**
 > (`API-144`)에 서버가 바꾸고, 발송 전 거래 취소(`API-166`)면 `ON_SALE` 로 되돌린다(`DEC-026`).
+
+**진행 중인 거래가 있으면 막는다.** 판정 기준은 `trade_order` 가 종료 상태(`COMPLETED`·`CANCELED`)가
+아닌 행의 존재다 — `item.sale_status` 가 `SOLD` 인지를 보는 것이 아니다. 메뉴로 수동 판매완료한
+아이템(거래 없음)은 미판매로 되돌릴 수 있다.
+
+> **⚠️ 미구현 — `Q8`.** 아직 수락 전인 `PENDING` 제안은 이 검사에 걸리지 않는다. 제안 시점에 결제가
+> 이미 승인돼 있으므로, 판매를 내리면 그 승인이 해제되지 않은 채 남아 구매자 카드에 한도가 잡힌
+> 상태로 24시간 뒤 만료를 기다린다. 수락 경로(`API-144`)에는 '나머지 `PENDING` 을 취소하고 결제
+> 승인을 해제한다' 는 규칙이 이미 있는데 **내리는 경로에만 그 대칭이 빠져 있다.**
+> 결제 승인 해제가 payment 도메인이라 `offer`·`payment` 구현 시점에 함께 설계한다.
 
 `offerAllowed` 는 여기서 받지 않는다 — 아이템이 갖는 값이라 `API-094` 로 바꾼다(`DEC-024`).
 선택 모달의 라벨이 상태에 따라 `구매 제안 허용` ↔ `구매 제안 차단` 으로 바뀐다.
@@ -4895,6 +4927,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 
 | ID | 내용 | 영향받는 API |
 |---|---|---|
+| **Q8** | 판매를 내릴 때 남은 `PENDING` 제안의 결제 승인 해제 | `API-113`. 방향은 '함께 정리' 로 정했고 `offer`·`payment` 구현 시 적용한다 |
 | **Q7** | 인증번호 재전송 쿨다운·1일 한도 | `API-004`. 배포 전까지 정한다 |
 | **가중치** | `rank_score` 의 가중치와 배치 주기는 상수로 시작한다 | `DEC-023` 에 초기값을 적었다. 클릭 로그가 쌓이면 조정한다 — 로그가 없는 지금 맞추려는 시도는 근거가 없다 |
 
@@ -4911,6 +4944,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 | `DEC-102` | `API-071` 태그에 `saleStatus` 를 추가했다. 말풍선이 `#판매중` 을 2행으로 붙인다 |
 | `DEC-024` | 관심 수·구매 제안 허용을 `item` 으로 올렸다. 판매 등록 전 아이템도 관심을 받고 제안을 받는다 |
 | `DEC-025` | 사이즈 칩 목록을 `size_option` 테이블로 옮겼다. `API-090` 이 카테고리 트리와 함께 내려준다 |
+| `DEC-027` | 대분류별 실측 항목 세트를 `category.measurement_scheme` 으로 올렸다. `API-090` 이 함께 내려주고 `API-111`·`API-112` 가 같은 값으로 검증한다 |
 | `DEC-026` | **판매 상태를 `item` 으로 올렸다.** `API-110` 의 키가 `itemId` 가 되고 `API-113` 이 아이템 경로로 옮겨갔다. `API-111`·`API-112` 는 화면대로 아이템 정보까지 받는다 |
 | `DEC-103` | 판매·구매 내역을 엔드포인트 하나로 합쳤다. `rowType` 유니온으로 4개 탭을 담는다 |
 | `DEC-104` | `API-079` 의 조회 단위를 게시물에서 **사진**으로 바꿨다 |

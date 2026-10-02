@@ -399,6 +399,7 @@ erDiagram
         varchar name
         int depth
         varchar size_scheme "SizeScheme"
+        varchar measurement_scheme "MeasurementScheme"
         smallint sort_order
     }
     size_option {
@@ -1155,6 +1156,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `name` | VARCHAR(50) | String |  | O |  | `design` | 대분류 10종(화면 순서): 아우터·상의·하의·신발·가방·모자·치마·원피스·액세서리·주얼리. 세부 102종. 값은 `V2__seed_category.sql` 이 정본 |
 | `depth` | INT | Integer |  | O |  | `design` | 1=카테고리, 2=세부 카테고리 |
 | `size_scheme` | VARCHAR(30) | SizeScheme |  |  |  | `design` | 이 대분류가 쓰는 사이즈 칩 세트. 칩 목록은 `size_option` 이 갖는다. 세부 카테고리는 NULL 이며 부모에서 읽는다 (Q6 해소, DEC-025) |
+| `measurement_scheme` | VARCHAR(20) | MeasurementScheme |  |  |  | `design` | 이 대분류가 받는 실측 항목 세트(`MeasurementField` 집합). `size_scheme` 으로 대신할 수 없다 — 하의와 치마가 둘 다 BOTTOM 인데 실측이 다르다. 세부 카테고리는 NULL 이며 부모에서 읽는다 (DEC-027) |
 | `sort_order` | INT | Integer |  | O |  | `inferred` | 드롭다운 노출 순서 |
 
 인덱스: `ix_category_parent`(parent_id, sort_order)
