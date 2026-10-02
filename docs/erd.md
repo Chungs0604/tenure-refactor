@@ -75,7 +75,7 @@ item (불변, soft delete)
                                         │
                                    판매자 수락 (최종 결제)
                                         ▼
-  결제 완료 ─▶ 상품 발송 ─▶ 배송 완료 ─▶ 구매 확정 ─▶ 정산 완료 ─▶ 거래 완료
+  결제 완료 ─▶ 상품 발송 ─▶ 배송 완료 ─▶ 구매 확정 ─▶ 정산 완료 (구매자 표시: 거래 완료)
             (운송장 입력)            (72h 자동 확정)          │
                                                          └─▶ item_ownership 승계
 ```
@@ -184,6 +184,7 @@ item (불변, soft delete)
 | 57 | `settlement` | `user` | N:1 | `seller_id` | O | `RESTRICT` | 원장 | ✓ | 사람 FK + 금액 원장 |
 | 58 | `chat_room` | `item` | N:1 | `item_id` | O | `RESTRICT` | 참조 |  | 채팅방은 아이템 단위. Item 이 soft delete(A분류)라 RESTRICT |
 | 59 | `chat_room` | `item_listing` | N:1 | `listing_id` | - | `RESTRICT` | 선택적참조 |  | 미판매 아이템 채팅이면 NULL |
+| 59-1 | `chat_room` | `purchase_offer` | N:1 | `purchase_offer_id` | - | `RESTRICT` | 선택적참조 |  | 미판매+제안 아이템 채팅이면 설정, 판매중이면 NULL (DEC-028) |
 | 60 | `chat_room` | `user` | N:1 | `buyer_id` | O | `RESTRICT` | 참조 |  | 사람 FK |
 | 61 | `chat_room` | `user` | N:1 | `seller_id` | O | `RESTRICT` | 참조 |  | 사람 FK |
 | 62 | `chat_room_member` | `chat_room` | N:1 | `chat_room_id` | O | `CASCADE` | 소유 |  | 방 밖에서 단독으로 나타나지 않는다. ChatRoom 은 B분류라 실제 삭제되지 않으므로 발동하지 않는다 |
@@ -635,6 +636,7 @@ erDiagram
 erDiagram
     item ||--o{ chat_room : "item_id"
     item_listing |o--o{ chat_room : "listing_id"
+    purchase_offer |o--o{ chat_room : "purchase_offer_id"
     user ||--o{ chat_room : "buyer_id"
     user ||--o{ chat_room : "seller_id"
     chat_room ||--o{ chat_room_member : "chat_room_id"
@@ -650,6 +652,7 @@ erDiagram
         bigint id PK
         bigint item_id
         bigint listing_id
+        bigint purchase_offer_id
         bigint buyer_id
         bigint seller_id
         datetime last_message_at
@@ -744,7 +747,7 @@ erDiagram
 | SCR-040 | 구매 내역 | 보낸 제안·진행 중·완료 거래 조회 | `trade_order`, `purchase_offer` | read, filter, paging | O | — |
 | SCR-041 | 채팅방 목록 | 아이템별 채팅방 목록. 전체/구매/판매/읽지않음 필터 | `chat_room`, `chat_room_member`, `chat_message` | read, filter, paging | O | — |
 | SCR-042 | 채팅방 | 아이템 정보 헤더와 메시지 송수신. 거래 단계별 CTA | `chat_room`, `chat_message`, `item`, `item_listing` | read, create, paging | O | `item` |
-| SCR-043 | 채팅방 관리 (차단 · 나가기 · 신고) | 상대 차단/해제, 채팅방 나가기, 신고 | `chat_room_member`, `user_block`, `report` | update, delete, create | O | — |
+| SCR-043 | 채팅방 관리 (차단 · 나가기) | 상대 차단/해제, 채팅방 나가기 | `chat_room_member`, `user_block` | update, delete, create | O | — |
 | SCR-044 | 알림 | 알림 목록. 확인 필요/아이템 소식/거래 현황/관심 등록 탭 | `notification` | read, filter, paging | O | — |
 | SCR-045 | 검색 | 검색어 입력, 최근 검색·최근 본 사용자, 추천 섹션 | `search_history`, `post`, `item`, `user` (최근 열람은 Redis) | read, create, delete, search | O | `post`, `item` |
 | SCR-046 | 검색 결과 | 게시물 탭 / 계정 탭 결과, 필터 적용 | `post`, `item`, `user`, `category` | read, search, filter, paging | O | `post`, `item` |
@@ -1509,7 +1512,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `fee_bearer` | VARCHAR(10) | FeeBearer |  | O |  | `design` | 판매 등록의 '수수료 부담'을 스냅샷 |
 | `total_payment_amount` | INT | Integer |  | O |  | `design` | '총 결제 금액' 377,000원 |
 | `payout_amount` | INT | Integer |  | O |  | `design` | '총 정산 금액' 365,000원 |
-| `status` | VARCHAR(30) | OrderStatus |  | O |  | `design` | 거래 단계 6종 + 취소 |
+| `status` | VARCHAR(30) | OrderStatus |  | O |  | `design` | 거래 단계 5종 + 취소. SETTLED는 viewerRole에 따라 표시 라벨이 갈린다(판매자: 정산 완료 / 구매자: 거래 완료) |
 | `auto_confirm_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | '자동 구매 확정까지 23시간 44분 남음' = 배송 완료 +72h |
 | `confirmed_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | '구매를 확정할까요?' |
 | `canceled_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | 거래 상세의 '거래 취소' 버튼 (→ trade_order 제약 — 거래 취소) |
@@ -1611,15 +1614,17 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `id` | BIGINT | Long | O | O |  | `inferred` | PK 관례 |
 | `item_id` | BIGINT | Long |  | O |  | `design` | 채팅방 헤더의 아이템. 'Levis / LVC 1955 501' |
 | `listing_id` | BIGINT | Long |  |  |  | `design` | 헤더의 가격·판매 상태. 미판매 아이템이면 NULL 가능 |
+| `purchase_offer_id` | BIGINT | Long |  |  |  | `inferred` | 미판매+제안 방의 '제안 금액' 출처. listing_id 와 배타적 (DEC-028) |
 | `buyer_id` | BIGINT | Long |  | O |  | `design` | '구매 채팅' 필터의 기준 |
 | `seller_id` | BIGINT | Long |  | O |  | `design` | '판매 채팅' 필터의 기준 |
 | `last_message_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | 목록의 '6월 27일' 최근 메시지 시각 정렬 |
 | `created_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 감사 컬럼 관례 |
 
-인덱스: `uk_chat_room`(item_id, buyer_id, seller_id) · UNIQUE, `ix_chat_room_buyer`(buyer_id, last_message_at), `ix_chat_room_seller`(seller_id, last_message_at), `ix_chat_room_listing`(listing_id)
+인덱스: `uk_chat_room`(item_id, buyer_id, seller_id) · UNIQUE, `ix_chat_room_buyer`(buyer_id, last_message_at), `ix_chat_room_seller`(seller_id, last_message_at), `ix_chat_room_listing`(listing_id), `ix_chat_room_purchase_offer`(purchase_offer_id)
 
 > 제약 — '미판매 + 구매제안 X' 상품은 새 채팅방을 열 수 없다 *(강제: application)*
 > 제약 — last_message_at 은 chat_message INSERT 와 같은 트랜잭션에서 동기 갱신한다 *(강제: application)*
+> 제약 — listing_id·purchase_offer_id 는 배타적이다. 헤더의 price 는 listing_id 가 있으면 listing.price, 없으면 purchase_offer_id 가 가리키는 행의 제안 금액이다. 재제안 시 이 FK 를 최신 행으로 갱신한다 *(강제: application, DEC-028)*
 
 #### `chat_room_member` (ChatRoomMember)
 

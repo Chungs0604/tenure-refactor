@@ -95,7 +95,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | API-053 | `DELETE` | `/api/v1/users/{userId}/follow` | 언팔로우 | SCR-011, SCR-012 | Follow | O |
 | API-054 | `POST` | `/api/v1/users/{userId}/block` | 사용자 차단 | SCR-013, SCR-019, SCR-026, SCR-043 | UserBlock | O |
 | API-055 | `DELETE` | `/api/v1/users/{userId}/block` | 차단 해제 | SCR-013, SCR-043 | UserBlock | O |
-| API-056 | `POST` | `/api/v1/reports` | 신고 (게시물·상품·사용자) | SCR-013, SCR-019, SCR-026, SCR-043 | Report | O |
+| API-056 | `POST` | `/api/v1/reports` | 신고 (게시물·상품) | SCR-013, SCR-019, SCR-026 | Report | O |
 | API-060 | `POST` | `/api/v1/images` | 이미지 업로드 → 저장소 키 반환 | SCR-017, SCR-018, SCR-024, SCR-042 | —(PostImage·ItemImage·ChatMessage 의 선행 단계) | O |
 | API-070 | `GET` | `/api/v1/posts` | 홈 피드 (모두 / 팔로우 탭) | SCR-014 | Post, PostImage, Follow, UserBlock | O |
 | API-071 | `GET` | `/api/v1/posts/{postId}` | OOTD 상세 | SCR-015 | Post, PostImage, PostItemTag, PostLike, PostSave, Follow, 최근 열람(Redis) | O |
@@ -208,7 +208,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | `order_shipment` | 없음(거래에 중첩) | API-160 에 포함 | API-144 가 자동 생성 | API-163 API-164 | 없음(append-only) |
 | `order_status_history` | API-160 에 포함 | 없음 | 상태 전이가 자동 생성 | 없음(append-only) | 없음(append-only) |
 | `settlement` | 없음(거래에 중첩) | API-160 에 포함 | API-165 가 자동 생성 | 없음(배치가 정산) | 없음(append-only) |
-| `chat_room` | API-180 | API-182 | API-181 | 없음(상태 파생) | 없음(나가기로 대체) |
+| `chat_room` | API-180 | API-182 | API-181 | API-141 (purchase_offer_id 갱신) | 없음(나가기로 대체) |
 | `chat_room_member` | 없음(방에 중첩) | 없음 | API-181 이 자동 생성 | API-185 (읽음) | API-186 (나가기) |
 | `chat_message` | API-183 | 없음 | API-184 | 없음(수정 화면 없음) | 없음(삭제 화면 없음) |
 | `notification` | API-190 API-193 (안읽음 수) | 없음(목록에 전체 필드) | 없음(시스템 발행) | API-191 API-192 | 90일 경과 삭제 배치(`DEC-015`) |
@@ -267,7 +267,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | SCR-040 | 구매 내역 | read, filter, paging | O | API-162 |
 | SCR-041 | 채팅방 목록 | read, filter, paging | O | API-180 |
 | SCR-042 | 채팅방 | read, create, paging | O | API-060 API-182 API-183 API-184 API-185 |
-| SCR-043 | 채팅방 관리 (차단 · 나가기 · 신고) | update, delete, create | O | API-054 API-055 API-056 API-186 |
+| SCR-043 | 채팅방 관리 (차단 · 나가기) | update, delete, create | O | API-054 API-055 API-186 |
 | SCR-044 | 알림 | read, filter, paging | O | API-190 API-191 API-192 API-193 |
 | SCR-045 | 검색 | read, create, delete, search | O | API-200 API-201 API-202 API-203 API-204 API-205 API-206 API-207 |
 | SCR-046 | 검색 결과 | read, search, filter, paging | O | API-200 API-201 |
@@ -1203,7 +1203,9 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 기본 배송지 지정. 인증 **필요**. 관련 화면 SCR-006.
 
-기존 기본 배송지를 해제하고 지정한다. 변경할 때마다 토스트를 띄운다.
+목록 화면에서 라디오로 배송지를 고르고 하단 `변경하기` 를 누르면 호출한다(`4278:47131`) — 라디오
+클릭 즉시 호출되는 것이 아니라 CTA 로 확정한다. 기존 기본 배송지를 해제하고 지정하며, 변경할 때마다
+토스트를 띄운다.
 
 **경로 파라미터**
 
@@ -1353,8 +1355,8 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 기본 정산 계좌 지정. 인증 **필요**. 관련 화면 SCR-007.
 
-목록 화면에서 라디오로 계좌를 고르고 하단 `변경하기` 를 누르면 호출한다 — 배송지(API-024)와 달리
-라디오 클릭 즉시가 아니라 CTA 로 확정한다. 요청 횟수는 1회로 같다.
+목록 화면에서 라디오로 계좌를 고르고 하단 `변경하기` 를 누르면 호출한다 — 배송지(API-024)와 같은
+패턴이다(라디오 선택 + 하단 CTA 확정). 요청은 CTA 클릭 시 1회만 나간다.
 기존 기본을 내리고 이 계좌를 올린다. 이미 기본이면 아무것도 바뀌지 않는다.
 
 정산은 구매 확정 시점에 계좌 값을 `settlement` 로 스냅샷하므로(`DEC-013`), 기본 계좌를 바꿔도
@@ -1635,7 +1637,7 @@ API-050 과 동일한 스키마. 방향만 다르다.
 
 #### API-056 · `POST /api/v1/reports`
 
-신고 (게시물·상품·사용자). 인증 **필요**. 관련 화면 SCR-013, SCR-019, SCR-026, SCR-043.
+신고 (게시물·상품). 인증 **필요**. 관련 화면 SCR-013, SCR-019, SCR-026.
 
 요청 `{ targetType: POST|ITEM, targetId, reason, detail? }`. **접수까지만 담는다** — 운영자 처리 흐름은 이번 범위 밖이다.
 
@@ -2957,6 +2959,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 | `wearTarget` | WearTarget | — |
 | `firstOwnedDate` | LocalDate | `최초 보유 날짜` |
 | `totalWearCount` | Integer | `OOTD 인증 N회` |
+| `recentWornDate` | LocalDate | `최근 착용`. `item_wear_record` 의 최신 `worn_date`(`voided_at IS NULL`). 기록이 없으면 null. 상세페이지 그리드엔 안 쓰고 `공유하기` 카드(`2825:60651`)의 7칸 그리드에만 쓴다 |
 | `listing` | Object | **nullable** — 열린 판매 등록이 없으면 null |
 | `listing.id` | Long | `API-112` 의 입력 키 |
 | `listing.price` | String | — |
@@ -2979,9 +2982,10 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 | `taggedPosts[]` | Object | 태그된 OOTD. 구조는 `featuredPosts` 와 같다 |
 | `myOfferStatus` | OfferStatus | 내가 보낸 제안 상태. 없으면 null |
 
-> `ownerships[]`(소유 구간 카드)는 **싣지 않는다.** 이 화면의 `Tenure 기록 기준` 은 관심·OOTD 인증·
-> 최초 보유 날짜·사이즈·착용 대상·카테고리 6칸 그리드뿐이다(`2825:57089`). 소유 구간은 소유자 시점
-> (`API-093`·`API-097`)의 `아이템 히스토리` 에만 있다.
+> `ownerships[]`(소유 구간 카드)는 **싣지 않는다.** 상품 상세페이지의 `Tenure 기록 기준` 은 관심·OOTD 인증·
+> 최초 보유 날짜·사이즈·착용 대상·카테고리 6칸 그리드다(`2825:57089`). `recentWornDate` 는 이 6칸엔
+> 쓰지 않고 `공유하기` 카드의 7칸 그리드(`2825:60651`)에만 추가로 쓴다 — 두 화면이 같은 응답을 공유하되
+> 렌더링하는 칸 수만 다르다. 소유 구간은 소유자 시점(`API-093`·`API-097`)의 `아이템 히스토리` 에만 있다.
 
 ```json
 {
@@ -3004,6 +3008,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
     "wearTarget": "MALE",
     "firstOwnedDate": "2026-04-20",
     "totalWearCount": 10,
+    "recentWornDate": "2026-06-18",
     "listing": {
       "id": 1,
       "price": "128000",
@@ -3174,7 +3179,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 > 거래를 통한 `SOLD` 는 이 엔드포인트가 아니다. 판매자가 제안을 수락해 **결제가 완료되는 시점**
 > (`API-144`)에 서버가 바꾸고, 발송 전 거래 취소(`API-166`)면 `ON_SALE` 로 되돌린다(`DEC-026`).
 
-**진행 중인 거래가 있으면 막는다.** 판정 기준은 `trade_order` 가 종료 상태(`COMPLETED`·`CANCELED`)가
+**진행 중인 거래가 있으면 막는다.** 판정 기준은 `trade_order` 가 종료 상태(`SETTLED`·`CANCELED`)가
 아닌 행의 존재다 — `item.sale_status` 가 `SOLD` 인지를 보는 것이 아니다. 메뉴로 수동 판매완료한
 아이템(거래 없음)은 미판매로 되돌릴 수 있다.
 
@@ -3318,7 +3323,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 
 페이징. 항목마다 `saleStatus` 배지와 `alarmEnabled` 를 함께 내려준다.
 화면 상단에 **탭 3종**이 있다 — `전체` · `판매중` · `거래중`.
-`거래중` 은 그 아이템에 진행 중인 거래(`trade_order.status` 가 `COMPLETED`·`CANCELED` 가 아닌 것)가 있는 경우다.
+`거래중` 은 그 아이템에 진행 중인 거래(`trade_order.status` 가 `SETTLED`·`CANCELED` 가 아닌 것)가 있는 경우다.
 항목을 누르면 아이템 상세(`API-110`)로 간다. 키가 `itemId` 라 판매 등록이 없는 아이템도 열린다 — `listingId` 를 이동 키로 쓰던 제약이 `DEC-026` 으로 사라졌다.
 
 **쿼리 파라미터**
@@ -3506,6 +3511,8 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 구매 제안 / 거래 의사 전송 (결제 승인 포함). 인증 **필요**. 관련 화면 SCR-032, SCR-033, SCR-034.
 
 요청 `OfferCreateRequest` — `offerType` `offerPrice`(미판매만) `shippingAddressId` `buyerRequest?` `paymentMethod`. 전송 시점에 **결제 승인을 임시 확보**하고 24시간 만료를 건다. 미판매 아이템은 아이템당 1회만 가능하며, 자동 취소(`OTHER_OFFER_ACCEPTED`)된 이력은 횟수에서 제외한다.
+
+같은 트랜잭션에서 해당 구매자·아이템의 `chat_room.purchase_offer_id` 를 이 제안으로 갱신한다(`DEC-028`) — 재제안이면 기존 방의 포인터가 최신 제안으로 바뀐다. 방이 없으면(최초 제안) 생성한다.
 
 **요청 본문**
 
@@ -3754,7 +3761,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 |---|---|---|
 | `id` | Long | — |
 | `orderNo` | String | 주문 번호 |
-| `status` | OrderStatus | PAYMENT_COMPLETED \| SHIPPED \| DELIVERED \| PURCHASE_CONFIRMED \| SETTLED \| COMPLETED \| CANCELED |
+| `status` | OrderStatus | PAYMENT_COMPLETED \| SHIPPED \| DELIVERED \| PURCHASE_CONFIRMED \| SETTLED \| CANCELED |
 | `viewerRole` | String | BUYER \| SELLER — 노출 필드가 갈린다 |
 | `item.brandName` | String | — |
 | `item.name` | String | — |
@@ -3767,6 +3774,8 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 | `shipment.recipientName` | String | — |
 | `shipment.phone` | String | — |
 | `shipment.address` | String | — |
+
+> `status`/`statusHistory[].status` 가 `SETTLED` 인 행의 **표시 라벨은 `viewerRole` 에 따라 갈린다** — `SELLER` 에게는 '정산 완료', `BUYER` 에게는 '거래 완료'. 백엔드 상태값은 `SETTLED` 하나뿐이고 별도의 `COMPLETED` 상태는 없다 — 프레젠테이션(클라이언트 또는 라벨 매핑 레이어)에서만 갈린다.
 | `shipment.addressDetail` | String | — |
 | `shipment.deliveryRequestType` | DeliveryRequestType | 요청사항 유형 스냅샷 |
 | `shipment.deliveryRequest` | String | `DIRECT` 일 때의 입력값 스냅샷 |
@@ -3853,8 +3862,8 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 |---|---|
 | `ALL` | `OFFER`(PENDING) + `ORDER` 전부 — `createdAt` 내림차순으로 섞는다 |
 | `PENDING` | `OFFER` 중 `PENDING` 만. **아이템 단위로 묶어** 한 행으로 내리고 `pendingOfferCount` 에 건수를 담는다 |
-| `IN_PROGRESS` | `ORDER` 중 `PAYMENT_COMPLETED` ~ `SETTLED` |
-| `DONE` | `ORDER` 중 `COMPLETED` · `CANCELED` |
+| `IN_PROGRESS` | `ORDER` 중 `PAYMENT_COMPLETED` ~ `PURCHASE_CONFIRMED` |
+| `DONE` | `ORDER` 중 `SETTLED` · `CANCELED` |
 
 `rowType=OFFER` 면 `offerId`·`expiresAt` 이, `rowType=ORDER` 면 `orderId`·`orderNo`·`payoutAmount` 가 채워진다.
 반대쪽 필드는 `null` 이다.
@@ -3965,8 +3974,8 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 |---|---|
 | `ALL` | `OFFER` 전부(상태 무관) + `ORDER` 전부 — `createdAt` 내림차순 |
 | `PENDING` | `OFFER` 중 `PENDING` 만. 구매자는 아이템당 1회라 집계 없이 1건 = 1행이다 |
-| `IN_PROGRESS` | `ORDER` 중 `PAYMENT_COMPLETED` ~ `SETTLED` |
-| `DONE` | `ORDER` 중 `COMPLETED` · `CANCELED` |
+| `IN_PROGRESS` | `ORDER` 중 `PAYMENT_COMPLETED` ~ `PURCHASE_CONFIRMED` |
+| `DONE` | `ORDER` 중 `SETTLED` · `CANCELED` |
 
 **쿼리 파라미터**
 
@@ -4334,7 +4343,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 | `item.brandName` | String | — |
 | `item.name` | String | — |
 | `item.coverImageUrl` | String | — |
-| `price` | String | — |
+| `price` | String | `chat_room.listing_id` 가 있으면 `listing.price`, 없으면 `chat_room.purchase_offer_id` 가 가리키는 제안 금액(`DEC-028`). 둘 다 없으면(아직 제안 전) null |
 | `saleStatus` | SaleStatus | '판매 중' |
 | `recentWornDate` | LocalDate | '최근 착용 1일 전' |
 | `ctas[].label` | String | 버튼 문구. 위 표의 조합 |

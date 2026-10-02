@@ -1150,7 +1150,6 @@ enums:
   - DELIVERED
   - PURCHASE_CONFIRMED
   - SETTLED
-  - COMPLETED
   - CANCELED
   labels:
     PAYMENT_COMPLETED: 결제 완료
@@ -1158,10 +1157,10 @@ enums:
     DELIVERED: 배송 완료
     PURCHASE_CONFIRMED: 구매 확정
     SETTLED: 정산 완료
-    COMPLETED: 거래 완료
     CANCELED: 거래 취소
   source: design
-  evidence: 거래 상세 '거래 진행 단계' 설명 문구에서 순서 확정 + 타임라인 체크 5단계(25.05.26 결제완료 → 25.05.28 상품발송 → 25.06.01 배송완료 → 25.06.02 구매확정 → 25.06.04 정산완료)
+  evidence: 거래 상세 '거래 진행 단계' 설명 문구에서 순서 확정 + 타임라인 체크 5단계(25.05.26 결제완료 → 25.05.28 상품발송 → 25.06.01 배송완료 → 25.06.02 구매확정 → 25.06.04 정산완료). '정산이 완료되면 거래 상태는 정산 완료로 변경되며, 거래가 마무리됩니다' — SETTLED가 최종 상태이고 별도의 COMPLETED 상태는 없다
+  display_label_override: SETTLED는 viewerRole에 따라 표시 문구가 갈린다 — 판매자(SELLER)에게는 '정산 완료', 구매자(BUYER)에게는 '거래 완료'. 둘 다 같은 OrderStatus.SETTLED 값이며 enum을 분리하지 않는다
   value_evidence_table: order_status_history
 - name: PaymentMethod
   values:
@@ -1273,7 +1272,7 @@ enums:
   - OFFER
   - CHAT_ROOM
   source: inferred
-  evidence: 알림 탭 4종이 각각 게시물·아이템·거래·제안으로 연결된다. 딥링크 대상 목록은 화면에 명시되지 않음
+  evidence: 알림 탭 4종(확인 필요·아이템 소식·거래 현황·관심 등록)이 게시물·아이템·거래·제안 4개 타입으로 연결되고, CHAT_ROOM 은 탭에 묶이지 않는 별도 딥링크 대상이라 총 5종이다. 딥링크 대상 목록은 화면에 명시되지 않음
   value_evidence_table: notification
 - name: WearRecordVoidReason
   values:
@@ -3080,7 +3079,7 @@ entities:
   pattern: 값 객체 (embeddable)
   pattern_note: EAV 가 아니다. 필드가 10개로 고정돼 있고 카테고리가 늘어도 항목이 늘지 않는다. 5개 대분류(신발·가방·모자·액세서리·주얼리)는 행 자체가 생기지 않으므로 item 에 인라인하지 않고 1:1 테이블로 분리한다
   constraints:
-  - rule: 상의·아우터·원피스 — 어깨 너비·가슴 단면·소매길이·총 기장만 받는다. 나머지 6개는 NULL 이어야 한다. 네 항목은 선택이며 일부만 채워도 된다 — 판매 전환 화면(3342:32943)의 실측 입력란에 필수 표시(*)가 없다
+  - rule: 상의·아우터·원피스 — 어깨 너비·가슴 단면·소매길이·총 기장만 받는다. 나머지 6개는 NULL 이어야 한다. 네 항목은 선택이며 일부만 채워도 된다
     enforced_by: application
     source: design
     evidence: 사용자 지정 사양 — 상의·아우터·원피스 규칙
@@ -4545,6 +4544,15 @@ entities:
     nullable: true
     source: design
     evidence: 헤더의 가격·판매 상태. 미판매 아이템이면 NULL 가능
+  - name: purchaseOfferId
+    column: purchase_offer_id
+    db_type: BIGINT
+    java_type: Long
+    nullable: true
+    source: inferred
+    evidence: 미판매+구매제안 방의 헤더 '제안 금액' 표시 근거. listing_id 가 NULL인 방(미판매 아이템)에서는
+      price 를 listing 이 아니라 이 FK가 가리키는 purchase_offer 에서 가져온다. 재제안 등으로 제안이
+      갱신되면 최신 purchase_offer 로 갱신한다(DEC-028)
   - name: buyerId
     column: buyer_id
     db_type: BIGINT
@@ -4595,6 +4603,11 @@ entities:
     - listing_id
     unique: false
     note: FK 인덱스
+  - name: ix_chat_room_purchase_offer
+    columns:
+    - purchase_offer_id
+    unique: false
+    note: FK 인덱스
   constraints:
   - rule: '''미판매 + 구매제안 X'' 상품은 새 채팅방을 열 수 없다'
     enforced_by: application
@@ -4604,6 +4617,13 @@ entities:
     enforced_by: application
     source: design
     evidence: 확정 사양
+  - rule: listing_id·purchase_offer_id 는 배타적이다 — 판매중 아이템 방은 listing_id 만, 미판매+제안
+      아이템 방은 purchase_offer_id 만 채운다. 헤더의 price 는 listing_id 가 있으면 listing.price,
+      없으면 purchase_offer_id 가 가리키는 행의 제안 금액이다. 같은 구매자가 같은 아이템에 재제안하면
+      새 purchase_offer 행이 생기므로 그때 이 FK 를 최신 행으로 갱신한다
+    enforced_by: application
+    source: inferred
+    evidence: API-182 가격 출처 보강 (DEC-028)
 - name: ChatRoomMember
   table: chat_room_member
   domain: chat
@@ -5823,6 +5843,21 @@ relations:
   source: design
   evidence: 미판매 아이템 채팅이면 NULL
 - from: ChatRoom
+  to: PurchaseOffer
+  type: many_to_one
+  fk_column: purchase_offer_id
+  nullable: true
+  on_delete: RESTRICT
+  relation_kind: 선택적참조
+  zero_priority: false
+  jpa:
+    owning_side: ChatRoom
+    field: purchaseOffer
+    fetch: LAZY
+    inverse_field: null
+  source: inferred
+  evidence: 미판매+제안 아이템 채팅이면 설정, 판매중 아이템 채팅이면 NULL(DEC-028)
+- from: ChatRoom
   to: User
   type: many_to_one
   fk_column: buyer_id
@@ -6325,6 +6360,22 @@ design_decisions:
     엔티티 팩토리도 맵을 받는다. 위치 인자 10개가 전부 BigDecimal 이면 둘을 바꿔 넣어도
     컴파일이 통과해서, 원장이 조용히 틀어지는 경로가 생긴다.
   revisit_when: 같은 대분류 안에서 세부 카테고리마다 실측이 갈리는 화면이 생기면 measurement_scheme 을 depth=2 에도 채우고 '가장 가까운 조상' 규칙으로 읽는다. size_scheme 과 같은 방식이다
+- id: DEC-028
+  topic: 채팅방 헤더의 '제안 금액'이 어느 purchase_offer 행을 가리키는가
+  considered:
+  - 그대로 둔다 (price 를 String 으로만 내려주고 서버 내부에서 매번 최신 제안을 조회)
+  - chat_room 에 purchase_offer_id FK 를 추가한다
+  - purchase_offer 쪽에 chat_room_id 를 두고 역방향으로 찾는다
+  decision: chat_room.purchase_offer_id (nullable FK) 를 추가한다. listing_id 와 배타적으로 채운다 — 판매중 아이템 방은 listing_id, 미판매+제안 아이템 방은 purchase_offer_id
+  rationale: |
+    listing_id 는 '판매중' 방의 가격 출처고, 미판매+제안 방은 대응하는 컬럼이 없어 price 를
+    어느 제안에서 가져오는지 스키마상 경로가 없었다. 같은 아이템에 재제안이 여러 번 쌓일 수
+    있어 '최신 PENDING' 을 매번 정렬·조회로 찾는 방식은 N+1 과 레이스 컨디션(재제안과 조회가
+    겹치는 순간)을 둘 다 만든다. FK 로 두면 재제안 시점에 한 번만 갱신하고 조회는 단순 join이 된다.
+    역방향(purchase_offer.chat_room_id)을 택하지 않은 이유는 purchase_offer 가 append-only
+    원장이기 때문이다 — 재제안마다 새 행이 생기는데 그중 '현재 유효한 것'을 가리키는 포인터는
+    가변 상태를 가진 chat_room 쪽에 두는 것이 자연스럽다.
+  revisit_when: 제안 이력을 채팅방에서 전부 펼쳐 보여주는 화면이 생기면 이 FK 하나로는 부족하고 chat_room_id 를 purchase_offer 에 두는 1:N 구조로 바꾼다
 - id: DEC-101
   topic: 타인에게 보이는 프로필 필드 — 등급·키·몸무게는 공개, 성별은 비공개
   considered:
