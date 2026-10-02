@@ -1,6 +1,7 @@
 package com.tenure.domain.item.controller;
 
 import com.tenure.domain.item.dto.request.ItemCreateRequest;
+import com.tenure.domain.item.dto.request.ItemOfferAllowedRequest;
 import com.tenure.domain.item.dto.request.ItemUpdateRequest;
 import com.tenure.domain.item.dto.response.ItemHistoryPostResponse;
 import com.tenure.domain.item.dto.response.ItemIdResponse;
@@ -23,6 +24,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -93,15 +95,28 @@ public class ItemController implements ItemApi {
 		return ResponseEntity.ok(BaseResponse.success(response));
 	}
 
-	// 아이템 상세 정보 수정
+	// 아이템 상세 정보 수정 — 시트가 전체 폼이라 PUT 이다
 	@Override
-	@PatchMapping("/{itemId}")
+	@PutMapping("/{itemId}")
 	public ResponseEntity<BaseResponse<ItemIdResponse>> update(
 			@AuthenticationPrincipal AuthUser authUser,
 			@PathVariable Long itemId,
 			@RequestBody ItemUpdateRequest request
 	) {
 		ItemIdResponse response = itemService.update(authUser.id(), itemId, request);
+		return ResponseEntity.ok(BaseResponse.success(response));
+	}
+
+	// 구매 제안 허용 토글 — 상세 수정 시트가 아니라 선택 모달의 항목이다
+	@Override
+	@PatchMapping("/{itemId}/offer-allowed")
+	public ResponseEntity<BaseResponse<ItemIdResponse>> changeOfferAllowed(
+			@AuthenticationPrincipal AuthUser authUser,
+			@PathVariable Long itemId,
+			@RequestBody ItemOfferAllowedRequest request
+	) {
+		ItemIdResponse response =
+				itemService.changeOfferAllowed(authUser.id(), itemId, request.getOfferAllowed());
 		return ResponseEntity.ok(BaseResponse.success(response));
 	}
 

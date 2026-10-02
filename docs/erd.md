@@ -75,7 +75,7 @@ item (불변, soft delete)
                                         │
                                    판매자 수락 (최종 결제)
                                         ▼
-  결제 완료 ─▶ 상품 발송 ─▶ 배송 완료 ─▶ 구매 확정 ─▶ 정산 완료 ─▶ 거래 완료
+  결제 완료 ─▶ 상품 발송 ─▶ 배송 완료 ─▶ 구매 확정 ─▶ 정산 완료 (구매자 표시: 거래 완료)
             (운송장 입력)            (72h 자동 확정)          │
                                                          └─▶ item_ownership 승계
 ```
@@ -166,14 +166,14 @@ item (불변, soft delete)
 | 39 | `listing_featured_post` | `post` | N:1 | `post_id` | O | `RESTRICT` | 참조 |  | Post 가 soft delete(A분류)라 RESTRICT. v2 에서 이 FK 가 게시물 하드 삭제를 막던 버그의 원인이었다 |
 | 40 | `wishlist` | `user` | N:1 | `user_id` | O | `RESTRICT` | 참조 |  | 사람 FK |
 | 41 | `wishlist` | `item` | N:1 | `item_id` | O | `RESTRICT` | 참조 |  | Item 이 soft delete(A분류)라 RESTRICT |
-| 42 | `purchase_offer` | `item_listing` | N:1 | `listing_id` | O | `RESTRICT` | 원장 | ✓ | 제안 이력은 1회 제한의 근거. 0순위 |
+| 42 | `purchase_offer` | `item_listing` | N:1 | `listing_id` | - | `RESTRICT` | 원장 | ✓ | 제안 이력은 1회 제한의 근거. 0순위. 미판매 제안(PURCHASE_OFFER)이면 NULL (DEC-024) |
 | 43 | `purchase_offer` | `item` | N:1 | `item_id` | O | `RESTRICT` | 원장 | ✓ | 1회 제한 판정 기준. Item 이 soft delete(A분류)이기도 하다 |
 | 44 | `purchase_offer` | `user` | N:1 | `buyer_id` | O | `RESTRICT` | 원장 | ✓ | 사람 FK + 제안 이력 |
 | 45 | `purchase_offer` | `user` | N:1 | `seller_id` | O | `RESTRICT` | 원장 | ✓ | 사람 FK + 제안 이력 |
 | 46 | `payment` | `purchase_offer` | 1:1 | `offer_id` | O | `RESTRICT` | 원장 | ✓ | 결제가 제안보다 먼저 확정된다. 금액 원장 |
 | 47 | `payment` | `trade_order` | N:1 | `order_id` | - | `RESTRICT` | 선택적참조 | ✓ | 수락 전에는 주문이 없다 |
 | 48 | `trade_order` | `purchase_offer` | 1:1 | `offer_id` | O | `RESTRICT` | 원장 | ✓ | '제안이 수락되는 즉시' 생성 |
-| 49 | `trade_order` | `item_listing` | N:1 | `listing_id` | O | `RESTRICT` | 원장 | ✓ | 금액 원장 |
+| 49 | `trade_order` | `item_listing` | N:1 | `listing_id` | - | `RESTRICT` | 원장 | ✓ | 금액 원장. 미판매 아이템의 구매 제안에서 시작한 거래는 NULL (DEC-026) |
 | 50 | `trade_order` | `item` | N:1 | `item_id` | O | `RESTRICT` | 원장 | ✓ | 거래 대상. Item 이 soft delete(A분류)이기도 하다 |
 | 51 | `trade_order` | `user` | N:1 | `buyer_id` | O | `RESTRICT` | 원장 | ✓ | 사람 FK + 금액 원장 |
 | 52 | `trade_order` | `user` | N:1 | `seller_id` | O | `RESTRICT` | 원장 | ✓ | 사람 FK + 금액 원장 |
@@ -184,6 +184,7 @@ item (불변, soft delete)
 | 57 | `settlement` | `user` | N:1 | `seller_id` | O | `RESTRICT` | 원장 | ✓ | 사람 FK + 금액 원장 |
 | 58 | `chat_room` | `item` | N:1 | `item_id` | O | `RESTRICT` | 참조 |  | 채팅방은 아이템 단위. Item 이 soft delete(A분류)라 RESTRICT |
 | 59 | `chat_room` | `item_listing` | N:1 | `listing_id` | - | `RESTRICT` | 선택적참조 |  | 미판매 아이템 채팅이면 NULL |
+| 59-1 | `chat_room` | `purchase_offer` | N:1 | `purchase_offer_id` | - | `RESTRICT` | 선택적참조 |  | 미판매+제안 아이템 채팅이면 설정, 판매중이면 NULL (DEC-028) |
 | 60 | `chat_room` | `user` | N:1 | `buyer_id` | O | `RESTRICT` | 참조 |  | 사람 FK |
 | 61 | `chat_room` | `user` | N:1 | `seller_id` | O | `RESTRICT` | 참조 |  | 사람 FK |
 | 62 | `chat_room_member` | `chat_room` | N:1 | `chat_room_id` | O | `CASCADE` | 소유 |  | 방 밖에서 단독으로 나타나지 않는다. ChatRoom 은 B분류라 실제 삭제되지 않으므로 발동하지 않는다 |
@@ -399,6 +400,7 @@ erDiagram
         varchar name
         int depth
         varchar size_scheme "SizeScheme"
+        varchar measurement_scheme "MeasurementScheme"
         smallint sort_order
     }
     size_option {
@@ -419,6 +421,7 @@ erDiagram
         varchar cover_image_key
         varchar description
         date first_owned_date
+        varchar sale_status "SaleStatus"
         boolean offer_allowed
         int wish_count
         datetime deleted_at "soft delete"
@@ -503,7 +506,6 @@ erDiagram
         bigint id PK
         bigint item_id
         bigint seller_id
-        varchar sale_status "SaleStatus"
         int price
         int shipping_fee
         varchar fee_bearer "FeeBearer"
@@ -518,6 +520,7 @@ erDiagram
         bigint listing_id
         bigint post_id
         smallint sort_order
+        datetime created_at
     }
     wishlist {
         bigint id PK
@@ -633,6 +636,7 @@ erDiagram
 erDiagram
     item ||--o{ chat_room : "item_id"
     item_listing |o--o{ chat_room : "listing_id"
+    purchase_offer |o--o{ chat_room : "purchase_offer_id"
     user ||--o{ chat_room : "buyer_id"
     user ||--o{ chat_room : "seller_id"
     chat_room ||--o{ chat_room_member : "chat_room_id"
@@ -648,6 +652,7 @@ erDiagram
         bigint id PK
         bigint item_id
         bigint listing_id
+        bigint purchase_offer_id
         bigint buyer_id
         bigint seller_id
         datetime last_message_at
@@ -725,12 +730,12 @@ erDiagram
 | SCR-023 | 등록한 아이템 상세 (소유자 시점) | 아이템 정보·Tenure 기록·판매 상태 조회, 판매 전환 진입 | `item`, `item_ownership`, `item_wear_record`, `item_measurement`, `item_condition`, `item_listing` | read, update | O | `item` |
 | SCR-024 | 아이템 등록 · 상세 정보 수정 | 브랜드·아이템명·카테고리·사이즈·착용 대상·최초 보유 날짜 입력 | `item`, `item_image`, `category`, `item_measurement`, `item_condition` | create, update | O | `item` |
 | SCR-025 | 아이템 히스토리 | 해당 아이템이 등장한 OOTD 사진을 모아 본다 | `item_wear_record`, `post`, `post_image` | read, paging | O | `post` |
-| SCR-026 | 상품 상세페이지 (구매자 시점) | 상품 정보·Tenure 기록 기준·판매자 정보 조회, 관심 등록, 구매 진입 | `item`, `item_listing`, `item_ownership`, `item_wear_record`, `wishlist`, `report`, `user_block` | read, create, delete | O | `item` |
-| SCR-027 | 판매 전환 | 아이템을 판매 등록. 가격·배송비·수수료 부담·대표 OOTD·실측·상태 입력 | `item_listing`, `listing_featured_post`, `item_measurement`, `item_condition`, `payout_account` | create, update | O | — |
+| SCR-026 | 아이템 상세 (공개 페이지) | 판매 조건·Tenure 기록 기준·판매자 정보 조회, 관심 등록, 구매 진입. 판매중/미판매/판매완료가 한 화면의 상태 변형 | `item`, `item_listing`, `item_measurement`, `item_condition`, `listing_featured_post`, `post_item_tag`, `wishlist`, `report`, `user_block` | read, create, delete | O | `item` |
+| SCR-027 | 판매 전환 · 판매 정보 수정 | 아이템을 판매 등록한다. 아이템 정보까지 다시 받는 전체 폼 | `item`, `item_image`, `category`, `item_listing`, `listing_featured_post`, `item_measurement`, `item_condition`, `payout_account` | create, update | O | — |
 | SCR-028 | 대표 OOTD 선택 | 판매 등록에 걸 OOTD 게시물을 1~5개 고른다 | `listing_featured_post`, `post` | read, create, delete | O | `post` |
-| SCR-029 | 판매 상태 변경 | 판매중 / 미판매 / 판매 완료 전환, 구매 제안 허용 토글 | `item_listing` | update | O | — |
+| SCR-029 | 판매 상태 변경 | 미판매 / 판매 완료 전환, 구매 제안 허용 토글 | `item`, `item_listing` | update | O | — |
 | SCR-030 | 위시리스트 | 관심 등록한 아이템 목록, 알림 on/off | `wishlist`, `item`, `item_listing` | read, create, delete, update, paging | O | `item` |
-| SCR-031 | 공유하기 | 상품 상세를 외부 앱/링크로 공유 | `item_listing` | read | O | — |
+| SCR-031 | 공유하기 | 아이템 공개 페이지를 외부 앱/링크로 공유 | `item` | read | O | — |
 | SCR-032 | 구매 제안 (미판매 상품) | 제안 금액 입력 후 전송. 아이템당 1회 | `purchase_offer`, `payment` | create | O | — |
 | SCR-033 | 거래 의사 (판매 중 상품) | 판매가 그대로 거래 의사 전송 | `purchase_offer`, `payment` | create | O | — |
 | SCR-034 | 결제 | 상품 금액·배송비·수수료 확인, 배송지 선택, 결제 수단 선택 후 결제 승인 | `payment`, `purchase_offer`, `shipping_address` | create | O | — |
@@ -742,11 +747,11 @@ erDiagram
 | SCR-040 | 구매 내역 | 보낸 제안·진행 중·완료 거래 조회 | `trade_order`, `purchase_offer` | read, filter, paging | O | — |
 | SCR-041 | 채팅방 목록 | 아이템별 채팅방 목록. 전체/구매/판매/읽지않음 필터 | `chat_room`, `chat_room_member`, `chat_message` | read, filter, paging | O | — |
 | SCR-042 | 채팅방 | 아이템 정보 헤더와 메시지 송수신. 거래 단계별 CTA | `chat_room`, `chat_message`, `item`, `item_listing` | read, create, paging | O | `item` |
-| SCR-043 | 채팅방 관리 (차단 · 나가기 · 신고) | 상대 차단/해제, 채팅방 나가기, 신고 | `chat_room_member`, `user_block`, `report` | update, delete, create | O | — |
+| SCR-043 | 채팅방 관리 (차단 · 나가기) | 상대 차단/해제, 채팅방 나가기 | `chat_room_member`, `user_block` | update, delete, create | O | — |
 | SCR-044 | 알림 | 알림 목록. 확인 필요/아이템 소식/거래 현황/관심 등록 탭 | `notification` | read, filter, paging | O | — |
 | SCR-045 | 검색 | 검색어 입력, 최근 검색·최근 본 사용자, 추천 섹션 | `search_history`, `post`, `item`, `user` (최근 열람은 Redis) | read, create, delete, search | O | `post`, `item` |
 | SCR-046 | 검색 결과 | 게시물 탭 / 계정 탭 결과, 필터 적용 | `post`, `item`, `user`, `category` | read, search, filter, paging | O | `post`, `item` |
-| SCR-047 | 검색 필터 | 판매 상태·게시자 성별·카테고리·키/몸무게로 필터 | `category`, `item_listing`, `user` | filter | O | — |
+| SCR-047 | 검색 필터 | 판매 상태·게시자 성별·카테고리·키/몸무게로 필터 | `category`, `item`, `user` | filter | O | — |
 
 ### 4-1. 목록 화면의 쿼리 요구사항
 
@@ -1038,7 +1043,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 인덱스: `ix_post_author_date`(author_id, deleted_at, worn_date), `ix_post_feed`(deleted_at, created_at), `ix_post_author_created`(author_id, deleted_at, created_at)
 
 > 제약 — 본문(캡션) 컬럼을 두지 않는다. 작성 플로우에 입력란이 없고 OOTD 상세에도 표시 영역이 없다. v3 의 `content` 는 홈 헤더 인사말 `안녕하세요 SSU님!` 을 본문 예시로 잘못 인용해 생긴 컬럼이다 *(강제: application)*
-> 제약 — 판매 중(item_listing.sale_status=ON_SALE)인 상품의 대표 OOTD로 걸린 게시물은 삭제 불가 *(강제: application)*
+> 제약 — 판매 중(item.sale_status=ON_SALE)인 아이템의 대표 OOTD로 걸린 게시물은 삭제 불가 *(강제: application)*
 
 #### `post_image` (PostImage)
 
@@ -1154,6 +1159,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `name` | VARCHAR(50) | String |  | O |  | `design` | 대분류 10종(화면 순서): 아우터·상의·하의·신발·가방·모자·치마·원피스·액세서리·주얼리. 세부 102종. 값은 `V2__seed_category.sql` 이 정본 |
 | `depth` | INT | Integer |  | O |  | `design` | 1=카테고리, 2=세부 카테고리 |
 | `size_scheme` | VARCHAR(30) | SizeScheme |  |  |  | `design` | 이 대분류가 쓰는 사이즈 칩 세트. 칩 목록은 `size_option` 이 갖는다. 세부 카테고리는 NULL 이며 부모에서 읽는다 (Q6 해소, DEC-025) |
+| `measurement_scheme` | VARCHAR(20) | MeasurementScheme |  |  |  | `design` | 이 대분류가 받는 실측 항목 세트(`MeasurementField` 집합). `size_scheme` 으로 대신할 수 없다 — 하의와 치마가 둘 다 BOTTOM 인데 실측이 다르다. 세부 카테고리는 NULL 이며 부모에서 읽는다 (DEC-027) |
 | `sort_order` | INT | Integer |  | O |  | `inferred` | 드롭다운 노출 순서 |
 
 인덱스: `ix_category_parent`(parent_id, sort_order)
@@ -1200,14 +1206,15 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `wear_target` | VARCHAR(10) | WearTarget |  | O |  | `design` | '착용 대상'. 등록·판매 전환 모두 필수 표시(*). 칩 라벨은 화면마다 다르다 — 등록 '남자/여자/공용', 판매 전환 '남성복/여성복/공용' |
 | `cover_image_key` | VARCHAR(500) | String |  | O |  | `design` | '대표 사진' (필수 표시 *). 저장소 키를 넣는다 (DEC-006) |
 | `description` | TEXT | String |  |  |  | `design` | '제품 설명' / '상품 설명' |
-| `first_owned_date` | DATE | LocalDate |  |  |  | `design` | '최초 보유 날짜'. 예 25.02.8. 최초 item_ownership 구간의 start_date 와 같은 값이며, 거래 전까지만 수정할 수 있다 |
+| `first_owned_date` | DATE | LocalDate |  |  |  | `design` | '최초 보유 날짜'. 예 25.02.8. 최초 item_ownership 구간의 start_date 와 같은 값이며, 등록 뒤에는 수정할 수 없다 (DEC-007) |
+| `sale_status` | VARCHAR(20) | SaleStatus |  | O |  | `design` | 히어로 하단 배지 '판매 중'(2825:57089) / '미판매'(2825:58233) / '판매 완료'(2825:58566). 판매 등록이 없는 아이템도 표시하므로 아이템이 갖는다 (DEC-026) |
 | `offer_allowed` | BOOLEAN | Boolean |  | O |  | `design` | 미판매 상품 상세(2825:58233)의 '구매 제안 O' / '구매 제안 X'. 판매 등록과 무관하게 아이템에 붙는다 (DEC-024) |
 | `wish_count` | INT | Integer |  | O |  | `design` | '관심 5명'. 판매 등록 전 아이템도 위시에 담기므로 아이템이 갖는다. 비정규화 카운터이며 정본은 wishlist (→ 파생 컬럼 대장, DEC-024) |
 | `deleted_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | '삭제된 아이템' 상태. soft delete |
 | `created_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 감사 컬럼 관례 |
 | `updated_at` | DATETIME(6) | LocalDateTime |  | O |  | `design` | '상세 수정' |
 
-인덱스: `ix_item_category`(category_id, deleted_at), `ix_item_registrant`(registrant_id, deleted_at)
+인덱스: `ix_item_category`(category_id, deleted_at), `ix_item_registrant`(registrant_id, deleted_at), `ix_item_sale_status`(sale_status, deleted_at)
 
 > 제약 — 판매 중이거나 진행 중 거래가 있으면 삭제 불가 *(강제: application)*
 
@@ -1333,9 +1340,11 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 
 #### `item_listing` (ItemListing)
 
-아이템의 판매 등록('판매 전환'). 아이템이 재판매될 때마다 새 행이 생기므로 Item 과 1:N 이다. 생성 전제로 판매자에게 PayoutAccount 가 있어야 한다.
+아이템을 어떤 조건으로 팔았는지를 담는 **판매 조건 스냅샷**('판매 전환'). 판매 전환을 누를 때마다 새 행이 생기므로 Item 과 1:N 이고, 열린 행(`closed_at IS NULL`)은 아이템당 최대 1개다. 생성 전제로 판매자에게 PayoutAccount 가 있어야 한다.
 
-- **삭제 정책** `B` — sale_status + closed_at 으로 상태 관리. 거래가 참조하므로 물리 삭제하지 않는다
+판매 상태(`sale_status`)는 **이 테이블에 없다.** 판매 등록이 없는 아이템도 '미판매'·'판매 완료'를 표시해야 해서 `item` 으로 올렸다 (`DEC-026`).
+
+- **삭제 정책** `B` — closed_at 으로 판매 종료를 표시한다. 거래·제안·채팅이 조건 스냅샷으로 참조하므로 물리 삭제하지 않는다
 - **soft delete** X
 - **화면 근거** 등록한 아이템 > 판매 전환, 상품 상세페이지
 
@@ -1344,21 +1353,22 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `id` | BIGINT | Long | O | O |  | `inferred` | PK 관례 |
 | `item_id` | BIGINT | Long |  | O |  | `design` | 판매 대상 아이템 |
 | `seller_id` | BIGINT | Long |  | O |  | `design` | '판매자 정보' 섹션 |
-| `sale_status` | VARCHAR(20) | SaleStatus |  | O |  | `design` | '판매 중' / '미판매' / 판매 완료 배지 |
-| `price` | INT | Integer |  |  |  | `design` | '가격' 360,000원. 미판매면 NULL |
+| `price` | INT | Integer |  | O |  | `design` | '가격' 320,000원 (필수 표시 *). 미판매는 행이 없거나 닫힌 행이지 가격이 빈 행이 아니다 |
 | `shipping_fee` | INT | Integer |  | O |  | `design` | '배송비' +5,000원. 기본 사용자는 고정값 |
 | `fee_bearer` | VARCHAR(10) | FeeBearer |  | O |  | `design` | '수수료 부담'. 기본 사용자는 고정값 |
 | `seller_note` | TEXT | String |  |  |  | `design` | '판매자 설명' |
-| `listed_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | '판매 게시가 완료됐습니다.' |
-| `closed_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | '미판매로 변경시 화면' — 판매 내림 시각 |
+| `listed_at` | DATETIME(6) | LocalDateTime |  | O |  | `design` | '판매 게시가 완료됐습니다.' — 행이 생기는 순간이 곧 게시 시각 |
+| `closed_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | '미판매로 변경시 화면' — 판매 내림 시각. NULL 이면 열린 판매 등록 |
 | `created_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 감사 컬럼 관례 |
 | `updated_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 감사 컬럼 관례 |
 
-인덱스: `ix_item_listing_item`(item_id, created_at), `ix_item_listing_seller`(seller_id, sale_status)
+인덱스: `ix_item_listing_item`(item_id, closed_at), `ix_item_listing_seller`(seller_id, listed_at)
 
+> 제약 — item_id 당 closed_at IS NULL 인 행은 최대 1개다 *(강제: application)*
 > 제약 — 생성 시 판매자에게 payout_account 가 1개 이상 있어야 한다 *(강제: application)*
 > 제약 — user.grade=BASIC 이면 fee_bearer 는 SELLER 고정, shipping_fee 는 입력 불가·항상 0 이다 *(강제: application)*
 > 제약 — shipping_fee 가 부담 주체를 겸한다 — 0 이면 판매자 부담, 0보다 크면 구매자 부담 *(강제: application)*
+> 제약 — 닫힌 행은 다시 열지 않는다. 미판매로 내린 뒤 판매 전환을 다시 누르면 새 행을 만든다 *(강제: application)*
 
 #### `listing_featured_post` (ListingFeaturedPost)
 
@@ -1373,7 +1383,8 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `id` | BIGINT | Long | O | O |  | `inferred` | PK 관례 |
 | `listing_id` | BIGINT | Long |  | O |  | `inferred` | 부모 FK |
 | `post_id` | BIGINT | Long |  | O |  | `design` | 대표로 건 OOTD 게시물 |
-| `sort_order` | INT | Integer |  | O |  | `inferred` | 노출 순서 |
+| `sort_order` | INT | Integer |  | O |  | `design` | 선택 화면(2825:52006)이 고른 순서를 카드 우상단에 1·2·3·4 배지로 표시한다 |
+| `created_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 감사 컬럼 관례 |
 
 인덱스: `uk_listing_featured_post`(listing_id, post_id) · UNIQUE, `ix_listing_featured_post_post`(post_id)
 
@@ -1501,7 +1512,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `fee_bearer` | VARCHAR(10) | FeeBearer |  | O |  | `design` | 판매 등록의 '수수료 부담'을 스냅샷 |
 | `total_payment_amount` | INT | Integer |  | O |  | `design` | '총 결제 금액' 377,000원 |
 | `payout_amount` | INT | Integer |  | O |  | `design` | '총 정산 금액' 365,000원 |
-| `status` | VARCHAR(30) | OrderStatus |  | O |  | `design` | 거래 단계 6종 + 취소 |
+| `status` | VARCHAR(30) | OrderStatus |  | O |  | `design` | 거래 단계 5종 + 취소. SETTLED는 viewerRole에 따라 표시 라벨이 갈린다(판매자: 정산 완료 / 구매자: 거래 완료) |
 | `auto_confirm_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | '자동 구매 확정까지 23시간 44분 남음' = 배송 완료 +72h |
 | `confirmed_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | '구매를 확정할까요?' |
 | `canceled_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | 거래 상세의 '거래 취소' 버튼 (→ trade_order 제약 — 거래 취소) |
@@ -1603,15 +1614,17 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `id` | BIGINT | Long | O | O |  | `inferred` | PK 관례 |
 | `item_id` | BIGINT | Long |  | O |  | `design` | 채팅방 헤더의 아이템. 'Levis / LVC 1955 501' |
 | `listing_id` | BIGINT | Long |  |  |  | `design` | 헤더의 가격·판매 상태. 미판매 아이템이면 NULL 가능 |
+| `purchase_offer_id` | BIGINT | Long |  |  |  | `inferred` | 미판매+제안 방의 '제안 금액' 출처. listing_id 와 배타적 (DEC-028) |
 | `buyer_id` | BIGINT | Long |  | O |  | `design` | '구매 채팅' 필터의 기준 |
 | `seller_id` | BIGINT | Long |  | O |  | `design` | '판매 채팅' 필터의 기준 |
 | `last_message_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | 목록의 '6월 27일' 최근 메시지 시각 정렬 |
 | `created_at` | DATETIME(6) | LocalDateTime |  | O |  | `inferred` | 감사 컬럼 관례 |
 
-인덱스: `uk_chat_room`(item_id, buyer_id, seller_id) · UNIQUE, `ix_chat_room_buyer`(buyer_id, last_message_at), `ix_chat_room_seller`(seller_id, last_message_at), `ix_chat_room_listing`(listing_id)
+인덱스: `uk_chat_room`(item_id, buyer_id, seller_id) · UNIQUE, `ix_chat_room_buyer`(buyer_id, last_message_at), `ix_chat_room_seller`(seller_id, last_message_at), `ix_chat_room_listing`(listing_id), `ix_chat_room_purchase_offer`(purchase_offer_id)
 
 > 제약 — '미판매 + 구매제안 X' 상품은 새 채팅방을 열 수 없다 *(강제: application)*
 > 제약 — last_message_at 은 chat_message INSERT 와 같은 트랜잭션에서 동기 갱신한다 *(강제: application)*
+> 제약 — listing_id·purchase_offer_id 는 배타적이다. 헤더의 price 는 listing_id 가 있으면 listing.price, 없으면 purchase_offer_id 가 가리키는 행의 제안 금액이다. 재제안 시 이 FK 를 최신 행으로 갱신한다 *(강제: application, DEC-028)*
 
 #### `chat_room_member` (ChatRoomMember)
 
@@ -1711,7 +1724,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | 분류 | 의미 | 테이블 |
 |---|---|---|
 | **A** | `deleted_at` 보유 | `post`, `item` |
-| **B** | 상태 컬럼으로 대체 | `user`(status), `item_listing`(sale_status·closed_at), `chat_room`, `chat_room_member`(left_at) |
+| **B** | 상태 컬럼으로 대체 | `user`(status), `item_listing`(closed_at), `chat_room`, `chat_room_member`(left_at) |
 | **C** | 하드 삭제 | `follow`, `user_block`, `shipping_address`, `payout_account`, `notification_setting`, `notification`, `search_history`, `wishlist`, `post_like`, `post_save`, `post_image`, `post_item_tag`, `item_image`, `item_measurement`, `item_condition`, `category`, `listing_featured_post`, `chat_message`, `chat_message_image` |
 | **D** | append-only (삭제 금지) | `item_ownership`, `item_wear_record`, `purchase_offer`, `payment`, `trade_order`, `order_shipment`, `order_status_history`, `settlement`, `user_agreement`, `user_withdrawal`, `user_grade_history`, `report`, `post_tag_edit_log` |
 
@@ -1784,10 +1797,10 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 
 두 인덱스는 *아이템 키워드 검색*과 *판매 중 상품 둘러보기*를 전제로 만들었는데, 확정된 화면 인벤토리에
 그런 화면이 없다. 검색 결과(`SCR-046`)의 탭은 `게시물 | 계정` 2종뿐이고 아이템에는 게시물의 태그를
-통해서만 도달한다. `api-spec.md` 의 엔드포인트 95개 중 두 인덱스를 쓰는 것이 **하나도 없다.**
+통해서만 도달한다. `api-spec.md` 의 엔드포인트 가운데 두 인덱스를 쓰는 것이 **하나도 없다.**
 
 - 아이템 키워드 조회는 `API-098`(태그 가능한 내 아이템)뿐이고 **소유자 기준**이라 `ix_item_registrant` 가 받는다
-- 판매 상태 필터(`API-200`)는 게시물 → 태그 → 아이템 → 판매 등록 방향이라 `ix_item_listing_item` 이 받는다
+- 판매 상태 필터(`API-200`)는 `DEC-026` 으로 `item.sale_status` 가 되어 판매 등록을 거치지 않는다. `ix_item_sale_status`(sale_status, deleted_at) 를 `item` 에 뒀다
 
 쓰지 않는 인덱스는 쓰기 비용만 남긴다. 스킬 5-2 ⑥ 을 따라 제거한다.
 

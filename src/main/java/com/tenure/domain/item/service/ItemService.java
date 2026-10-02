@@ -14,8 +14,6 @@ import com.tenure.domain.item.exception.ItemErrorCode;
 import com.tenure.domain.item.mapper.ItemMapper;
 import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
-import com.tenure.domain.listing.enums.SaleStatus;
-import com.tenure.domain.listing.repository.ItemListingRepository;
 import com.tenure.domain.order.enums.OrderStatus;
 import com.tenure.domain.order.repository.TradeOrderRepository;
 import com.tenure.domain.user.entity.User;
@@ -31,6 +29,18 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.tenure.domain.category.enums.MeasurementField;
+import com.tenure.domain.category.enums.MeasurementScheme;
+import com.tenure.domain.item.dto.request.ItemForm;
+import com.tenure.domain.item.entity.ItemCondition;
+import com.tenure.domain.item.entity.ItemMeasurement;
+import com.tenure.domain.item.enums.ConditionCode;
+import com.tenure.domain.item.repository.ItemConditionRepository;
+import com.tenure.domain.item.repository.ItemMeasurementRepository;
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 아이템 등록·수정·삭제.
@@ -53,9 +63,7 @@ public class ItemService {
 
 	private final ItemRepository itemRepository;
 	private final ItemOwnershipRepository itemOwnershipRepository;
-	private final CategoryRepository categoryRepository;
-	private final SizeOptionRepository sizeOptionRepository;
-	private final ItemListingRepository itemListingRepository;
+	private final ItemFormApplier itemFormApplier;
 	private final TradeOrderRepository tradeOrderRepository;
 	private final ItemMapper itemMapper;
 	private final UserRepository userRepository;
@@ -70,10 +78,9 @@ public class ItemService {
 	@Loggable("아이템 등록")
 	public ItemIdResponse create(Long userId, ItemCreateRequest request) {
 		User registrant = findUser(userId);
-		Category category = findLeafCategory(request.getCategoryId());
-
-		// 칩에서 고른 값인지 확인함
-		validateSizeLabel(category, request.getSizeLabel());
+		// 세부 카테고리인지·칩에서 고른 사이즈인지 확인함
+		Category category = itemFormApplier.resolveCategory(
+				request.getCategoryId(), request.getSizeLabel());
 
 		// 아이템 저장
 		Item registerItem = Item.register(
@@ -103,7 +110,7 @@ public class ItemService {
 	}
 
 	/**
-	 * 아이템 상세 수정.
+	 * 아이템 상세 수정. 시트가 전체 폼이라 받은 값으로 통째로 갈아끼운다.
 	 *
 	 * 최초 보유 날짜는 바꿀 수 없다. 그 값이 최초 소유 구간의 시작일이고 구매자가
 	 * 보고 산 'Tenure 기록 기준' 의 첫 줄이라, 등록 뒤에는 누구도 손대지 못하게 한다.
@@ -115,37 +122,28 @@ public class ItemService {
 		// 아이템이 현재 user의 것이 맞는지 검증
 		Item item = findOwnedItem(userId, itemId);
 
-		// 카테고리를 안 보냈으면 기존 값을 그대로 씀
-		Category category = request.getCategoryId() == null
-				? item.getCategory()
-				: findLeafCategory(request.getCategoryId());
+		itemFormApplier.apply(item, ItemForm.builder()
+				.categoryId(request.getCategoryId())
+				.name(request.getName())
+				.brandName(request.getBrandName())
+				.sizeLabel(request.getSizeLabel())
+				.wearTarget(request.getWearTarget())
+				.build());
 
-		// 사이즈나 카테고리를 건드렸을 때만 본다. 매번 검사하면 칩 세트를 고쳤을 때
-		// 기존 사이즈를 가진 아이템이 이름조차 못 고치게 됨
-		if (request.getSizeLabel() != null || request.getCategoryId() != null) {
+		return itemMapper.toItemIdResponse(item);
+	}
 
-			// 카테고리만 바꿔도 검사가 필요함 — 상의(L)를 신발로 옮기면 L 은 신발 칩에 없음
-			String sizeLabel = request.getSizeLabel() == null
-					? item.getSizeLabel()
-					: request.getSizeLabel();
-
-			validateSizeLabel(category, sizeLabel);
-		}
-
-		item.update(
-				request.getCategoryId() == null ? null : category,
-				request.getName(),
-				request.getBrandName(),
-				request.getSizeLabel(),
-				request.getWearTarget(),
-				request.getCoverImageKey()
-		);
-
-		// 구매 제안 변경 여부
-		if (request.getOfferAllowed() != null) {
-			item.changeOfferAllowed(request.getOfferAllowed());
-		}
-
+	/**
+	 * 구매 제안 허용 토글.
+	 *
+	 * 상세 수정 시트가 아니라 선택 모달(3910:43234)의 항목이라 엔드포인트를 나눴다 —
+	 * 한 요청에 묶으면 토글만 누르는데도 폼 전체를 함께 보내야 한다.
+	 */
+	@Transactional
+	@Loggable("구매 제안 허용 변경")
+	public ItemIdResponse changeOfferAllowed(Long userId, Long itemId, boolean offerAllowed) {
+		Item item = findOwnedItem(userId, itemId);
+		item.changeOfferAllowed(offerAllowed);
 		return itemMapper.toItemIdResponse(item);
 	}
 
@@ -162,8 +160,8 @@ public class ItemService {
 		// 현재 본인의 아이템인지 확인
 		Item item = findOwnedItem(userId, itemId);
 
-		// 판매 중이면 지울 수 없음
-		if (itemListingRepository.existsByItemIdAndSaleStatus(itemId, SaleStatus.ON_SALE)) {
+		// 판매 중이면 지울 수 없음. 상태는 아이템이 들고 있어 판매 등록을 읽지 않는다 (DEC-026)
+		if (item.isOnSale()) {
 			log.info("판매 중이라 삭제할 수 없다 itemId={}", itemId);
 			throw new CustomException(ItemErrorCode.ITEM_409_ON_SALE);
 		}
@@ -200,35 +198,5 @@ public class ItemService {
 	private User findUser(Long userId) {
 		return userRepository.findById(userId)
 				.orElseThrow(() -> new CustomException(UserErrorCode.USER_404));
-	}
-
-	/** 대분류 id 를 보냈거나 없는 id 를 보내면 여기서 갈린다. */
-	private Category findLeafCategory(Long categoryId) {
-		return categoryRepository.findLeafWithParent(categoryId)
-				.orElseThrow(() -> {
-					log.info("세부 카테고리가 아니거나 존재하지 않는다 categoryId={}", categoryId);
-					return new CustomException(
-							categoryRepository.existsById(categoryId)
-									? ItemErrorCode.ITEM_400_CATEGORY
-									: CategoryErrorCode.CATEGORY_404);
-				});
-	}
-
-	/**
-	 * 사이즈는 대분류마다 고를 수 있는 값이 다르다. 칩에서 고른 값만 통과시켜 공개 페이지와
-	 * 상품 상세에 오타가 남지 않게 한다.
-	 */
-	private void validateSizeLabel(Category leaf, String sizeLabel) {
-		if (sizeLabel == null || sizeLabel.isBlank()) {
-			return;
-		}
-
-		// 칩 세트는 세부 카테고리가 아니라 대분류가 가짐
-		SizeScheme scheme = leaf.getParent().getSizeScheme();
-		if (scheme == null || !sizeOptionRepository.existsBySchemeAndLabel(scheme, sizeLabel)) {
-			log.info("카테고리에 없는 사이즈다 categoryId={} scheme={} sizeLabel={}",
-					leaf.getId(), scheme, sizeLabel);
-			throw new CustomException(ItemErrorCode.ITEM_400_SIZE);
-		}
 	}
 }

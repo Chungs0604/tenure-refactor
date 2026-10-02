@@ -14,7 +14,7 @@ import com.tenure.domain.item.entity.Item;
 import com.tenure.domain.item.entity.ItemOwnership;
 import com.tenure.domain.item.enums.RecommendationBlock;
 import com.tenure.domain.listing.entity.ItemListing;
-import com.tenure.domain.listing.enums.SaleStatus;
+import com.tenure.domain.item.enums.SaleStatus;
 import com.tenure.domain.post.dto.response.PostSummaryResponse;
 import com.tenure.domain.post.enums.AspectRatio;
 import java.time.LocalDate;

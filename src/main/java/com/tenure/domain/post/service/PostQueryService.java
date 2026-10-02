@@ -137,18 +137,14 @@ public class PostQueryService {
 		// 게시물에 달린 태그 조회 (태그에는 아이템과 사진이 같이 있음)
 		List<PostItemTag> tags = postItemTagRepository.findAllByPostId(postId);
 
-		// Map<ItemListingId, ItemListing> - 게시물의 아이템의 현재 상태(미판매, 판매중, 판매완료)
-		Map<Long, ItemListing> latestListings = latestListings(itemIdsOf(tags));
-
 		// 말풍선은 사진에 속한다 — 사진별로 묶어 두고 사진을 그릴 때 꺼낸다
 		Map<Long, List<PostTagResponse>> tagsByImageId = new LinkedHashMap<>();
 
+		// 판매 상태는 아이템이 들고 있어 태그에서 바로 읽는다 — 판매 등록을 따로 조회하지 않는다 (DEC-026)
 		for (PostItemTag tag : tags) {
-			ItemListing listing = latestListings.get(tag.getItem().getId());
 			tagsByImageId
 					.computeIfAbsent(tag.getPostImage().getId(), key -> new ArrayList<>())
-					.add(postMapper.toPostTagResponse(
-							tag, listing == null ? null : listing.getSaleStatus()));
+					.add(postMapper.toPostTagResponse(tag));
 		}
 
 		List<PostImageResponse> images = postImageRepository.findAllByPostId(postId).stream()
@@ -193,21 +189,19 @@ public class PostQueryService {
 		List<PostItemTag> tags = postItemTagRepository.findAllByPostImageId(imageId);
 		List<Long> itemIds = itemIdsOf(tags);
 
-		Map<Long, ItemListing> latestListings = latestListings(itemIds);
+		// 가격은 판매 등록에만 있다. 상태는 아이템이 들고 있다 (DEC-026)
+		Map<Long, ItemListing> openListings = openListings(itemIds);
 		Set<Long> alarmEnabledItemIds = alarmEnabledItemIds(userId, itemIds);
 
 		return tags.stream()
 				.map(PostItemTag::getItem)
-				.map(item -> {
-					ItemListing listing = latestListings.get(item.getId());
-					return postMapper.toTaggedItemResponse(
-							item,
-							listing,
-							toUrl(item.getCoverImageKey()),
-							taggedItemStatus(item, listing),
-							alarmEnabledItemIds.contains(item.getId())
-					);
-				})
+				.map(item -> postMapper.toTaggedItemResponse(
+						item,
+						openListings.get(item.getId()),
+						toUrl(item.getCoverImageKey()),
+						taggedItemStatus(item),
+						alarmEnabledItemIds.contains(item.getId())
+				))
 				.toList();
 	}
 
@@ -275,19 +269,16 @@ public class PostQueryService {
 	}
 
 	/**
-	 * 표시 상태. 판매 등록의 상태와 아이템의 삭제 여부를 한 값으로 합친다.
+	 * 표시 상태. 아이템의 판매 상태와 삭제 여부를 한 값으로 합친다.
 	 *
-	 * 판매 등록이 없으면 '미판매' 다 — 판매 전환을 한 번도 하지 않은 아이템이며, 이때는
-	 * listingId 가 null 이라 화면이 CTA 를 띄우지 않는다.
+	 * 삭제가 판매 상태를 덮는다 — 화면이 회색 처리해 '삭제된 아이템' 으로 보여준다.
+	 * CTA 를 띄울지는 판매 상태가 아니라 item.offer_allowed 가 정한다 (DEC-024).
 	 */
-	private TaggedItemStatus taggedItemStatus(Item item, ItemListing listing) {
+	private TaggedItemStatus taggedItemStatus(Item item) {
 		if (item.getDeletedAt() != null) {
 			return TaggedItemStatus.DELETED;
 		}
-		if (listing == null) {
-			return TaggedItemStatus.NOT_FOR_SALE;
-		}
-		return switch (listing.getSaleStatus()) {
+		return switch (item.getSaleStatus()) {
 			case ON_SALE -> TaggedItemStatus.ON_SALE;
 			case SOLD -> TaggedItemStatus.SOLD;
 			case NOT_FOR_SALE -> TaggedItemStatus.NOT_FOR_SALE;
@@ -327,12 +318,12 @@ public class PostQueryService {
 				);
 	}
 
-	/** 아이템별 최신 판매 등록. 없으면 키가 없다. */
-	private Map<Long, ItemListing> latestListings(Collection<Long> itemIds) {
+	/** 아이템별 열린 판매 등록. 없으면 키가 없다 — 가격을 그리지 않는다. */
+	private Map<Long, ItemListing> openListings(Collection<Long> itemIds) {
 		if (itemIds.isEmpty()) {
 			return Map.of();
 		}
-		return itemListingRepository.findLatestByItemIds(itemIds).stream()
+		return itemListingRepository.findOpenByItemIds(itemIds).stream()
 				.collect(Collectors.toMap(
 						listing -> listing.getItem().getId(), Function.identity()));
 	}

@@ -1,6 +1,7 @@
 package com.tenure.domain.item.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
@@ -9,7 +10,9 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -19,7 +22,7 @@ import com.tenure.domain.item.dto.response.ItemSummaryResponse;
 import com.tenure.domain.item.exception.ItemErrorCode;
 import com.tenure.domain.item.service.ItemQueryService;
 import com.tenure.domain.item.service.ItemService;
-import com.tenure.domain.listing.enums.SaleStatus;
+import com.tenure.domain.item.enums.SaleStatus;
 import com.tenure.global.exception.CustomException;
 import com.tenure.global.pagination.Cursor;
 import com.tenure.global.pagination.CursorCodec;
@@ -102,6 +105,38 @@ class ItemControllerTest extends ControllerSliceTestSupport {
 								  "coverImageKey": "item/2026/09/a.jpg"
 								}"""))
 				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	@DisplayName("수정은 폼 전체를 받는다 — 브랜드명을 빠뜨리면 400 이다")
+	void update_missingBrandName_returnsBadRequest() throws Exception {
+		mvc.perform(put(ITEMS_URL + "/1").with(authentication(principalOf(USER_ID))).with(csrf())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "name": "LVC 1955 501",
+								  "categoryId": 116,
+								  "sizeLabel": "L",
+								  "wearTarget": "MALE"
+								}"""))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	@DisplayName("구매 제안 허용은 폼 없이 토글만 보낸다 — 선택 모달의 항목이다")
+	void changeOfferAllowed_togglesWithoutForm() throws Exception {
+		given(itemService.changeOfferAllowed(anyLong(), anyLong(), anyBoolean()))
+				.willReturn(ItemIdResponse.builder().id(1L).build());
+
+		mvc.perform(patch(ITEMS_URL + "/1/offer-allowed")
+						.with(authentication(principalOf(USER_ID))).with(csrf())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "offerAllowed": true
+								}"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.id").value(1));
 	}
 
 	@Test

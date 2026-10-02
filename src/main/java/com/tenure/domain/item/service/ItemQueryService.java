@@ -18,7 +18,6 @@ import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.item.repository.ItemWearRecordRepository;
 import com.tenure.domain.listing.entity.ItemListing;
-import com.tenure.domain.listing.enums.SaleStatus;
 import com.tenure.domain.listing.repository.ItemListingRepository;
 import com.tenure.domain.post.dto.response.PostSummaryResponse;
 import com.tenure.domain.post.entity.Post;
@@ -104,8 +103,8 @@ public class ItemQueryService {
 		// 아이템 별 최근 착용 일
 		Map<Long, LocalDate> lastWornDates = lastWornDatesOf(itemIds);
 
-		// 아이템 별 최신 판매 등록
-		Map<Long, ItemListing> listings = latestListingsOf(itemIds);
+		// 아이템 별 열린 판매 등록. 가격을 그리는 데 쓴다 — 상태는 아이템이 들고 있다 (DEC-026)
+		Map<Long, ItemListing> listings = openListingsOf(itemIds);
 
 		return slice.map(
 				item -> toSummary(item, lastWornDates.get(item.getId()), listings.get(item.getId()))
@@ -153,12 +152,12 @@ public class ItemQueryService {
 		requireCurrentOwner(userId, itemId, periods);
 
 		ItemOwnershipHistoryResponse ownerships = buildOwnershipHistory(item, periods);
-		ItemListing listing = latestListingsOf(List.of(itemId)).get(itemId);
+		ItemListing listing = itemListingRepository.findOpenByItemId(itemId).orElse(null);
 
 		return itemMapper.toItemResponse(
 				item,
 				fileStorage.toUrl(item.getCoverImageKey()),
-				saleStatusOf(listing),
+				item.getSaleStatus(),
 				ownerships.getOwnerships(),
 				findFrequentlyWornWith(itemId),
 				ownerships.getRecentWornDate(),
@@ -361,11 +360,11 @@ public class ItemQueryService {
 	}
 
 	/**
-	 * 아이템 별 최신 판매 등록
+	 * 아이템 별 열린 판매 등록
 	 * Map<ItemId, ItemListing(판매등록)>
 	 */
-	private Map<Long, ItemListing> latestListingsOf(Collection<Long> itemIds) {
-		return itemListingRepository.findLatestByItemIds(itemIds).stream()
+	private Map<Long, ItemListing> openListingsOf(Collection<Long> itemIds) {
+		return itemListingRepository.findOpenByItemIds(itemIds).stream()
 				.collect(Collectors.toMap(listing -> listing.getItem().getId(), Function.identity()));
 	}
 
@@ -378,13 +377,8 @@ public class ItemQueryService {
 	/** 내 옷장 행. 인증 횟수 자리는 비우고 판매 상태를 채운다. */
 	private ItemSummaryResponse toSummary(Item item, LocalDate lastWornDate, ItemListing listing) {
 		return itemMapper.toItemSummaryResponse(
-				item, fileStorage.toUrl(item.getCoverImageKey()), saleStatusOf(listing),
+				item, fileStorage.toUrl(item.getCoverImageKey()), item.getSaleStatus(),
 				lastWornDate, toListingSummary(listing));
-	}
-
-	/** 판매 등록이 없는 것과 판매를 내린 것을 화면은 똑같이 '미판매' 로 그린다. */
-	private SaleStatus saleStatusOf(ItemListing listing) {
-		return listing == null ? SaleStatus.NOT_FOR_SALE : listing.getSaleStatus();
 	}
 
 	private ItemListingSummaryResponse toListingSummary(ItemListing listing) {

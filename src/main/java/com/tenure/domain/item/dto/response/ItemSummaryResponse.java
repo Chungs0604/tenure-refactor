@@ -1,6 +1,6 @@
 package com.tenure.domain.item.dto.response;
 
-import com.tenure.domain.listing.enums.SaleStatus;
+import com.tenure.domain.item.enums.SaleStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDate;
 import lombok.AccessLevel;
@@ -13,8 +13,10 @@ import lombok.Getter;
  *
  * 태그 시트는 그리는 것이 달라 TaggableItemResponse 로 따로 둔다.
  *
- * saleStatus 는 아이템 레벨로 평탄화한 값이다 — '미판매'가 판매 등록이 아예 없는 경우와
- * 판매를 내린 경우 둘 다라서, 화면이 두 갈래를 구분할 필요가 없도록 서버가 합쳐 내려준다.
+ * saleStatus 는 item.sale_status 를 그대로 싣는다 (DEC-026). '미판매'가 판매 등록이 아예 없는
+ * 경우와 판매를 내린 경우 둘 다인 것은 그대로지만, 아이템이 값을 들고 있어 합칠 일이 없다.
+ *
+ * listing 은 열린 판매 등록이 있을 때만 채운다 — 행에 가격을 그리는 데 쓴다.
  */
 @Getter
 @Builder

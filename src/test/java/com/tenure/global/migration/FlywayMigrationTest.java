@@ -26,7 +26,8 @@ class FlywayMigrationTest extends IntegrationTestSupport {
 
 	/** 정본 docs/schema.yaml 기준 수치. 스키마를 바꾸면 이 숫자도 같이 바뀐다. */
 	private static final int EXPECTED_TABLES = 39;
-	private static final int EXPECTED_COLUMNS = 320;
+	// V17 기준 — V16 에서 순증 1(DEC-026), V17 에서 category.measurement_scheme 이 늘어 다시 +1
+	private static final int EXPECTED_COLUMNS = 322;
 	private static final int EXPECTED_FOREIGN_KEYS = 69;
 
 	@Autowired

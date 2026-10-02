@@ -5,7 +5,7 @@ import com.tenure.domain.follow.repository.FollowRepository;
 import com.tenure.domain.item.entity.Item;
 import com.tenure.domain.item.enums.WearTarget;
 import com.tenure.domain.listing.entity.ItemListing;
-import com.tenure.domain.listing.enums.SaleStatus;
+import com.tenure.domain.item.enums.SaleStatus;
 import com.tenure.domain.listing.repository.ItemListingRepository;
 import com.tenure.domain.post.dto.response.MyPostSummaryResponse;
 import com.tenure.domain.post.dto.response.PostResponse;
@@ -220,7 +220,7 @@ class PostQueryServiceTest {
 	class GetPost {
 
 		@Test
-		@DisplayName("사진별로 태그를 묶고 판매 중인 아이템에만 판매 상태를 싣는다")
+		@DisplayName("사진별로 태그를 묶고 아이템의 판매 상태를 그대로 싣는다")
 		void getPost_hasTags_groupsTagsAndFillsSaleStatus() {
 			givenUrlPrefix();
 			User author = author();
@@ -231,14 +231,12 @@ class PostQueryServiceTest {
 			Item plainItem = item(author, OTHER_ITEM_ID, "Third Cut");
 
 			// mock 을 stubbing 하는 중에 다른 mock 을 만들 수 없다 — 먼저 만들어 둔다
-			ItemListing onSaleListing = listing(onSaleItem, SaleStatus.ON_SALE);
+			onSaleItem.changeSaleStatus(SaleStatus.ON_SALE);
 
 			given(postRepository.findActiveWithAuthor(POST_ID)).willReturn(Optional.of(post));
 			given(postItemTagRepository.findAllByPostId(POST_ID))
 					.willReturn(List.of(tag(image, onSaleItem), tag(image, plainItem)));
 			given(postImageRepository.findAllByPostId(POST_ID)).willReturn(List.of(image));
-			given(itemListingRepository.findLatestByItemIds(List.of(ITEM_ID, OTHER_ITEM_ID)))
-					.willReturn(List.of(onSaleListing));
 
 			PostResponse response = postQueryService.getPost(USER_ID, POST_ID);
 
@@ -248,8 +246,9 @@ class PostQueryServiceTest {
 					.isEqualTo(SaleStatus.ON_SALE);
 			assertThat(response.getImages().get(0).getTags().get(0).getItemName())
 					.isEqualTo("LVC 1955 501");
-			// 판매 등록이 없으면 null 이다 — 말풍선이 1행으로 접힌다 (DEC-102)
-			assertThat(response.getImages().get(0).getTags().get(1).getSaleStatus()).isNull();
+			// 미판매면 말풍선이 1행으로 접힌다 — '#판매중' 은 ON_SALE 일 때만 붙는다 (DEC-102)
+			assertThat(response.getImages().get(0).getTags().get(1).getSaleStatus())
+					.isEqualTo(SaleStatus.NOT_FOR_SALE);
 		}
 
 		@Test
@@ -323,12 +322,13 @@ class PostQueryServiceTest {
 			// 구매 제안 허용은 판매 등록이 아니라 아이템이 갖는다 (DEC-024)
 			ReflectionTestUtils.setField(onSaleItem, "offerAllowed", true);
 
-			ItemListing onSaleListing = listing(onSaleItem, SaleStatus.ON_SALE);
+			onSaleItem.changeSaleStatus(SaleStatus.ON_SALE);
+			ItemListing onSaleListing = listing(onSaleItem);
 
 			given(postImageRepository.findActiveWithPost(IMAGE_ID)).willReturn(Optional.of(image));
 			given(postItemTagRepository.findAllByPostImageId(IMAGE_ID))
 					.willReturn(List.of(tag(image, onSaleItem)));
-			given(itemListingRepository.findLatestByItemIds(List.of(ITEM_ID)))
+			given(itemListingRepository.findOpenByItemIds(List.of(ITEM_ID)))
 					.willReturn(List.of(onSaleListing));
 			given(wishlistRepository.findAlarmEnabledItemIds(USER_ID, List.of(ITEM_ID)))
 					.willReturn(List.of(ITEM_ID));
@@ -345,7 +345,7 @@ class PostQueryServiceTest {
 		}
 
 		@Test
-		@DisplayName("판매 등록이 없으면 미판매이고 listingId 가 없다 — 화면이 CTA 를 띄우지 않는다")
+		@DisplayName("판매 등록이 없으면 미판매이고 가격이 비어 있다 — CTA 는 offerAllowed 가 정한다")
 		void getTaggedItems_neverListed_hasNoListingId() {
 			givenUrlPrefix();
 			User author = author();
@@ -356,7 +356,7 @@ class PostQueryServiceTest {
 			given(postImageRepository.findActiveWithPost(IMAGE_ID)).willReturn(Optional.of(image));
 			given(postItemTagRepository.findAllByPostImageId(IMAGE_ID))
 					.willReturn(List.of(tag(image, plainItem)));
-			given(itemListingRepository.findLatestByItemIds(List.of(ITEM_ID))).willReturn(List.of());
+			given(itemListingRepository.findOpenByItemIds(List.of(ITEM_ID))).willReturn(List.of());
 			given(wishlistRepository.findAlarmEnabledItemIds(USER_ID, List.of(ITEM_ID)))
 					.willReturn(List.of());
 
@@ -377,14 +377,12 @@ class PostQueryServiceTest {
 			PostImage image = cover(post);
 			Item deletedItem = item(author, ITEM_ID, "LVC 1955 501");
 			ReflectionTestUtils.setField(deletedItem, "deletedAt", java.time.LocalDateTime.now());
-
-			ItemListing soldListing = listing(deletedItem, SaleStatus.SOLD);
+			deletedItem.changeSaleStatus(SaleStatus.SOLD);
 
 			given(postImageRepository.findActiveWithPost(IMAGE_ID)).willReturn(Optional.of(image));
 			given(postItemTagRepository.findAllByPostImageId(IMAGE_ID))
 					.willReturn(List.of(tag(image, deletedItem)));
-			given(itemListingRepository.findLatestByItemIds(List.of(ITEM_ID)))
-					.willReturn(List.of(soldListing));
+			given(itemListingRepository.findOpenByItemIds(List.of(ITEM_ID))).willReturn(List.of());
 			given(wishlistRepository.findAlarmEnabledItemIds(USER_ID, List.of(ITEM_ID)))
 					.willReturn(List.of());
 
@@ -557,13 +555,12 @@ class PostQueryServiceTest {
 
 	/**
 	 * 판매 등록은 mock 으로 만든다 — listing 도메인에 아직 팩토리가 없고, 여기서 검증하는 것은
-	 * 게시물 응답이 판매 상태·가격을 어떻게 싣는지다.
+	 * 게시물 응답이 가격을 어떻게 싣는지다. 판매 상태는 아이템이 들고 있다 (DEC-026).
 	 */
-	private static ItemListing listing(Item item, SaleStatus saleStatus) {
+	private static ItemListing listing(Item item) {
 		ItemListing listing = mock(ItemListing.class);
 		given(listing.getId()).willReturn(LISTING_ID);
 		given(listing.getItem()).willReturn(item);
-		given(listing.getSaleStatus()).willReturn(saleStatus);
 		given(listing.getPrice()).willReturn(360000);
 		return listing;
 	}

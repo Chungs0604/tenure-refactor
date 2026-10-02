@@ -1,6 +1,7 @@
 package com.tenure.domain.listing.entity;
 
 import com.tenure.domain.post.entity.Post;
+import com.tenure.global.entity.BaseCreatedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -28,7 +29,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Builder(access = AccessLevel.PRIVATE)
-public class ListingFeaturedPost {
+public class ListingFeaturedPost extends BaseCreatedEntity {
 
 	/** PK 관례 */
 	@Id
@@ -46,8 +47,20 @@ public class ListingFeaturedPost {
 	@JoinColumn(name = "post_id", nullable = false)
 	private Post post;
 
-	/** 노출 순서 */
+	/** 선택 화면(2825:52006)이 고른 순서를 카드 우상단에 1·2·3·4 배지로 표시한다 */
 	@Column(name = "sort_order", nullable = false)
 	private Integer sortOrder;
+
+	/**
+	 * 대표 OOTD 한 칸. sortOrder 는 클라이언트가 보낸 순서 그대로다 —
+	 * 상세의 가로 스크롤이 선택 화면의 배지 순서를 따른다.
+	 */
+	public static ListingFeaturedPost of(ItemListing listing, Post post, int sortOrder) {
+		return ListingFeaturedPost.builder()
+				.listing(listing)
+				.post(post)
+				.sortOrder(sortOrder)
+				.build();
+	}
 
 }

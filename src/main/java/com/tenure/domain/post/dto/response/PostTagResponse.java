@@ -1,6 +1,6 @@
 package com.tenure.domain.post.dto.response;
 
-import com.tenure.domain.listing.enums.SaleStatus;
+import com.tenure.domain.item.enums.SaleStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
 import lombok.AccessLevel;
@@ -32,7 +32,7 @@ public class PostTagResponse {
 	@Schema(description = "브랜드명", example = "Levis")
 	private final String brandName;
 
-	@Schema(description = "최신 판매 등록의 판매 상태. 등록이 없으면 null", example = "ON_SALE")
+	@Schema(description = "아이템의 판매 상태. 말풍선은 ON_SALE 일 때만 '#판매중' 을 붙인다", example = "ON_SALE")
 	private final SaleStatus saleStatus;
 
 	@Schema(description = "가로 위치(비율)", example = "0.4200")

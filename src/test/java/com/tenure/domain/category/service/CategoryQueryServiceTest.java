@@ -3,6 +3,8 @@ package com.tenure.domain.category.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tenure.domain.category.dto.response.CategoryResponse;
+import com.tenure.domain.category.enums.MeasurementField;
+import com.tenure.domain.category.enums.MeasurementScheme;
 import com.tenure.domain.category.enums.SizeScheme;
 import com.tenure.domain.category.enums.SizeSystem;
 import com.tenure.support.IntegrationTestSupport;
@@ -49,6 +51,47 @@ class CategoryQueryServiceTest extends IntegrationTestSupport {
 			assertThat(leaf.getSizeScheme()).isNull();
 			assertThat(leaf.getSizeOptions()).isEmpty();
 		});
+	}
+
+	@Test
+	@DisplayName("실측 항목도 대분류에만 싣는다 — 프론트가 이 목록대로 입력란을 그린다")
+	void getTree_measurementFieldsOnRootOnly() {
+		CategoryResponse top = rootNamed("상의");
+
+		assertThat(top.getMeasurementScheme()).isEqualTo(MeasurementScheme.TOP);
+		assertThat(top.getMeasurementFields()).containsExactlyInAnyOrder(
+				MeasurementField.SHOULDER_WIDTH, MeasurementField.CHEST_WIDTH,
+				MeasurementField.SLEEVE_LENGTH, MeasurementField.TOTAL_LENGTH);
+
+		assertThat(top.getChildren()).allSatisfy(leaf -> {
+			assertThat(leaf.getMeasurementScheme()).isNull();
+			assertThat(leaf.getMeasurementFields()).isEmpty();
+		});
+	}
+
+	@Test
+	@DisplayName("하의와 치마는 사이즈 칩이 같아도 실측 항목이 갈린다")
+	void getTree_bottomAndSkirtDifferInMeasurements() {
+		CategoryResponse bottom = rootNamed("하의");
+		CategoryResponse skirt = rootNamed("치마");
+
+		// 사이즈 칩 세트는 둘 다 BOTTOM 이다 — 그래서 실측을 따로 둬야 했다
+		assertThat(bottom.getSizeScheme()).isEqualTo(skirt.getSizeScheme());
+
+		assertThat(bottom.getMeasurementFields()).hasSize(6)
+				.contains(MeasurementField.THIGH_WIDTH, MeasurementField.RISE, MeasurementField.INSEAM)
+				.doesNotContain(MeasurementField.HIP_WIDTH);
+		assertThat(skirt.getMeasurementFields()).hasSize(4)
+				.contains(MeasurementField.HIP_WIDTH)
+				.doesNotContain(MeasurementField.THIGH_WIDTH);
+	}
+
+	@Test
+	@DisplayName("실측을 받지 않는 대분류는 항목이 비어 있다")
+	void getTree_noneSchemeHasNoFields() {
+		assertThat(rootNamed("신발").getMeasurementScheme()).isEqualTo(MeasurementScheme.NONE);
+		assertThat(rootNamed("신발").getMeasurementFields()).isEmpty();
+		assertThat(rootNamed("가방").getMeasurementFields()).isEmpty();
 	}
 
 	@Test

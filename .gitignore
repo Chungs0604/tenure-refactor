@@ -45,3 +45,6 @@ uploads/
 ### Secrets — 절대 커밋하지 않는다 ###
 .env
 !.env.example
+
+### Claude Code 개인 설정 — 팀 공유 대상 아님 ###
+.claude/settings.local.json

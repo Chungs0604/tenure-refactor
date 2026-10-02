@@ -9,7 +9,7 @@ import com.tenure.domain.item.exception.ItemErrorCode;
 import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.item.repository.ItemWearRecordRepository;
-import com.tenure.domain.listing.enums.SaleStatus;
+import com.tenure.domain.item.enums.SaleStatus;
 import com.tenure.domain.listing.repository.ListingFeaturedPostRepository;
 import com.tenure.domain.post.dto.request.PostCreateRequest;
 import com.tenure.domain.post.dto.request.PostCreateRequest.PostImageRequest;

@@ -31,8 +31,8 @@ public interface ItemRepository extends JpaRepository<Item, Long>, ItemRepositor
 	 * 아이템 상세. 카테고리와 그 부모를 함께 읽는다 —
 	 * 화면이 '상의 · 긴소매 티셔츠' , 사이즈 함께 사용
 	 */
-	@Query("select i from Item i join fetch i.category c join fetch c.parent "
-			+ "where i.id = :itemId and i.deletedAt is null")
+	@Query("select i from Item i join fetch i.category c join fetch c.parent " +
+			"where i.id = :itemId and i.deletedAt is null")
 	Optional<Item> findActiveWithCategory(@Param("itemId") Long itemId);
 
 	/** 태그된 아이템 목록·상세 말풍선. 삭제된 아이템도 화면에 회색으로 남으므로 함께 받는다. */

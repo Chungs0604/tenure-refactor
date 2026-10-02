@@ -6,6 +6,8 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import java.util.Collection;
+import java.util.List;
 
 public interface PostRepository extends JpaRepository<Post, Long>, PostRepositoryCustom {
 
@@ -32,4 +34,8 @@ public interface PostRepository extends JpaRepository<Post, Long>, PostRepositor
 			+ "and p.createdAt >= :from "
 			+ "and exists (select 1 from PostItemTag t where t.postImage.post = p)")
 	int countValidOotd(@Param("authorId") Long authorId, @Param("from") LocalDateTime from);
+
+	/** 대표 OOTD 로 걸 게시물. 삭제된 것은 빠지므로 개수로 존재를 확인한다. */
+	@Query("select p from Post p where p.id in :postIds and p.deletedAt is null")
+	List<Post> findActiveByIds(@Param("postIds") Collection<Long> postIds);
 }
