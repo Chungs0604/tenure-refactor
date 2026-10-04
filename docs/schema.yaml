@@ -1288,12 +1288,16 @@ enums:
   values:
   - BUYER_CANCELED
   - OTHER_OFFER_ACCEPTED
+  - LISTING_DELISTED
   source: design
-  evidence: 제안자 본인 취소와, 같은 아이템의 다른 요청이 수락돼 시스템이 자동 취소한 경우를 구분한다
+  evidence: 제안자 본인 취소와 시스템 자동 취소(다른 제안 수락·판매 내림)를 구분한다. Q8 — 판매를
+    내릴 때 남은 PENDING 제안은 수락 경로의 자동 취소 규칙과 대칭으로 정리하기로 했다(결제 승인
+    해제 + 알림). OTHER_OFFER_ACCEPTED 와 마찬가지로 제안자 잘못이 아니므로 1회 제한에서 제외한다
   value_evidence_table: purchase_offer
   value_evidence_columns:
     BUYER_CANCELED: canceled_at
     OTHER_OFFER_ACCEPTED: canceled_at
+    LISTING_DELISTED: canceled_at
 entities:
 - name: User
   table: user
@@ -3746,6 +3750,57 @@ entities:
     nullable: true
     source: design
     evidence: '''거래 요청사항'' / ''구매자 요청사항'''
+  - name: shippingRecipientName
+    column: shipping_recipient_name
+    db_type: VARCHAR(50)
+    java_type: String
+    nullable: false
+    source: inferred
+    evidence: 제안서 상세의 수령인. API-141 요청의 shippingAddressId 가 가리키는 shipping_address 를
+      생성 시점에 스냅샷한다 — FK 로 걸면 응답 대기 중 주소록 수정·삭제가 이미 보낸 제안의 배송지를 바꾼다
+  - name: shippingPhone
+    column: shipping_phone
+    db_type: VARCHAR(20)
+    java_type: String
+    nullable: false
+    source: inferred
+    evidence: 제안서 상세의 연락처 스냅샷
+  - name: shippingZipcode
+    column: shipping_zipcode
+    db_type: VARCHAR(10)
+    java_type: String
+    nullable: false
+    source: inferred
+    evidence: 화면에는 없지만 수락 시 order_shipment 로 복사하려면 필요하다
+  - name: shippingAddress
+    column: shipping_address
+    db_type: VARCHAR(255)
+    java_type: String
+    nullable: false
+    source: inferred
+    evidence: 제안서 상세의 주소 스냅샷
+  - name: shippingAddressDetail
+    column: shipping_address_detail
+    db_type: VARCHAR(255)
+    java_type: String
+    nullable: true
+    source: inferred
+    evidence: 제안서 상세의 상세주소 스냅샷
+  - name: shippingDeliveryRequestType
+    column: shipping_delivery_request_type
+    db_type: VARCHAR(30)
+    java_type: DeliveryRequestType
+    nullable: true
+    enum: DeliveryRequestType
+    source: inferred
+    evidence: 배송 요청사항 유형 스냅샷. 수락 시 order_shipment 로 복사한다
+  - name: shippingDeliveryRequest
+    column: shipping_delivery_request
+    db_type: VARCHAR(50)
+    java_type: String
+    nullable: true
+    source: inferred
+    evidence: 배송 요청사항 직접입력 스냅샷. DIRECT 일 때만 채운다
   - name: status
     column: status
     db_type: VARCHAR(20)
@@ -3843,8 +3898,16 @@ entities:
     - status
     unique: false
     note: 수락 시 같은 아이템의 나머지 대기 요청을 자동 취소하기 위한 조회
+  - name: uk_purchase_offer_limit
+    columns:
+    - (IF(offer_type='PURCHASE_OFFER' AND NOT(status='CANCELED' AND cancel_reason<>'BUYER_CANCELED'), item_id, NULL))
+    - (IF(offer_type='PURCHASE_OFFER' AND NOT(status='CANCELED' AND cancel_reason<>'BUYER_CANCELED'), buyer_id, NULL))
+    unique: true
+    note: 1회 제한을 애플리케이션 판정에만 맡기면 동시 요청 두 건이 둘 다 통과해 중복 제안·중복
+      결제 승인이 생긴다. uk_payout_account_default·uk_shipping_address_default 와 같은
+      함수형 인덱스로 DB 가 한 번 더 막는다
   constraints:
-  - rule: offer_type=PURCHASE_OFFER 는 (item_id, buyer_id) 당 1행. 단 cancel_reason=OTHER_OFFER_ACCEPTED 인 행은 제외하고 판정한다
+  - rule: offer_type=PURCHASE_OFFER 는 (item_id, buyer_id) 당 1행. 단 cancel_reason 이 BUYER_CANCELED 가 아닌(시스템 취소) 행은 제외하고 판정한다. uk_purchase_offer_limit 가 이 규칙을 DB 수준에서도 강제한다
     enforced_by: application
     source: design
     evidence: '''판매 중이 아닌 패션 아이템에 1회만'' + ''취소·만료·거절되면 복구되지 않아요''. 다만 자동 취소는 제안자 잘못이 아니므로 기회를 돌려준다'

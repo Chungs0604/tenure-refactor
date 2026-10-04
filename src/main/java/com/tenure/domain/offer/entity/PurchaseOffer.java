@@ -1,5 +1,7 @@
 package com.tenure.domain.offer.entity;
 
+import com.tenure.domain.address.entity.ShippingAddress;
+import com.tenure.domain.address.enums.DeliveryRequestType;
 import com.tenure.domain.item.entity.Item;
 import com.tenure.domain.listing.entity.ItemListing;
 import com.tenure.domain.listing.enums.FeeBearer;
@@ -116,6 +118,35 @@ public class PurchaseOffer extends BaseEntity {
 	@Column(name = "buyer_request", length = 500)
 	private String buyerRequest;
 
+	/** 수령인 스냅샷. 배송지 수정·삭제가 응답 대기 중인 제안에 영향을 주지 않게 생성 시점에 떠 둠 */
+	@Column(name = "shipping_recipient_name", nullable = false, length = 50)
+	private String shippingRecipientName;
+
+	/** 연락처 스냅샷 */
+	@Column(name = "shipping_phone", nullable = false, length = 20)
+	private String shippingPhone;
+
+	/** 우편번호 스냅샷. 화면엔 안 나오지만 수락 시 order_shipment 로 복사하려면 필요함 */
+	@Column(name = "shipping_zipcode", nullable = false, length = 10)
+	private String shippingZipcode;
+
+	/** 주소 스냅샷 */
+	@Column(name = "shipping_address", nullable = false, length = 255)
+	private String shippingAddress;
+
+	/** 상세주소 스냅샷 */
+	@Column(name = "shipping_address_detail", length = 255)
+	private String shippingAddressDetail;
+
+	/** 배송 요청사항 유형 스냅샷 */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "shipping_delivery_request_type", length = 30)
+	private DeliveryRequestType shippingDeliveryRequestType;
+
+	/** 배송 요청사항 직접입력 스냅샷. DIRECT 일 때만 채움 */
+	@Column(name = "shipping_delivery_request", length = 50)
+	private String shippingDeliveryRequest;
+
 	/** '응답 대기' 칩 */
 	@Enumerated(EnumType.STRING)
 	@Column(name = "status", nullable = false, length = 20)
@@ -141,5 +172,82 @@ public class PurchaseOffer extends BaseEntity {
 	/** 24h 만료 배치 기록. EXPIRED 의 근거 */
 	@Column(name = "expired_at")
 	private LocalDateTime expiredAt;
+
+	/** 제안 생성. 금액·배송지는 생성 시점 값을 그대로 떠서 들고, 24시간 뒤 만료로 잡음 */
+	public static PurchaseOffer create(
+			ItemListing listing, Item item, User buyer, User seller, OfferType offerType,
+			Integer offerPrice, Integer shippingFee, FeeBearer feeBearer, BigDecimal feeRate,
+			Integer buyerFeeAmount, Integer sellerFeeAmount, Integer totalPaymentAmount,
+			Integer expectedPayoutAmount, String buyerRequest, ShippingAddress address,
+			LocalDateTime now
+	) {
+		return PurchaseOffer.builder()
+				.listing(listing)
+				.item(item)
+				.buyer(buyer)
+				.seller(seller)
+				.offerType(offerType)
+				.offerPrice(offerPrice)
+				.shippingFee(shippingFee)
+				.feeBearer(feeBearer)
+				.feeRate(feeRate)
+				.buyerFeeAmount(buyerFeeAmount)
+				.sellerFeeAmount(sellerFeeAmount)
+				.feeAmount(buyerFeeAmount + sellerFeeAmount)
+				.totalPaymentAmount(totalPaymentAmount)
+				.expectedPayoutAmount(expectedPayoutAmount)
+				.buyerRequest(buyerRequest)
+				.shippingRecipientName(address.getRecipientName())
+				.shippingPhone(address.getPhone())
+				.shippingZipcode(address.getZipcode())
+				.shippingAddress(address.getAddress())
+				.shippingAddressDetail(address.getAddressDetail())
+				.shippingDeliveryRequestType(address.getDeliveryRequestType())
+				.shippingDeliveryRequest(address.getDeliveryRequest())
+				.status(OfferStatus.PENDING)
+				.expiresAt(now.plusHours(24))
+				.build();
+	}
+
+	/** 구매자 취소 또는 다른 제안 수락에 따른 시스템 취소. 사유로 1회 제한 복구 여부가 갈림 */
+	public void cancel(OfferCancelReason reason, LocalDateTime now) {
+		this.status = OfferStatus.CANCELED;
+		this.cancelReason = reason;
+		this.canceledAt = now;
+	}
+
+	/** 판매자 수락 */
+	public void accept(LocalDateTime now) {
+		this.status = OfferStatus.ACCEPTED;
+		this.respondedAt = now;
+	}
+
+	/** 판매자 거절 */
+	public void reject(LocalDateTime now) {
+		this.status = OfferStatus.REJECTED;
+		this.respondedAt = now;
+	}
+
+	/** 24시간 무응답 자동 만료 */
+	public void expire(LocalDateTime now) {
+		this.status = OfferStatus.EXPIRED;
+		this.expiredAt = now;
+	}
+
+	public boolean isPending() {
+		return status == OfferStatus.PENDING;
+	}
+
+	public boolean isExpired(LocalDateTime now) {
+		return now.isAfter(expiresAt);
+	}
+
+	public boolean isBuyer(Long userId) {
+		return buyer.getId().equals(userId);
+	}
+
+	public boolean isSeller(Long userId) {
+		return seller.getId().equals(userId);
+	}
 
 }

@@ -77,4 +77,20 @@ public class Notification extends BaseCreatedEntity {
 	@Column(name = "read_at")
 	private LocalDateTime readAt;
 
+	/** 알림 발행. 대상이 다형이라 FK 는 걸지 않고 targetId 만 받음 */
+	public static Notification publish(
+			User user, NotificationCategory category, String title, String body,
+			String imageKey, NotificationTargetType targetType, Long targetId
+	) {
+		return Notification.builder()
+				.user(user)
+				.category(category)
+				.title(title)
+				.body(body)
+				.imageKey(imageKey)
+				.targetType(targetType)
+				.targetId(targetId)
+				.build();
+	}
+
 }

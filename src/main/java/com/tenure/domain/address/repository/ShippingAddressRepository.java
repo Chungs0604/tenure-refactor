@@ -2,6 +2,7 @@ package com.tenure.domain.address.repository;
 
 import com.tenure.domain.address.entity.ShippingAddress;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -13,6 +14,9 @@ public interface ShippingAddressRepository extends JpaRepository<ShippingAddress
 	@Query("select a from ShippingAddress a where a.user.id = :userId "
 			+ "order by a.isDefault desc, a.createdAt desc")
 	List<ShippingAddress> findAllOf(@Param("userId") Long userId);
+
+	/** 본인 배송지만 제안에 쓸 수 있는지 확인함 */
+	Optional<ShippingAddress> findByIdAndUserId(Long id, Long userId);
 
 	/**
 	 * 기존 기본 배송지를 내린다.

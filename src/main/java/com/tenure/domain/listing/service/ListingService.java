@@ -18,6 +18,7 @@ import com.tenure.domain.listing.exception.ListingErrorCode;
 import com.tenure.domain.listing.mapper.ListingMapper;
 import com.tenure.domain.listing.repository.ItemListingRepository;
 import com.tenure.domain.listing.repository.ListingFeaturedPostRepository;
+import com.tenure.domain.offer.service.OfferService;
 import com.tenure.domain.order.enums.OrderStatus;
 import com.tenure.domain.order.repository.TradeOrderRepository;
 import com.tenure.domain.payout.exception.PayoutErrorCode;
@@ -78,6 +79,7 @@ public class ListingService {
 	private final PayoutAccountRepository payoutAccountRepository;
 	private final PostRepository postRepository;
 	private final TradeOrderRepository tradeOrderRepository;
+	private final OfferService offerService;
 	private final ListingMapper listingMapper;
 
 	/**
@@ -186,11 +188,11 @@ public class ListingService {
 			throw new CustomException(ListingErrorCode.LISTING_400_STATUS);
 		}
 
-		Item item = findOwnedItem(userId, itemId);
+		// 아이템을 먼저 잠근다 — OfferService.accept() 도 같은 순서(item → offer)로 잠그므로
+		// 두 경로가 서로 다른 순서로 걸어 교착할 일이 없다
+		Item item = findOwnedItemForUpdate(userId, itemId);
 
-		// 거래가 진행중이면 상태 변경 불가.
-		// 수락 전 PENDING 제안은 거래가 아직 없어 여기 안 걸림 — 그 결제 승인 해제는
-		// offer·payment 를 만들 때 함께 처리한다 (Q8)
+		// 거래가 진행중이면 상태 변경 불가. 수락 전 PENDING 제안은 거래가 아직 없어 여기 안 걸림
 		if (tradeOrderRepository.existsInProgress(itemId, FINISHED_ORDER_STATUSES)) {
 			log.info("진행 중인 거래가 있어 상태를 바꿀 수 없다 itemId={}", itemId);
 			throw new CustomException(ListingErrorCode.LISTING_409_IN_TRADE);
@@ -199,6 +201,9 @@ public class ListingService {
 		// 미판매든 판매 완료든 판매는 끝나므로 열린 등록을 함께 닫음
 		itemListingRepository.findOpenByItemId(itemId)
 				.ifPresent(listing -> listing.close(LocalDateTime.now()));
+
+		// 응답을 못 받은 대기 제안이 남아 있으면 함께 정리함 — 막아두면 결제 승인이 잡힌 채 방치됨
+		offerService.cancelPendingForDelist(itemId);
 
 		item.changeSaleStatus(saleStatus);
 
@@ -331,6 +336,24 @@ public class ListingService {
 				});
 
 		// 등록자여도 이미 팔았으면 남의 옷임
+		if (!currentOwner(itemId).getId().equals(userId)) {
+			log.info("현재 소유자가 아닌 사람이 판매를 시도했다 itemId={} userId={}", itemId, userId);
+			throw new CustomException(ItemErrorCode.ITEM_403);
+		}
+		return item;
+	}
+
+	/**
+	 * 판매 상태 변경 전용 — 행 잠금 조회임. 이 안에서 item_listing·purchase_offer 를 함께
+	 * 건드리므로, 동시에 들어오는 제안 수락과 아이템 행을 두고 경합하지 않게 먼저 잠근다
+	 */
+	private Item findOwnedItemForUpdate(Long userId, Long itemId) {
+		Item item = itemRepository.findActiveForUpdate(itemId)
+				.orElseThrow(() -> {
+					log.info("없거나 삭제된 아이템이다 itemId={}", itemId);
+					return new CustomException(ItemErrorCode.ITEM_404);
+				});
+
 		if (!currentOwner(itemId).getId().equals(userId)) {
 			log.info("현재 소유자가 아닌 사람이 판매를 시도했다 itemId={} userId={}", itemId, userId);
 			throw new CustomException(ItemErrorCode.ITEM_403);

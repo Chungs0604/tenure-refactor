@@ -132,8 +132,8 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | API-121 | `POST` | `/api/v1/items/{itemId}/wishlist` | 관심 등록 | SCR-026, SCR-030 | Wishlist | O |
 | API-122 | `DELETE` | `/api/v1/items/{itemId}/wishlist` | 관심 해제 | SCR-026, SCR-030 | Wishlist | O |
 | API-123 | `PATCH` | `/api/v1/wishlists/{wishlistId}/alarm` | 위시 알림 on/off | SCR-030 | Wishlist | O |
-| API-140 | `GET` | `/api/v1/listings/{listingId}/offer-preview` | 결제 금액 미리보기 (수수료·배송비 계산) | SCR-032, SCR-033, SCR-034 | ItemListing, User | O |
-| API-141 | `POST` | `/api/v1/listings/{listingId}/offers` | 구매 제안 / 거래 의사 전송 (결제 승인 포함) | SCR-032, SCR-033, SCR-034 | PurchaseOffer, Payment, ShippingAddress | O |
+| API-140 | `GET` | `/api/v1/items/{itemId}/offer-preview` | 결제 금액 미리보기 (수수료·배송비 계산) | SCR-032, SCR-033, SCR-034 | Item, ItemListing, User | O |
+| API-141 | `POST` | `/api/v1/items/{itemId}/offers` | 구매 제안 / 거래 의사 전송 (결제 승인 포함) | SCR-032, SCR-033, SCR-034 | PurchaseOffer, Payment, ShippingAddress | O |
 | API-142 | `GET` | `/api/v1/offers/{offerId}` | 제안서 상세 (구매자·판매자 시점 분기) | SCR-035, SCR-036 | PurchaseOffer, Payment, Settlement, PayoutAccount, ShippingAddress | O |
 | API-143 | `DELETE` | `/api/v1/offers/{offerId}` | 제안 취소 (구매자) | SCR-035 | PurchaseOffer, Payment | O |
 | API-144 | `POST` | `/api/v1/offers/{offerId}/accept` | 제안 수락 (판매자) → 거래 생성 | SCR-036 | PurchaseOffer, Payment, TradeOrder | O |
@@ -366,7 +366,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | `PAYOUT_403` | 403 | 본인의 정산 계좌가 아닙니다. | API-032, API-033, API-034 |
 | `PAYOUT_409_PENDING_SETTLEMENT` | 409 | 정산 대기 중인 거래가 있어 삭제할 수 없습니다. | API-033 |
 | `PAYOUT_409_LAST_DEFAULT` | 409 | 기본 정산 계좌는 삭제할 수 없습니다. | API-033 |
-| `PAYOUT_400_REQUIRED` | 400 | 정산 계좌를 먼저 등록해주세요. | API-111 |
+| `PAYOUT_400_REQUIRED` | 400 | 정산 계좌를 먼저 등록해주세요. | API-111, API-144 |
 
 ### FollowErrorCode
 
@@ -434,7 +434,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | `LISTING_403_FEE_BEARER` | 403 | 기본 사용자는 수수료 부담과 배송비를 지정할 수 없습니다. | API-111, API-112 |
 | `LISTING_409_ALREADY_OPEN` | 409 | 이미 판매 중인 아이템입니다. | API-111 |
 | `LISTING_409_CLOSED` | 409 | 판매가 끝난 등록은 수정할 수 없습니다. | API-112, API-115 |
-| `LISTING_409_SOLD` | 409 | 이미 판매 완료된 상품입니다. | API-141 |
+| `LISTING_409_SOLD` | 409 | 이미 판매 완료된 상품입니다. | API-141, API-144 |
 | `LISTING_409_IN_TRADE` | 409 | 진행 중인 거래가 있어 판매 상태를 바꿀 수 없습니다. | API-113 |
 | `LISTING_400_STATUS` | 400 | 판매중으로 되돌릴 수 없습니다. 판매 전환을 다시 진행해주세요. | API-113 |
 
@@ -3461,9 +3461,11 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 
 ### 구매 제안
 
-#### API-140 · `GET /api/v1/listings/{listingId}/offer-preview`
+#### API-140 · `GET /api/v1/items/{itemId}/offer-preview`
 
 결제 금액 미리보기 (수수료·배송비 계산). 인증 **필요**. 관련 화면 SCR-032, SCR-033, SCR-034.
+
+경로 키가 `listingId` 가 아니라 `itemId` 다 — 미판매 구매 제안(SCR-032)은 판매 등록이 없어 열 대상이 없다. API-146 과 같은 이유다. 서버는 아이템에 열린 판매 등록이 있으면 그 조건(판매가·배송비·수수료 부담)을 쓰고, 없으면 쿼리로 받은 제안 금액에 배송비 0원·판매자 전액 부담을 고정으로 적용한다.
 
 쿼리 `offerPrice?`(미판매 제안일 때). 응답 `{ itemPrice, shippingFee, feeRate, feeAmount, buyerFeeAmount, sellerFeeAmount, totalPaymentAmount, expectedPayoutAmount }`. **요율은 소유자 등급 기준**(BASIC 6% / RECORD 3%)이고 상품 금액에만 붙는다. 반반 부담이면 홀수 1원을 판매자가 낸다.
 
@@ -3471,7 +3473,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `offerPrice` | String |  | 미판매 제안일 때만 | 제안 금액 |
+| `offerPrice` | Integer |  | 미판매 제안일 때만, 1~100,000,000 | 제안 금액 |
 
 **응답** (`data`)
 
@@ -3504,22 +3506,24 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 }
 ```
 
-에러 — LISTING_404
+에러 — ITEM_404
 
-#### API-141 · `POST /api/v1/listings/{listingId}/offers`
+#### API-141 · `POST /api/v1/items/{itemId}/offers`
 
 구매 제안 / 거래 의사 전송 (결제 승인 포함). 인증 **필요**. 관련 화면 SCR-032, SCR-033, SCR-034.
 
-요청 `OfferCreateRequest` — `offerType` `offerPrice`(미판매만) `shippingAddressId` `buyerRequest?` `paymentMethod`. 전송 시점에 **결제 승인을 임시 확보**하고 24시간 만료를 건다. 미판매 아이템은 아이템당 1회만 가능하며, 자동 취소(`OTHER_OFFER_ACCEPTED`)된 이력은 횟수에서 제외한다.
+경로 키가 `listingId` 가 아니라 `itemId` 다 — API-140 과 같은 이유다. 요청의 `offerType` 은 아이템 현재 상태(열린 판매 등록 유무)와 일치해야 하며 안 맞으면 `OFFER_400_NOT_ALLOWED` 다.
 
-같은 트랜잭션에서 해당 구매자·아이템의 `chat_room.purchase_offer_id` 를 이 제안으로 갱신한다(`DEC-028`) — 재제안이면 기존 방의 포인터가 최신 제안으로 바뀐다. 방이 없으면(최초 제안) 생성한다.
+요청 `OfferCreateRequest` — `offerType` `offerPrice`(미판매만) `shippingAddressId` `buyerRequest?` `paymentMethod`. 전송 시점에 **결제 승인을 임시 확보**하고 24시간 만료를 건다. 미판매 아이템은 아이템당 1회만 가능하며, 시스템 자동 취소(다른 제안 수락·판매 내림)로 끝난 이력은 횟수에서 제외한다 — 제안자 본인 취소·거절·만료는 영구 소진이다.
+
+미판매 구매 제안이면 같은 트랜잭션에서 해당 구매자·아이템의 `chat_room.purchase_offer_id` 를 이 제안으로 갱신한다 — 재제안이면 기존 방의 포인터가 최신 제안으로 바뀐다. 방이 없으면(최초 제안) 생성한다. 판매 중 거래 의사는 이미 `listing_id` 가 가격 출처라 채팅방을 건드리지 않는다.
 
 **요청 본문**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
 | `offerType` | OfferType | O | PURCHASE_OFFER \| TRADE_INTENT | — |
-| `offerPrice` | String |  | 미판매만 | 제안 금액 |
+| `offerPrice` | Integer |  | 미판매만, 1~100,000,000 | 제안 금액 |
 | `shippingAddressId` | Long | O | — | 배송지 |
 | `buyerRequest` | String |  | 500자 이내 | 거래 요청사항 |
 | `paymentMethod` | PaymentMethod | O | TOSS_PAY \| KAKAO_PAY \| NAVER_PAY | — |
@@ -3545,7 +3549,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 }
 ```
 
-에러 — OFFER_409_ALREADY_USED, OFFER_400_NOT_ALLOWED, OFFER_403_BLOCKED, OFFER_400_SELF, OFFER_400_ADDRESS_REQUIRED, PAYMENT_402, LISTING_409_SOLD
+에러 — ITEM_404, COMMON_400(미판매인데 제안 금액을 안 보냄), OFFER_409_ALREADY_USED, OFFER_400_NOT_ALLOWED, OFFER_403_BLOCKED, OFFER_400_SELF, OFFER_400_ADDRESS_REQUIRED, PAYMENT_402, LISTING_409_SOLD
 
 #### API-142 · `GET /api/v1/offers/{offerId}`
 
@@ -3644,6 +3648,8 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 
 결제를 확정(`captured`)하고 `trade_order` 를 생성한다. 동시에 **같은 아이템의 나머지 대기 제안을 전부 자동 취소**(`OTHER_OFFER_ACCEPTED`)하고 각 승인을 해제한 뒤 알림을 보낸다. 자동 취소된 제안자의 1회 기회는 복구된다.
 
+미판매 구매 제안(판매 전환을 거치지 않은 거래)을 수락할 때는 판매자(현재 소유자)에게 정산 계좌가 있는지 함께 확인한다 — 판매 전환은 계좌가 있어야 가능해 그 경로는 이미 보장되지만, 미판매 제안은 그 게이트를 거치지 않기 때문이다. 없으면 수락을 거부한다.
+
 **경로 파라미터**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
@@ -3671,7 +3677,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 }
 ```
 
-에러 — OFFER_403, OFFER_409_NOT_PENDING, OFFER_410_EXPIRED, PAYMENT_409_CAPTURE
+에러 — ITEM_404, OFFER_403, OFFER_409_NOT_PENDING, OFFER_410_EXPIRED, PAYMENT_409_CAPTURE, PAYOUT_400_REQUIRED, LISTING_409_SOLD
 
 #### API-145 · `POST /api/v1/offers/{offerId}/reject`
 

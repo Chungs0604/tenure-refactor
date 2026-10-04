@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -44,6 +45,7 @@ public class ListingCreateRequest {
 	@Schema(description = "가격(원)", example = "320000")
 	@NotNull
 	@Min(1)
+	@Max(100_000_000)
 	private Integer price;
 
 	@Schema(description = "배송비(원). 0 이면 판매자 부담. 기본 사용자는 보낼 수 없다", example = "5000")

@@ -92,4 +92,35 @@ public class Payment extends BaseEntity {
 	@Column(name = "refunded_at")
 	private LocalDateTime refundedAt;
 
+	/**
+	 * 결제 승인. PG 연동이 없어 항상 성공하는 mock 승인임 — 실패 경로(PAYMENT_402)는 실제 PG 를
+	 * 붙이는 시점에 엶
+	 */
+	public static Payment authorize(PurchaseOffer offer, PaymentMethod method, Integer amount, LocalDateTime now) {
+		return Payment.builder()
+				.offer(offer)
+				.method(method)
+				.status(PaymentStatus.AUTHORIZED)
+				.amount(amount)
+				.authorizedAt(now)
+				.build();
+	}
+
+	/** 판매자 수락 시 최종 결제로 확정함 */
+	public void capture(LocalDateTime now) {
+		this.status = PaymentStatus.CAPTURED;
+		this.capturedAt = now;
+	}
+
+	/** 거절·취소·만료 시 임시 승인을 해제함 */
+	public void release(LocalDateTime now) {
+		this.status = PaymentStatus.RELEASED;
+		this.releasedAt = now;
+	}
+
+	/** 주문이 생긴 뒤 연결함 */
+	public void linkOrder(TradeOrder order) {
+		this.order = order;
+	}
+
 }

@@ -1,6 +1,7 @@
 package com.tenure.domain.order.entity;
 
 import com.tenure.domain.address.enums.DeliveryRequestType;
+import com.tenure.domain.offer.entity.PurchaseOffer;
 import com.tenure.domain.order.enums.CourierCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -90,5 +91,19 @@ public class OrderShipment {
 	/** '배송을 완료 처리할까요?'. 이 시각 +72h 가 auto_confirm_at */
 	@Column(name = "delivered_at")
 	private LocalDateTime deliveredAt;
+
+	/** 제안 수락 시 생성. 배송지는 제안이 생성 시점에 떠 둔 스냅샷을 그대로 다시 옮김 */
+	public static OrderShipment fromOffer(TradeOrder order, PurchaseOffer offer) {
+		return OrderShipment.builder()
+				.order(order)
+				.recipientName(offer.getShippingRecipientName())
+				.phone(offer.getShippingPhone())
+				.zipcode(offer.getShippingZipcode())
+				.address(offer.getShippingAddress())
+				.addressDetail(offer.getShippingAddressDetail())
+				.deliveryRequestType(offer.getShippingDeliveryRequestType())
+				.deliveryRequest(offer.getShippingDeliveryRequest())
+				.build();
+	}
 
 }

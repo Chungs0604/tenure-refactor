@@ -1,11 +1,13 @@
 package com.tenure.domain.offer.enums;
 
 /**
- * 제안자 본인 취소와, 같은 아이템의 다른 요청이 수락돼 시스템이 자동 취소한 경우를 구분한다
+ * 제안자 본인 취소와 시스템 자동 취소 두 경우를 구분함. 시스템 취소(OTHER_OFFER_ACCEPTED·
+ * LISTING_DELISTED)는 제안자 잘못이 아니라 1회 제한에서 제외됨 — BUYER_CANCELED 만 영구 소진임
  */
 public enum OfferCancelReason {
 
 	BUYER_CANCELED,
-	OTHER_OFFER_ACCEPTED;
+	OTHER_OFFER_ACCEPTED,
+	LISTING_DELISTED;
 
 }
