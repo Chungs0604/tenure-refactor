@@ -26,9 +26,9 @@ class FlywayMigrationTest extends IntegrationTestSupport {
 
 	/** 정본 docs/schema.yaml 기준 수치. 스키마를 바꾸면 이 숫자도 같이 바뀐다. */
 	private static final int EXPECTED_TABLES = 39;
-	// V17 기준 — V16 에서 순증 1(DEC-026), V17 에서 category.measurement_scheme 이 늘어 다시 +1
-	private static final int EXPECTED_COLUMNS = 322;
-	private static final int EXPECTED_FOREIGN_KEYS = 69;
+	// V19 기준 — V18 에서 chat_room.purchase_offer_id 로 +1, V19 에서 purchase_offer 배송지 스냅샷 7개로 +7
+	private static final int EXPECTED_COLUMNS = 330;
+	private static final int EXPECTED_FOREIGN_KEYS = 70;
 
 	@Autowired
 	private DataSource dataSource;
@@ -55,7 +55,7 @@ class FlywayMigrationTest extends IntegrationTestSupport {
 	}
 
 	@Test
-	@DisplayName("컬럼 320개와 FK 69개가 만들어진다")
+	@DisplayName("컬럼 330개와 FK 70개가 만들어진다")
 	void migration_applied_createsAllColumnsAndForeignKeys() throws Exception {
 		long columns = queryLong("""
 				select count(*) from information_schema.columns

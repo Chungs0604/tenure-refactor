@@ -36,6 +36,7 @@ import com.tenure.domain.listing.mapper.ListingMapper;
 import com.tenure.domain.listing.mapper.ListingMapperImpl;
 import com.tenure.domain.listing.repository.ItemListingRepository;
 import com.tenure.domain.listing.repository.ListingFeaturedPostRepository;
+import com.tenure.domain.offer.service.OfferService;
 import com.tenure.domain.order.repository.TradeOrderRepository;
 import com.tenure.domain.payout.exception.PayoutErrorCode;
 import com.tenure.domain.payout.repository.PayoutAccountRepository;
@@ -90,6 +91,7 @@ class ListingServiceTest {
 	@Mock private PayoutAccountRepository payoutAccountRepository;
 	@Mock private PostRepository postRepository;
 	@Mock private TradeOrderRepository tradeOrderRepository;
+	@Mock private OfferService offerService;
 
 	// 매핑은 검증 대상이라 mock 이 아니라 실제 생성 구현을 넣는다
 	@Spy private ListingMapper listingMapper = new ListingMapperImpl();
@@ -461,6 +463,7 @@ class ListingServiceTest {
 
 	private void givenOwnedItem(Item item, UserGrade grade) {
 		given(itemRepository.findActiveWithCategory(ITEM_ID)).willReturn(Optional.of(item));
+		given(itemRepository.findActiveForUpdate(ITEM_ID)).willReturn(Optional.of(item));
 		given(itemOwnershipRepository.findCurrent(ITEM_ID))
 				.willReturn(Optional.of(ownershipOf(item, user(USER_ID, grade))));
 		given(tradeOrderRepository.existsInProgress(anyLong(), any())).willReturn(false);

@@ -1,10 +1,12 @@
 package com.tenure.domain.item.repository;
 
 import com.tenure.domain.item.entity.Item;
+import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -39,4 +41,12 @@ public interface ItemRepository extends JpaRepository<Item, Long>, ItemRepositor
 	@Query("select i from Item i " +
 			"where i.id in :itemIds")
 	List<Item> findAllByIds(@Param("itemIds") Collection<Long> itemIds);
+
+	/**
+	 * 행 잠금 조회. 같은 아이템의 서로 다른 제안 두 건이 동시에 수락되는 것을 막는 용도임 —
+	 * 커밋된 값을 보장받아야 '이미 판매 완료' 재확인이 의미를 가짐
+	 */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select i from Item i where i.id = :itemId and i.deletedAt is null")
+	Optional<Item> findActiveForUpdate(@Param("itemId") Long itemId);
 }

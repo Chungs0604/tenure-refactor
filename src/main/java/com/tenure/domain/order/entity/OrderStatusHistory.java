@@ -59,4 +59,14 @@ public class OrderStatusHistory {
 	@Column(name = "changed_at", nullable = false)
 	private LocalDateTime changedAt;
 
+	/** 타임라인 한 줄 기록. changedBy 가 null 이면 시스템(자동 확정·정산)이 올린 단계임 */
+	public static OrderStatusHistory of(TradeOrder order, OrderStatus status, User changedBy, LocalDateTime changedAt) {
+		return OrderStatusHistory.builder()
+				.order(order)
+				.status(status)
+				.changedBy(changedBy)
+				.changedAt(changedAt)
+				.build();
+	}
+
 }

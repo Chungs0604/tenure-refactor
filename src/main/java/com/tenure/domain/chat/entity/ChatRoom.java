@@ -2,6 +2,7 @@ package com.tenure.domain.chat.entity;
 
 import com.tenure.domain.item.entity.Item;
 import com.tenure.domain.listing.entity.ItemListing;
+import com.tenure.domain.offer.entity.PurchaseOffer;
 import com.tenure.domain.user.entity.User;
 import com.tenure.global.entity.BaseCreatedEntity;
 import jakarta.persistence.Column;
@@ -50,6 +51,11 @@ public class ChatRoom extends BaseCreatedEntity {
 	@JoinColumn(name = "listing_id")
 	private ItemListing listing;
 
+	/** 미판매+제안 방의 가격 출처. listing 과 배타적임 */
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "purchase_offer_id")
+	private PurchaseOffer purchaseOffer;
+
 	/** '구매 채팅' 필터의 기준 */
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "buyer_id", nullable = false)
@@ -63,5 +69,20 @@ public class ChatRoom extends BaseCreatedEntity {
 	/** 목록의 '6월 27일' 최근 메시지 시각 정렬 */
 	@Column(name = "last_message_at")
 	private LocalDateTime lastMessageAt;
+
+	/** 미판매 아이템 구매 제안으로 방을 엶. listing 은 없음 — 판매중 채팅방 개설은 별도 흐름임 */
+	public static ChatRoom openForOffer(Item item, User buyer, User seller, PurchaseOffer purchaseOffer) {
+		return ChatRoom.builder()
+				.item(item)
+				.buyer(buyer)
+				.seller(seller)
+				.purchaseOffer(purchaseOffer)
+				.build();
+	}
+
+	/** 재제안 시 가격 출처를 최신 제안으로 갱신함 */
+	public void updateOfferPointer(PurchaseOffer purchaseOffer) {
+		this.purchaseOffer = purchaseOffer;
+	}
 
 }

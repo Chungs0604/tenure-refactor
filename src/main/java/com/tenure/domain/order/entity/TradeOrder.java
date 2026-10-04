@@ -135,4 +135,26 @@ public class TradeOrder extends BaseEntity {
 	@Column(name = "canceled_at")
 	private LocalDateTime canceledAt;
 
+	/** 제안 수락 시 생성. 금액·조건은 전부 제안 시점 스냅샷을 그대로 옮김 */
+	public static TradeOrder createFromOffer(PurchaseOffer offer, String orderNo, LocalDateTime now) {
+		return TradeOrder.builder()
+				.orderNo(orderNo)
+				.offer(offer)
+				.listing(offer.getListing())
+				.item(offer.getItem())
+				.buyer(offer.getBuyer())
+				.seller(offer.getSeller())
+				.itemPrice(offer.getOfferPrice())
+				.shippingFee(offer.getShippingFee())
+				.feeAmount(offer.getFeeAmount())
+				.feeRate(offer.getFeeRate())
+				.buyerFeeAmount(offer.getBuyerFeeAmount())
+				.sellerFeeAmount(offer.getSellerFeeAmount())
+				.feeBearer(offer.getFeeBearer())
+				.totalPaymentAmount(offer.getTotalPaymentAmount())
+				.payoutAmount(offer.getExpectedPayoutAmount())
+				.status(OrderStatus.PAYMENT_COMPLETED)
+				.build();
+	}
+
 }

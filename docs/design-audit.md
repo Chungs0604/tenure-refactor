@@ -1176,8 +1176,8 @@ nullable 이 됐는데 `trade_order.listing_id` 는 `NOT NULL` 로 남아 있었
 |---|---|---|---|
 | ~~🟡~~ | ~~`Q6` 대분류별 사이즈 체계 매핑~~ | **2026-09-29 해소** | 상세 수정 바텀시트 10종에서 확보했다. 표는 위 `아이템 구현 전 피그마 정밀 점검` 절에 있다 |
 | 🟡 | `Q7` 인증번호 재전송 쿨다운·한도 | **배포 전** | Redis 키 1개 + `AuthService`. 제한이 없으면 메일 발송이 어뷰징 통로다 |
-| 🟡 | `Q8` 판매를 내릴 때 남은 `PENDING` 제안 | `offer`·`payment` 구현 시 | 방향은 정했다 — 막지 말고 **함께 정리한다**(제안 취소 + 결제 승인 해제 + 알림). 수락 경로에 이미 있는 규칙의 대칭이다. 지금 비워 두면 구매자 카드에 한도가 잡힌 채 24시간 방치된다 |
-| 🟢 | `notification.target_type` 딥링크 대상 | `notification` 구현 시점 | **지금 정하면 오히려 손해** — 알림을 발행하는 `offer`·`order`·`chat` 을 만들며 자연히 확정된다 |
+| ~~🟡~~ | ~~`Q8` 판매를 내릴 때 남은 `PENDING` 제안~~ | **2026-10-04 해소** | `ListingService.changeSaleStatus` 에서 `OfferService.cancelPendingForDelist` 를 호출한다. `OfferCancelReason` 에 `LISTING_DELISTED` 를 추가해 자동 취소와 같이 1회 제한에서 제외했다 |
+| ~~🟢~~ | ~~`notification.target_type` 딥링크 대상~~ | **2026-10-04 일부 확정** | `offer` 가 발행하는 알림은 `OFFER`(제안 전송·거절·시스템 취소)와 `ORDER`(수락) 로 확정했다. `chat` 쪽은 그 도메인 구현 시 마저 확정한다 |
 | 🟢 | `ReportTargetType.USER` 복원 | 사용자 신고 화면이 생기면 | enum 값 추가뿐 |
 
 ## 구현 순서에 따른 권고
@@ -1200,3 +1200,39 @@ auth 보강       →  🟡 Q7, 소셜 로그인(자격증명 준비돼 있어�
 
 `Q8` 은 listing 을 구현하며 드러났다 — 판매 상태 변경이 '진행 중인 거래' 만 막는데, 제안은
 수락돼야 거래가 되므로 수락 전 `PENDING` 은 걸리지 않는다. 그 사이 결제는 이미 승인돼 있다.
+
+## offer 구현 중 발견한 보정 (2026-10-04)
+
+`API-140`·`API-141`·`API-146` 명세 그대로는 구현이 안 되는 지점 셋을 구현 착수 시점에 바로잡았다.
+
+### D-1. `API-140`·`API-141` 경로 키가 미판매 제안을 열 수 없었다
+
+`A-17` 이 `API-146` 을 `listingId` 대신 `itemId` 로 둔 이유와 똑같은 문제가 `API-140`·`API-141`
+에도 있었다 — 미판매 구매 제안(`SCR-032`)은 판매 등록이 없는데 경로가 `/listings/{listingId}/...`
+였다. `A-17` 때 `API-146` 만 고치고 같은 묶음인 둘은 놓쳤다.
+
+→ 둘 다 `/items/{itemId}/...` 로 바꿨다. 서버가 아이템에 열린 판매 등록이 있는지로 조건 출처를
+가른다 — 있으면 그 조건을, 없으면 요청·쿼리로 받은 금액에 배송비 0원·판매자 전액 부담을
+고정으로 적용한다. `API-140` 의 에러도 `LISTING_404` 에서 `ITEM_404` 로 바꿨다.
+
+### D-2. `purchase_offer` 에 배송지를 담을 컬럼이 없었다
+
+`API-141` 요청은 `shippingAddressId` 를 받고 `API-142` 응답은 수령인·연락처·주소를 보여주는데,
+`purchase_offer` 테이블에는 그 값을 저장할 컬럼이 전혀 없었다. `shipping_address` 를 FK 로
+걸면 응답 대기 중 주소록을 수정·삭제했을 때 이미 보낸 제안의 배송지가 조용히 바뀐다 — 금액과
+같은 급의 거래 시점 스냅샷이 필요한 값이다.
+
+→ `purchase_offer` 에 `shipping_recipient_name`·`shipping_phone`·`shipping_zipcode`·
+`shipping_address`·`shipping_address_detail`·`shipping_delivery_request_type`·
+`shipping_delivery_request` 7개 컬럼을 추가했다(생성 시점 스냅샷). 수락 시 이 값을 그대로
+`order_shipment` 로 복사한다.
+
+### D-3. `OfferCancelReason` 이 판매 내림발 취소를 표현할 수 없었다
+
+`Q8` 해소(판매 내림 시 남은 `PENDING` 정리)가 "수락 경로의 자동 취소와 대칭" 이라고 방향을
+정했는데, `OfferCancelReason` 에는 `BUYER_CANCELED`·`OTHER_OFFER_ACCEPTED` 둘뿐이라 담을
+값이 없었다.
+
+→ `LISTING_DELISTED` 를 추가했다. 1회 제한 판정도 "`OTHER_OFFER_ACCEPTED` 제외" 에서
+"`BUYER_CANCELED` 가 아니면 제외" 로 넓혀, 제안자 잘못이 아닌 시스템 취소는 앞으로 어떤
+사유가 추가돼도 자동으로 기회가 복구되게 했다.
