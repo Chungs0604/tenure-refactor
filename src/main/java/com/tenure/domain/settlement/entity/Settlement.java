@@ -69,4 +69,26 @@ public class Settlement extends BaseCreatedEntity {
 	@Column(name = "settled_at")
 	private LocalDateTime settledAt;
 
+	/**
+	 * 구매 확정 시 생성. 정산 계좌는 그 시점 판매자의 기본 계좌를 스냅샷한다 — FK 를 걸지 않는 이유와
+	 * 같다(DEC-013 과 같은 기준). settledAt 은 정산 배치가 실제로 입금 처리할 때 채운다
+	 */
+	public static Settlement of(
+			TradeOrder order, User seller, String bankCode, String accountNumber, String accountHolder, Integer amount
+	) {
+		return Settlement.builder()
+				.order(order)
+				.seller(seller)
+				.bankCode(bankCode)
+				.accountNumber(accountNumber)
+				.accountHolder(accountHolder)
+				.amount(amount)
+				.build();
+	}
+
+	/** 정산 배치가 입금을 마치면 호출함 */
+	public void settle(LocalDateTime settledAt) {
+		this.settledAt = settledAt;
+	}
+
 }

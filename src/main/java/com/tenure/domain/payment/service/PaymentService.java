@@ -72,6 +72,23 @@ public class PaymentService {
 		payment.release(now);
 	}
 
+	/**
+	 * 상품 발송 전 거래 취소 시 최종 결제를 환불함.
+	 *
+	 * 행 잠금 조회라 동시 취소 경합을 여기서도 막음. CAPTURED 가 아니면 거부함 — 아직 확정되지
+	 * 않았거나 이미 환불된 결제를 다시 환불하면 상태가 어긋난다
+	 */
+	@Transactional
+	@Loggable("결제 환불")
+	public void refund(Long offerId, LocalDateTime now) {
+		Payment payment = findByOfferIdForUpdate(offerId);
+		if (payment.getStatus() != PaymentStatus.CAPTURED) {
+			log.info("확정 상태가 아닌 결제를 환불하려 함 offerId={} status={}", offerId, payment.getStatus());
+			throw new CustomException(PaymentErrorCode.PAYMENT_409_REFUND);
+		}
+		payment.refund(now);
+	}
+
 	private Payment findByOfferIdForUpdate(Long offerId) {
 		return paymentRepository.findByOfferIdForUpdate(offerId)
 				.orElseThrow(() -> {
