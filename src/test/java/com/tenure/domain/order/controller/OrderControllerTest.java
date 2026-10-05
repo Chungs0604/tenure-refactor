@@ -214,14 +214,14 @@ class OrderControllerTest extends ControllerSliceTestSupport {
 		@Test
 		@DisplayName("입력에 성공하면 SHIPPED 를 내려준다")
 		void updateShipment_validRequest_returnsShipped() throws Exception {
-			given(orderService.updateShipment(USER_ID, ORDER_ID, CourierCode.CJ_LOGISTICS, "1234123412349"))
+			given(orderService.updateShipment(USER_ID, ORDER_ID, CourierCode.CJ_LOGISTICS.name(), "1234123412349"))
 					.willReturn(ShipmentUpdateResponse.builder().status(OrderStatus.SHIPPED).build());
 
 			mvc.perform(patch(ORDERS_URL + "/" + ORDER_ID + "/shipment")
 							.with(authentication(principalOf(USER_ID)))
 							.contentType(MediaType.APPLICATION_JSON)
 							.content(json(ShipmentUpdateRequest.builder()
-									.courierCode(CourierCode.CJ_LOGISTICS)
+									.courierCode(CourierCode.CJ_LOGISTICS.name())
 									.trackingNo("1234123412349")
 									.build())))
 					.andExpect(status().isOk())
@@ -232,13 +232,13 @@ class OrderControllerTest extends ControllerSliceTestSupport {
 		@DisplayName("운송장 번호 형식이 틀리면 400 이다")
 		void updateShipment_badTrackingFormat_returns400() throws Exception {
 			willThrow(new CustomException(OrderErrorCode.ORDER_400_TRACKING))
-					.given(orderService).updateShipment(USER_ID, ORDER_ID, CourierCode.CJ_LOGISTICS, "abc");
+					.given(orderService).updateShipment(USER_ID, ORDER_ID, CourierCode.CJ_LOGISTICS.name(), "abc");
 
 			mvc.perform(patch(ORDERS_URL + "/" + ORDER_ID + "/shipment")
 							.with(authentication(principalOf(USER_ID)))
 							.contentType(MediaType.APPLICATION_JSON)
 							.content(json(ShipmentUpdateRequest.builder()
-									.courierCode(CourierCode.CJ_LOGISTICS)
+									.courierCode(CourierCode.CJ_LOGISTICS.name())
 									.trackingNo("abc")
 									.build())))
 					.andExpect(status().isBadRequest())
@@ -249,13 +249,13 @@ class OrderControllerTest extends ControllerSliceTestSupport {
 		@DisplayName("판매자가 아니면 403 이다")
 		void updateShipment_notSeller_returns403() throws Exception {
 			willThrow(new CustomException(OrderErrorCode.ORDER_403))
-					.given(orderService).updateShipment(USER_ID, ORDER_ID, CourierCode.CJ_LOGISTICS, "1234123412349");
+					.given(orderService).updateShipment(USER_ID, ORDER_ID, CourierCode.CJ_LOGISTICS.name(), "1234123412349");
 
 			mvc.perform(patch(ORDERS_URL + "/" + ORDER_ID + "/shipment")
 							.with(authentication(principalOf(USER_ID)))
 							.contentType(MediaType.APPLICATION_JSON)
 							.content(json(ShipmentUpdateRequest.builder()
-									.courierCode(CourierCode.CJ_LOGISTICS)
+									.courierCode(CourierCode.CJ_LOGISTICS.name())
 									.trackingNo("1234123412349")
 									.build())))
 					.andExpect(status().isForbidden())
@@ -268,7 +268,7 @@ class OrderControllerTest extends ControllerSliceTestSupport {
 			mvc.perform(patch(ORDERS_URL + "/" + ORDER_ID + "/shipment")
 							.contentType(MediaType.APPLICATION_JSON)
 							.content(json(ShipmentUpdateRequest.builder()
-									.courierCode(CourierCode.CJ_LOGISTICS)
+									.courierCode(CourierCode.CJ_LOGISTICS.name())
 									.trackingNo("1234123412349")
 									.build())))
 					.andExpect(status().isUnauthorized());

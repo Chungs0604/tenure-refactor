@@ -1,11 +1,12 @@
 package com.tenure.global.holiday;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.net.URI;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.Set;
@@ -126,7 +127,8 @@ class HolidayApiClientTest {
 		JsonNode body = toJsonNode(json);
 		given(restClientBuilder.build()).willReturn(restClient);
 		given(restClient.get()).willReturn(uriSpec);
-		given(uriSpec.uri(anyString())).willReturn(uriSpec);
+		// URI 객체로 넘긴다 — 이중 인코딩을 피하려고 .uri(String) 대신 .uri(URI) 를 쓴다
+		given(uriSpec.uri(any(URI.class))).willReturn(uriSpec);
 		given(uriSpec.retrieve()).willReturn(responseSpec);
 		given(responseSpec.body(JsonNode.class)).willReturn(body);
 	}

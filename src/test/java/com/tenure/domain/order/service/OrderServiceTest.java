@@ -215,7 +215,7 @@ class OrderServiceTest {
 			given(orderShipmentRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(shipment));
 
 			ShipmentUpdateResponse response =
-					orderService.updateShipment(SELLER_ID, ORDER_ID, CourierCode.CJ_LOGISTICS, "1234123412349");
+					orderService.updateShipment(SELLER_ID, ORDER_ID, CourierCode.CJ_LOGISTICS.name(), "1234123412349");
 
 			assertThat(response.getStatus()).isEqualTo(OrderStatus.SHIPPED);
 			assertThat(order.getStatus()).isEqualTo(OrderStatus.SHIPPED);
@@ -237,7 +237,7 @@ class OrderServiceTest {
 			given(tradeOrderRepository.findByIdForUpdate(ORDER_ID)).willReturn(Optional.of(order));
 			given(orderShipmentRepository.findByOrderId(ORDER_ID)).willReturn(Optional.of(shipment));
 
-			orderService.updateShipment(SELLER_ID, ORDER_ID, CourierCode.KOREA_POST, "2222222222222");
+			orderService.updateShipment(SELLER_ID, ORDER_ID, CourierCode.KOREA_POST.name(), "2222222222222");
 
 			assertThat(shipment.getTrackingNo()).isEqualTo("2222222222222");
 			verify(orderStatusHistoryRepository, never()).save(any());
@@ -253,7 +253,7 @@ class OrderServiceTest {
 			given(tradeOrderRepository.findByIdForUpdate(ORDER_ID)).willReturn(Optional.of(order));
 
 			assertThatThrownBy(() -> orderService.updateShipment(
-					OTHER_ID, ORDER_ID, CourierCode.CJ_LOGISTICS, "1234123412349"))
+					OTHER_ID, ORDER_ID, CourierCode.CJ_LOGISTICS.name(), "1234123412349"))
 					.isInstanceOf(CustomException.class)
 					.extracting(OrderServiceTest::errorCodeOf)
 					.isEqualTo(OrderErrorCode.ORDER_403);
@@ -270,7 +270,7 @@ class OrderServiceTest {
 			given(tradeOrderRepository.findByIdForUpdate(ORDER_ID)).willReturn(Optional.of(order));
 
 			assertThatThrownBy(() -> orderService.updateShipment(
-					SELLER_ID, ORDER_ID, CourierCode.CJ_LOGISTICS, "1234123412349"))
+					SELLER_ID, ORDER_ID, CourierCode.CJ_LOGISTICS.name(), "1234123412349"))
 					.isInstanceOf(CustomException.class)
 					.extracting(OrderServiceTest::errorCodeOf)
 					.isEqualTo(OrderErrorCode.ORDER_409_STATUS);
@@ -285,7 +285,7 @@ class OrderServiceTest {
 			given(tradeOrderRepository.findByIdForUpdate(ORDER_ID)).willReturn(Optional.of(order));
 
 			assertThatThrownBy(() -> orderService.updateShipment(
-					SELLER_ID, ORDER_ID, CourierCode.CJ_LOGISTICS, "abc123"))
+					SELLER_ID, ORDER_ID, CourierCode.CJ_LOGISTICS.name(), "abc123"))
 					.isInstanceOf(CustomException.class)
 					.extracting(OrderServiceTest::errorCodeOf)
 					.isEqualTo(OrderErrorCode.ORDER_400_TRACKING);
@@ -312,7 +312,7 @@ class OrderServiceTest {
 			given(tradeOrderRepository.findByIdForUpdate(ORDER_ID)).willReturn(Optional.empty());
 
 			assertThatThrownBy(() -> orderService.updateShipment(
-					SELLER_ID, ORDER_ID, CourierCode.CJ_LOGISTICS, "1234123412349"))
+					SELLER_ID, ORDER_ID, CourierCode.CJ_LOGISTICS.name(), "1234123412349"))
 					.isInstanceOf(CustomException.class)
 					.extracting(OrderServiceTest::errorCodeOf)
 					.isEqualTo(OrderErrorCode.ORDER_404_TRACKING);
@@ -328,7 +328,7 @@ class OrderServiceTest {
 			given(orderShipmentRepository.findByOrderId(ORDER_ID)).willReturn(Optional.empty());
 
 			assertThatThrownBy(() -> orderService.updateShipment(
-					SELLER_ID, ORDER_ID, CourierCode.CJ_LOGISTICS, "1234123412349"))
+					SELLER_ID, ORDER_ID, CourierCode.CJ_LOGISTICS.name(), "1234123412349"))
 					.isInstanceOf(CustomException.class)
 					.extracting(OrderServiceTest::errorCodeOf)
 					.isEqualTo(OrderErrorCode.ORDER_404_TRACKING);
