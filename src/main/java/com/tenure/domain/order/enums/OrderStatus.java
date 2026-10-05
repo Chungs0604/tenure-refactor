@@ -13,10 +13,11 @@ public enum OrderStatus {
 	DELIVERED,
 	/** 구매 확정 */
 	PURCHASE_CONFIRMED,
-	/** 정산 완료 */
+	/**
+	 * 정산 완료. 최종 상태 — 별도의 COMPLETED 는 없다. 표시 라벨만 viewerRole 에 따라
+	 * '정산 완료'(SELLER)/'거래 완료'(BUYER)로 갈린다
+	 */
 	SETTLED,
-	/** 거래 완료 */
-	COMPLETED,
 	/** 거래 취소 */
 	CANCELED;
 

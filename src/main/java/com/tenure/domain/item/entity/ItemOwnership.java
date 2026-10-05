@@ -93,6 +93,21 @@ public class ItemOwnership extends BaseCreatedEntity {
 	}
 
 	/**
+	 * 거래로 승계된 소유 구간. 구매 확정 시점에 연다 — start_date 는 확정일이다.
+	 *
+	 * 이전 소유자의 착용 기록은 그대로 남는다. 복제하지 않고 item_id 로 계속 참조한다
+	 */
+	public static ItemOwnership openFromTrade(Item item, User owner, LocalDate startDate, TradeOrder order) {
+		return ItemOwnership.builder()
+				.item(item)
+				.owner(owner)
+				.startDate(startDate)
+				.acquiredBy(AcquiredBy.TRADE)
+				.order(order)
+				.build();
+	}
+
+	/**
 	 * 구간 종료. 거래 완료 시 이전 소유자의 구간을 닫는다.
 	 *
 	 * append-only 테이블에서 허용하는 **유일한** UPDATE 다 — start_date 는 등록 뒤에 바뀌지 않는다 (DEC-007).

@@ -73,6 +73,11 @@ app:
       # CDN 을 붙이면 여기만 바꾼다. 비우면 S3 기본 엔드포인트를 쓴다
       base-url: ${AWS_S3_BASE_URL:}
 
+  holiday:
+    # 공공데이터포털 특일 정보 서비스(getRestDeInfo). settlement 영업일 계산에 쓴다
+    base-url: https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService
+    service-key: ${HOLIDAY_API_SERVICE_KEY}
+
 springdoc:
   # 운영에서는 SWAGGER_ENABLED=false 로 끈다. 켜두면 스키마가 그대로 공개된다
   api-docs:

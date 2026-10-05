@@ -17,8 +17,13 @@ MySQL 8. JPA 규칙은 db-mysql 스킬을 따른다.
 비밀값은 `.env` 로 분리했다. `application.yaml` 에 기본값이 없으므로 **없으면 기동하지 않는다.**
 
 ```
-cp .env.example .env    # DB_PASSWORD · JWT_SECRET · REDIS_PASSWORD · MAIL_PASSWORD
+cp .env.example .env    # DB_PASSWORD · JWT_SECRET · REDIS_PASSWORD · MAIL_PASSWORD · HOLIDAY_API_SERVICE_KEY
 ```
+
+`HOLIDAY_API_SERVICE_KEY` — 공공데이터포털 "한국천문연구원_특일 정보" 서비스 키. order 도메인의
+정산 영업일 계산(`global/holiday/*`)에 쓴다. data.go.kr 에서 개발계정으로 활용신청하면 받는다
+(승인까지 시간이 걸릴 수 있다). `_type=json` 쿼리 파라미터로 JSON 응답을 받는다 — 신청 화면의
+"데이터포맷: XML" 은 그 파라미터를 안 줬을 때의 기본값일 뿐이다.
 
 Spring Boot 는 `.env` 를 자동으로 읽지 않는다. 둘 중 하나로 주입한다.
 

@@ -118,6 +118,12 @@ public class Payment extends BaseEntity {
 		this.releasedAt = now;
 	}
 
+	/** 상품 발송 전 거래 취소 시 최종 결제를 환불함 */
+	public void refund(LocalDateTime now) {
+		this.status = PaymentStatus.REFUNDED;
+		this.refundedAt = now;
+	}
+
 	/** 주문이 생긴 뒤 연결함 */
 	public void linkOrder(TradeOrder order) {
 		this.order = order;

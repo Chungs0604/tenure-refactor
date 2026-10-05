@@ -135,6 +135,42 @@ public class TradeOrder extends BaseEntity {
 	@Column(name = "canceled_at")
 	private LocalDateTime canceledAt;
 
+	public boolean isBuyer(Long userId) {
+		return buyer.getId().equals(userId);
+	}
+
+	public boolean isSeller(Long userId) {
+		return seller.getId().equals(userId);
+	}
+
+	/** 운송장 입력 → 상품 발송. 배송 완료 전까지 재입력 가능하므로 이미 SHIPPED 여도 다시 불러도 됨 */
+	public void ship() {
+		this.status = OrderStatus.SHIPPED;
+	}
+
+	/** 배송 완료 처리. 72시간 뒤 자동 구매 확정을 건다 */
+	public void deliver(LocalDateTime autoConfirmAt) {
+		this.status = OrderStatus.DELIVERED;
+		this.autoConfirmAt = autoConfirmAt;
+	}
+
+	/** 구매 확정. 본인 확정이든 자동 확정이든 같다 */
+	public void confirmPurchase(LocalDateTime confirmedAt) {
+		this.status = OrderStatus.PURCHASE_CONFIRMED;
+		this.confirmedAt = confirmedAt;
+	}
+
+	/** 정산 배치가 입금을 마치면 호출함. 최종 상태 */
+	public void settle() {
+		this.status = OrderStatus.SETTLED;
+	}
+
+	/** 상품 발송 전 거래 취소 */
+	public void cancel(LocalDateTime canceledAt) {
+		this.status = OrderStatus.CANCELED;
+		this.canceledAt = canceledAt;
+	}
+
 	/** 제안 수락 시 생성. 금액·조건은 전부 제안 시점 스냅샷을 그대로 옮김 */
 	public static TradeOrder createFromOffer(PurchaseOffer offer, String orderNo, LocalDateTime now) {
 		return TradeOrder.builder()

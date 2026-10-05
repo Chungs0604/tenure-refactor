@@ -65,7 +65,7 @@ public class ListingService {
 
 	/** 끝난 거래. 이 둘만 아니면 진행 중으로 본다 */
 	private static final Set<OrderStatus> FINISHED_ORDER_STATUSES =
-			EnumSet.of(OrderStatus.COMPLETED, OrderStatus.CANCELED);
+			EnumSet.of(OrderStatus.SETTLED, OrderStatus.CANCELED);
 
 	/** 대표 OOTD 개수. 화면 문구가 '대표 OOTD (1개 이상)' 과 '최대 5개' 다 */
 	private static final int FEATURED_MIN = 1;

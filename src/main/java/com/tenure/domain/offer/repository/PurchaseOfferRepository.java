@@ -11,7 +11,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-public interface PurchaseOfferRepository extends JpaRepository<PurchaseOffer, Long> {
+public interface PurchaseOfferRepository extends JpaRepository<PurchaseOffer, Long>, PurchaseOfferRepositoryCustom {
 
 	/**
 	 * 내가 이 아이템에 보낸 제안의 상태. 상세 CTA 가 이 값으로 갈린다.
@@ -69,4 +69,22 @@ public interface PurchaseOfferRepository extends JpaRepository<PurchaseOffer, Lo
 	/** 만료 배치 대상 id 목록. 이유는 findPendingIdsByItemId 와 같음 */
 	@Query("select o.id from PurchaseOffer o where o.status = 'PENDING' and o.expiresAt <= :now")
 	List<Long> findExpirableIds(@Param("now") LocalDateTime now);
+
+	/**
+	 * 판매 내역 대기중 탭 전용(읽기 전용). PENDING 은 24시간 만료 정책으로 묶여 있는 bound 된
+	 * 집합이라 — 아무리 활발한 판매자여도 전체를 한 번에 읽어 메모리에서 아이템 단위로 묶고
+	 * 커서를 적용해도 된다. 거래(order)처럼 수년치가 쌓이는 쪽만 DB 커서 페이지네이션이 필요하다
+	 */
+	@Query("select o from PurchaseOffer o "
+			+ "join fetch o.buyer join fetch o.item "
+			+ "where o.seller.id = :sellerId and o.status = 'PENDING' "
+			+ "order by o.createdAt desc, o.id desc")
+	List<PurchaseOffer> findAllPendingBySeller(@Param("sellerId") Long sellerId);
+
+	/** 구매 내역 대기중 탭 전용(읽기 전용). 구매자는 아이템당 1건이라 역시 bound 된 집합이다 */
+	@Query("select o from PurchaseOffer o "
+			+ "join fetch o.seller join fetch o.item "
+			+ "where o.buyer.id = :buyerId and o.status = 'PENDING' "
+			+ "order by o.createdAt desc, o.id desc")
+	List<PurchaseOffer> findAllPendingByBuyer(@Param("buyerId") Long buyerId);
 }

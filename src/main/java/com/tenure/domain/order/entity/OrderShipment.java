@@ -92,6 +92,23 @@ public class OrderShipment {
 	@Column(name = "delivered_at")
 	private LocalDateTime deliveredAt;
 
+	/**
+	 * 운송장 번호 입력. courier_code·tracking_no 는 배송 완료 전까지 재입력할 수 있다(DEC-008) —
+	 * 그래서 shipped_at 은 최초 입력일 때만 세팅한다. 재입력은 발송일을 바꾸지 않는다
+	 */
+	public void updateTracking(CourierCode courierCode, String trackingNo, LocalDateTime now) {
+		this.courierCode = courierCode;
+		this.trackingNo = trackingNo;
+		if (this.shippedAt == null) {
+			this.shippedAt = now;
+		}
+	}
+
+	/** 배송 완료 처리. 이후 운송장 정보는 잠긴다(서비스 쪽에서 상태로 막음) */
+	public void markDelivered(LocalDateTime deliveredAt) {
+		this.deliveredAt = deliveredAt;
+	}
+
 	/** 제안 수락 시 생성. 배송지는 제안이 생성 시점에 떠 둔 스냅샷을 그대로 다시 옮김 */
 	public static OrderShipment fromOffer(TradeOrder order, PurchaseOffer offer) {
 		return OrderShipment.builder()
