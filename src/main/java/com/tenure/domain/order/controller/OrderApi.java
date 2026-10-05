@@ -45,7 +45,7 @@ public interface OrderApi {
 
 	@Operation(summary = "판매 내역",
 			description = "전체/대기중/거래중/거래완료. 대기중은 PENDING 제안을 아이템 단위로 묶어 "
-					+ "pendingOfferCount 로 건수를 담는다. rowType 유니온으로 제안·거래를 한 목록에 섞는다(DEC-103)")
+					+ "pendingOfferCount 로 건수를 담는다. rowType 유니온으로 제안·거래를 한 목록에 섞는다")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "조회 성공"),
 			@ApiResponse(responseCode = "400", description = "COMMON_400 — 커서 형식 오류 또는 size 범위 초과")

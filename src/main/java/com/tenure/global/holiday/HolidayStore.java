@@ -13,13 +13,14 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 /**
- * 월별 공휴일 캐시(DEC-003). 같은 달을 정산 배치가 매일 다시 조회하지 않도록 Redis 에 담아 둔다.
+ * 월별 공휴일 캐시. 같은 달을 정산 배치가 매일 다시 조회하지 않도록 Redis 에 담아 둔다.
  *
  * 값이 빈 문자열이어도(공휴일 없는 달) 캐시 적중으로 본다 — null 과 '빈 집합' 을 구분해야
  * 매번 외부 API 를 다시 두드리지 않는다. 그래서 '없음'을 별도 마커로 담는다.
  *
  * API 호출이 실패한 결과는 **짧게만** 캐시한다 — 180일로 캐시하면 일시 장애가 그 달 내내
- * '공휴일 없음'으로 고정돼버린다(DEC-003 의도는 정상 응답 재사용이지 장애 전파가 아니다)
+ * '공휴일 없음'으로 고정돼버린다. 캐시를 두는 목적은 정상 응답을 재사용하는 것이지
+ * 장애를 오래 전파하는 것이 아니다
  */
 @Component
 @RequiredArgsConstructor

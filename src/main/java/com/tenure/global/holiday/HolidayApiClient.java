@@ -1,6 +1,9 @@
 package com.tenure.global.holiday;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
@@ -35,13 +38,19 @@ public class HolidayApiClient {
 	/** 해당 월의 공휴일 날짜 목록. 조회 실패 시 빈 Optional(= '모름', '없음'과 다름) */
 	public Optional<Set<LocalDate>> fetchHolidays(YearMonth month) {
 		try {
+			// URI.create(String) 로 넘긴다 — .uri(String) 에 쓰면 RestClient 가 URI 템플릿으로
+			// 보고 다시 인코딩해서, 서비스키에 +·/·= 같은 문자가 있으면 이중 인코딩으로 깨진다.
+			// 여기서 직접(정확히 한 번) 인코딩한 뒤 완성된 URI 로 넘기면 그 문제가 없다
+			String encodedServiceKey = URLEncoder.encode(properties.serviceKey(), StandardCharsets.UTF_8);
+			URI uri = URI.create(properties.baseUrl() + "/getRestDeInfo"
+					+ "?serviceKey=" + encodedServiceKey
+					+ "&solYear=" + month.getYear()
+					+ "&solMonth=" + "%02d".formatted(month.getMonthValue())
+					+ "&numOfRows=100&_type=json");
+
 			JsonNode body = restClientBuilder.build()
 					.get()
-					.uri(properties.baseUrl() + "/getRestDeInfo"
-							+ "?serviceKey=" + properties.serviceKey()
-							+ "&solYear=" + month.getYear()
-							+ "&solMonth=" + "%02d".formatted(month.getMonthValue())
-							+ "&numOfRows=100&_type=json")
+					.uri(uri)
 					.retrieve()
 					.body(JsonNode.class);
 			return Optional.of(parse(body));

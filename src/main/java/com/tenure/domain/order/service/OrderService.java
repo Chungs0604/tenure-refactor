@@ -137,7 +137,7 @@ public class OrderService {
 						shipment, trackingUrlResolver.resolve(shipment.getCourierCode(), shipment.getTrackingNo()));
 		OrderPaymentResponse paymentResponse = payment == null ? null : orderMapper.toPaymentResponse(payment);
 		OrderSettlementResponse settlementResponse = settlement == null ? null
-				: orderMapper.toSettlementResponse(settlement, BankCode.valueOf(settlement.getBankCode()));
+				: orderMapper.toSettlementResponse(settlement, parseBankCode(settlement.getBankCode()));
 
 		return orderMapper.toDetailResponse(
 				order, viewerRole, itemSummary, buyer, seller, histories,
@@ -147,17 +147,17 @@ public class OrderService {
 				String.valueOf(order.getPayoutAmount()), paymentResponse, settlementResponse);
 	}
 
-	/** 택배사 목록. 값이 늘어도 앱 배포와 무관하게 내려가야 해서 API 로 둔다(DEC-021) */
+	/** 택배사 목록. 값이 늘어도 앱 배포와 무관하게 내려가야 해서 API 로 둔다 */
 	public List<CourierResponse> getCouriers() {
 		return Arrays.stream(CourierCode.values())
 				.map(code -> orderMapper.toCourierResponse(code, courierLabel(code)))
 				.toList();
 	}
 
-	/** 운송장 번호 입력 → 상품 발송. 배송 완료 전까지 재입력 가능함(DEC-008) */
+	/** 운송장 번호 입력 → 상품 발송. 배송 완료 전까지 재입력 가능함 */
 	@Transactional
 	@Loggable("운송장 번호 입력")
-	public ShipmentUpdateResponse updateShipment(Long sellerId, Long orderId, CourierCode courierCode, String trackingNo) {
+	public ShipmentUpdateResponse updateShipment(Long sellerId, Long orderId, String courierCodeRaw, String trackingNo) {
 		LocalDateTime now = LocalDateTime.now(ZONE_SEOUL);
 		TradeOrder order = tradeOrderRepository.findByIdForUpdate(orderId)
 				.orElseThrow(() -> {
@@ -173,6 +173,9 @@ public class OrderService {
 			log.info("발송할 수 없는 단계에서 운송장을 입력하려 함 orderId={} status={}", orderId, order.getStatus());
 			throw new CustomException(OrderErrorCode.ORDER_409_STATUS);
 		}
+		// enum 으로 안 받는 이유는 ShipmentUpdateRequest 의 클래스 주석과 같다 — 이 엔드포인트의
+		// 에러 표면을 ORDER_400_TRACKING 하나로 유지하기 위함
+		CourierCode courierCode = parseCourierCode(courierCodeRaw);
 		if (courierCode == null || trackingNo == null || !trackingNo.matches("\\d+")) {
 			throw new CustomException(OrderErrorCode.ORDER_400_TRACKING);
 		}
@@ -255,11 +258,13 @@ public class OrderService {
 							&& !order.getAutoConfirmAt().isAfter(now))
 					.ifPresent(order -> {
 						try {
-							// changedBy=null → 시스템 확정. 판매자가 그 사이 정산 계좌를 지운
-							// 드문 경우에만 던질 수 있어, 이 건만 건너뛰고 나머지 배치는 계속함
+							// changedBy=null → 시스템 확정. 판매자가 그 사이 정산 계좌를 지운 경우
+							// 등 이 건만 실패해도, 전체가 한 트랜잭션이라 예외가 메서드 밖으로
+							// 새어나가면 이미 처리된 다른 주문까지 롤백된다 — 그래서 모든 예외를
+							// 여기서 잡아 이 건만 건너뛰고 배치는 계속한다
 							doConfirm(order, null, now);
-						} catch (CustomException e) {
-							log.warn("자동 구매 확정 중 오류로 건너뜀 orderId={} code={}", orderId, e.getErrorCode().getCode());
+						} catch (Exception e) {
+							log.warn("자동 구매 확정 중 오류로 건너뜀 orderId={}", orderId, e);
 						}
 					});
 		}
@@ -284,7 +289,7 @@ public class OrderService {
 
 		paymentService.refund(order.getOffer().getId(), now);
 		order.cancel(now);
-		// 판매로 올라간 적 있어도 listing 은 DEC-026 에 따라 다시 열지 않는다 — 재판매는
+		// 판매로 올라간 적 있어도 listing 은 닫힌 뒤 다시 열지 않는다 — 재판매는
 		// 판매 전환을 다시 거쳐 새 listing 을 만들어야 함. 그래서 미판매로 보낸다(ON_SALE 아님)
 		order.getItem().changeSaleStatus(SaleStatus.NOT_FOR_SALE);
 
@@ -306,35 +311,45 @@ public class OrderService {
 	public void settleDue(LocalDateTime now) {
 		LocalDate today = now.toLocalDate();
 		for (Settlement settlement : settlementRepository.findAllBySettledAtIsNull()) {
-			if (settlement.getSettledAt() != null) {
-				continue;
+			try {
+				settleOne(settlement, now, today);
+			} catch (Exception e) {
+				// 전체가 한 트랜잭션이라 예외가 여기를 빠져나가면 이미 처리된 다른 판매자의
+				// 정산까지 전부 롤백된다 — 이 건만 건너뛰고 배치는 계속한다
+				log.warn("정산 처리 중 오류로 건너뜀 settlementId={}", settlement.getId(), e);
 			}
-
-			// 영업일 계산(공휴일 조회, 캐시 미스면 외부 HTTP)을 행 잠금보다 먼저 끝낸다 — 외부
-			// 호출이 늦어져도 아직 아무 행도 잠그지 않은 상태라 다른 거래를 막지 않는다
-			LocalDate scheduledAt = businessDayCalculator.plusBusinessDays(
-					settlement.getOrder().getConfirmedAt().toLocalDate(), SETTLEMENT_BUSINESS_DAYS);
-			if (scheduledAt.isAfter(today)) {
-				continue;
-			}
-
-			TradeOrder order = tradeOrderRepository.findByIdForUpdate(settlement.getOrder().getId()).orElse(null);
-			if (order == null || order.getStatus() != OrderStatus.PURCHASE_CONFIRMED) {
-				continue;
-			}
-
-			settlement.settle(now);
-			order.settle();
-			orderStatusHistoryRepository.save(OrderStatusHistory.of(order, OrderStatus.SETTLED, null, now));
-
-			notificationService.notify(
-					order.getSeller(), NotificationSettingType.TRADE_STATUS, NotificationCategory.TRADE_STATUS,
-					order.getItem().getName(), "정산이 완료됐어요.",
-					order.getItem().getCoverImageKey(), NotificationTargetType.ORDER, order.getId());
 		}
 	}
 
-	/** 판매 내역 4탭. PENDING 은 아이템 단위로 묶고, 전체 탭은 그 묶음과 거래를 시간순으로 섞는다(DEC-103) */
+	private void settleOne(Settlement settlement, LocalDateTime now, LocalDate today) {
+		if (settlement.getSettledAt() != null) {
+			return;
+		}
+
+		// 영업일 계산(공휴일 조회, 캐시 미스면 외부 HTTP)을 행 잠금보다 먼저 끝낸다 — 외부
+		// 호출이 늦어져도 아직 아무 행도 잠그지 않은 상태라 다른 거래를 막지 않는다
+		LocalDate scheduledAt = businessDayCalculator.plusBusinessDays(
+				settlement.getOrder().getConfirmedAt().toLocalDate(), SETTLEMENT_BUSINESS_DAYS);
+		if (scheduledAt.isAfter(today)) {
+			return;
+		}
+
+		TradeOrder order = tradeOrderRepository.findByIdForUpdate(settlement.getOrder().getId()).orElse(null);
+		if (order == null || order.getStatus() != OrderStatus.PURCHASE_CONFIRMED) {
+			return;
+		}
+
+		settlement.settle(now);
+		order.settle();
+		orderStatusHistoryRepository.save(OrderStatusHistory.of(order, OrderStatus.SETTLED, null, now));
+
+		notificationService.notify(
+				order.getSeller(), NotificationSettingType.TRADE_STATUS, NotificationCategory.TRADE_STATUS,
+				order.getItem().getName(), "정산이 완료됐어요.",
+				order.getItem().getCoverImageKey(), NotificationTargetType.ORDER, order.getId());
+	}
+
+	/** 판매 내역 4탭. PENDING 은 아이템 단위로 묶고, 전체 탭은 그 묶음과 거래를 시간순으로 섞는다 */
 	@Loggable("판매 내역 조회")
 	public CursorSlice<OrderSalesRowResponse> getSales(Long sellerId, OrderFeedTab tab, Cursor cursor, int size) {
 		return switch (tab) {
@@ -348,7 +363,7 @@ public class OrderService {
 		};
 	}
 
-	/** 구매 내역 4탭. API-161 과 대칭이나 아이템 단위 집계가 없다(구매자는 아이템당 1건) */
+	/** 구매 내역 4탭. 판매 내역과 대칭이나 아이템 단위 집계가 없다(구매자는 아이템당 1건) */
 	@Loggable("구매 내역 조회")
 	public CursorSlice<OrderPurchaseRowResponse> getPurchases(Long buyerId, OrderFeedTab tab, Cursor cursor, int size) {
 		return switch (tab) {
@@ -387,6 +402,32 @@ public class OrderService {
 
 	private String profileImageUrl(User user) {
 		return user.getProfileImageKey() == null ? null : fileStorage.toUrl(user.getProfileImageKey());
+	}
+
+	/** 잘못된 값이면 null — 호출부가 ORDER_400_TRACKING 하나로 묶어 던진다 */
+	private CourierCode parseCourierCode(String raw) {
+		if (raw == null) {
+			return null;
+		}
+		try {
+			return CourierCode.valueOf(raw);
+		} catch (IllegalArgumentException e) {
+			return null;
+		}
+	}
+
+	/**
+	 * settlement 는 append-only 라 과거 행의 bankCode 문자열이 영원히 남는다 — 그 상수가 나중에
+	 * 바뀌거나 지워지면 valueOf() 가 터진다. 그런 거래의 상세 조회까지 500 으로 죽이지 않도록
+	 * 방어한다
+	 */
+	private BankCode parseBankCode(String raw) {
+		try {
+			return BankCode.valueOf(raw);
+		} catch (IllegalArgumentException e) {
+			log.warn("정산 계좌의 은행 코드를 해석할 수 없음 bankCode={}", raw);
+			return null;
+		}
 	}
 
 	private String courierLabel(CourierCode code) {

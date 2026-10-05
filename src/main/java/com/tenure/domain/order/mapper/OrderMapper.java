@@ -26,6 +26,7 @@ import com.tenure.domain.payment.entity.Payment;
 import com.tenure.domain.payout.enums.BankCode;
 import com.tenure.domain.settlement.entity.Settlement;
 import com.tenure.domain.user.entity.User;
+import com.tenure.domain.user.mapper.UserMapper;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -47,7 +48,7 @@ public interface OrderMapper {
 	@Mapping(target = "coverImageUrl", source = "coverImageUrl")
 	OrderItemSummaryResponse toItemSummaryResponse(Item item, String coverImageUrl);
 
-	@Mapping(target = "nickname", source = "user.nickname")
+	@Mapping(target = "nickname", expression = "java(displayNickname(user))")
 	@Mapping(target = "profileImageUrl", source = "profileImageUrl")
 	OrderPartySummaryResponse toPartySummaryResponse(User user, String profileImageUrl);
 
@@ -196,4 +197,9 @@ public interface OrderMapper {
 	OrderPurchaseRowResponse toPurchaseRowFromOrder(
 			TradeOrder order, String totalPaymentAmount, OrderPartySummaryResponse counterpart, OrderItemSummaryResponse item
 	);
+
+	/** 탈퇴 사용자는 닉네임을 가리고 표시한다. PostMapper·ItemQueryService 와 같은 규칙 */
+	default String displayNickname(User user) {
+		return user.isWithdrawn() ? UserMapper.WITHDRAWN_NICKNAME : user.getNickname();
+	}
 }

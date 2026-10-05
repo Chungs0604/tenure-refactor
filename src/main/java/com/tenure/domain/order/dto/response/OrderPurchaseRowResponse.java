@@ -12,7 +12,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 /**
- * 구매 내역 목록 한 행(API-162). API-161 과 대칭이다 — 아이템 단위 집계가 없고(구매자는
+ * 구매 내역 목록 한 행. 판매 내역과 대칭이다 — 아이템 단위 집계가 없고(구매자는
  * 아이템당 1건), offerStatus 에 PENDING 외 값(거절·만료)도 실린다
  */
 @Getter
@@ -24,7 +24,7 @@ public class OrderPurchaseRowResponse {
 	@Schema(description = "행 종류", example = "OFFER")
 	private final OrderFeedRowType rowType;
 
-	@Schema(description = "OFFER 행 — 제안서(API-142) 이동 키", example = "1")
+	@Schema(description = "OFFER 행 — 제안서 상세 화면 이동 키", example = "1")
 	private final Long offerId;
 
 	@Schema(description = "OFFER 행", example = "PURCHASE_OFFER")
@@ -39,7 +39,7 @@ public class OrderPurchaseRowResponse {
 	@Schema(description = "OFFER 행 — 제안 만료까지", example = "2026-06-22T18:30:00")
 	private final LocalDateTime expiresAt;
 
-	@Schema(description = "ORDER 행 — 거래 상세(API-160) 이동 키", example = "1")
+	@Schema(description = "ORDER 행 — 거래 상세 화면 이동 키", example = "1")
 	private final Long orderId;
 
 	@Schema(description = "ORDER 행", example = "2026042919502395")

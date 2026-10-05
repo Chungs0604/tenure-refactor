@@ -7,7 +7,7 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * 택배사 추적 URL 조합(DEC-021 과 같은 기준) — 클라이언트가 URL 패턴을 갖고 있으면 택배사
+ * 택배사 추적 URL 조합 — 클라이언트가 URL 패턴을 갖고 있으면 택배사
  * 추가가 앱 배포에 묶인다. URL 은 저장하지 않고 courier_code + tracking_no 로 매번 조합한다.
  *
  * 각 택배사의 추적 페이지 URL 패턴이다. 택배사 쪽에서 URL 구조를 바꾸면 이 맵만 고치면 된다
