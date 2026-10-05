@@ -2920,10 +2920,14 @@ entities:
     enforced_by: application
     source: inferred
     evidence: 거래 무결성. 화면에 명시 문구는 없음
-  - rule: 'sale_status 전이는 네 곳에서만 일어난다 — 판매 전환(→ON_SALE) · 미판매로 변경(→NOT_FOR_SALE) · 결제 완료(→SOLD) · 거래 취소(→ON_SALE 복구). 판매 완료로 변경 메뉴는 수동 SOLD 다'
+  - rule: 'sale_status 전이는 네 곳에서만 일어난다 — 판매 전환(→ON_SALE) · 미판매로 변경(→NOT_FOR_SALE) · 결제 완료(→SOLD) · 거래 취소(→NOT_FOR_SALE). 판매 완료로 변경 메뉴는 수동 SOLD 다'
     enforced_by: application
     source: design
     evidence: 메뉴 모달(2825:59974)의 '미판매로 변경하기'·'판매 완료로 변경하기' + 목록(2825:52336)의 '판매 전환' 버튼 (DEC-026)
+    amended: 거래 취소는 ON_SALE 로 복구하지 않고 NOT_FOR_SALE 로 보낸다. item_listing.close() 는
+      DEC-026 에 따라 닫힌 행을 다시 열지 않으므로(재오픈 메서드 자체가 없음), ON_SALE 로 되돌리면
+      열린 item_listing 없이 ON_SALE 인 깨진 상태가 된다 — 바로 아래 제약과 충돌한다.
+      재판매는 판매 전환을 다시 거쳐 새 item_listing 을 만들어야 한다(order 도메인 구현, 2026-10-05)
   - rule: sale_status=ON_SALE 이면 closed_at 이 비어 있는 item_listing 이 정확히 1개 있어야 한다
     enforced_by: application
     source: inferred

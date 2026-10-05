@@ -3752,6 +3752,9 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 
 **구매자·판매자 정보가 둘 다 표시된다.** 내 역할과 무관하게 상대방만 보여주는 화면이 아니다.
 
+**`settlement` 은 `viewerRole=SELLER` 일 때만 채워진다.** 구매자에게 판매자의 정산 계좌(은행·계좌번호)를
+노출할 이유가 없다 — 제안서 상세(`API-142`)가 `payoutAccount` 를 판매자 시점에만 내려주는 것과 같은 기준이다.
+
 `배송 조회` 는 택배사 추적 페이지로 나가는 버튼이다. 택배사별 URL 패턴을 클라이언트가 갖고 있으면
 택배사를 추가할 때 앱 배포에 묶이므로 **서버가 `trackingUrl` 로 조합해 내려준다**(`DEC-021` 과 같은 기준).
 
@@ -3772,8 +3775,13 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 | `item.brandName` | String | — |
 | `item.name` | String | — |
 | `item.coverImageUrl` | String | — |
+| `buyer.nickname` | String | 구매자 정보 — 뷰어 역할과 무관하게 항상 내려준다 |
+| `buyer.profileImageUrl` | String | — |
+| `seller.nickname` | String | 판매자 정보 — 뷰어 역할과 무관하게 항상 내려준다 |
+| `seller.profileImageUrl` | String | — |
 | `statusHistory[].status` | OrderStatus | — |
 | `statusHistory[].changedAt` | LocalDateTime | 타임라인 날짜 |
+| `buyerRequest` | String | 구매자 요청사항. `purchase_offer.buyer_request` 스냅샷(제안 시점 입력값) |
 | `shipment.courierCode` | CourierCode | CJ_LOGISTICS \| KOREA_POST \| GS_POSTBOX \| CU_CONVENIENCE |
 | `shipment.trackingNo` | String | — |
 | `shipment.trackingUrl` | String | `배송 조회` 버튼의 이동 주소. 택배사별 추적 페이지를 **서버가 조합**해 내려준다. 운송장 입력 전에는 null 이고 버튼이 비활성이다 |
@@ -3792,10 +3800,10 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 | `payoutAmount` | String | 판매자 — 총 정산 금액 |
 | `payment.method` | PaymentMethod | — |
 | `payment.status` | PaymentStatus | AUTHORIZED \| CAPTURED \| RELEASED \| REFUNDED |
-| `settlement.accountNumber` | String | 정산 계좌 |
-| `settlement.settledAt` | LocalDateTime | — |
+| `settlement.bankCode` | BankCode | 정산 계좌 은행. `viewerRole=SELLER` 일 때만 채워진다. `BUYER` 응답에서는 `null` — `API-142` 의 `payoutAccount` 와 같은 기준 |
+| `settlement.accountNumber` | String | 정산 계좌. `viewerRole=SELLER` 전용 |
+| `settlement.settledAt` | LocalDateTime | `viewerRole=SELLER` 전용 |
 | `autoConfirmAt` | LocalDateTime | '자동 구매 확정까지' |
-| `counterpart.nickname` | String | — |
 
 ```json
 {
@@ -3812,12 +3820,21 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
       "name": "<String>",
       "coverImageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg"
     },
+    "buyer": {
+      "nickname": "<String>",
+      "profileImageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg"
+    },
+    "seller": {
+      "nickname": "<String>",
+      "profileImageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg"
+    },
     "statusHistory": [
       {
         "status": "<OrderStatus>",
         "changedAt": "2026-06-21T18:30:00"
       }
     ],
+    "buyerRequest": "<String>",
     "shipment": {
       "courierCode": "<CourierCode>",
       "trackingNo": "<String>",
@@ -3838,13 +3855,11 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
       "status": "<PaymentStatus>"
     },
     "settlement": {
+      "bankCode": "<BankCode>",
       "accountNumber": "<String>",
       "settledAt": "2026-06-21T18:30:00"
     },
-    "autoConfirmAt": "2026-06-21T18:30:00",
-    "counterpart": {
-      "nickname": "<String>"
-    }
+    "autoConfirmAt": "2026-06-21T18:30:00"
   }
 }
 ```
@@ -3887,7 +3902,9 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 | 필드 | 타입 | 설명 |
 |---|---|---|
 | `rowType` | String | OFFER \| ORDER |
-| `offerId` | Long | `OFFER` 행 — 제안서(`API-142`) 이동 키 |
+| `offerId` | Long | `OFFER` 행 — 제안서(`API-142`) 이동 키. 아이템 단위로 묶이므로 묶음 중 가장 최근 제안의 id 다 |
+| `itemId` | Long | `OFFER` 행 — 아이템 단위 집계의 키. `확인하기` 가 여는 `받은 제안` 목록(`API-146`) 이동 키 |
+| `pendingOfferCount` | Integer | `OFFER` 행 — 이 아이템에 걸린 `PENDING` 제안 건수. '거래 의사 총 4건' |
 | `offerType` | OfferType | `OFFER` 행 — 거래 의사 / 구매 제안 문구 분기 |
 | `offerStatus` | OfferStatus | `OFFER` 행 — 목록은 PENDING 만 싣는다 |
 | `offerPrice` | String | `OFFER` 행 — '360,000원 구매 제안' |
@@ -3913,6 +3930,8 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
       {
         "rowType": "OFFER",
         "offerId": 1,
+        "itemId": 1,
+        "pendingOfferCount": 4,
         "offerType": "<OfferType>",
         "offerStatus": "PENDING",
         "offerPrice": "360000",
@@ -3935,6 +3954,8 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
       {
         "rowType": "ORDER",
         "offerId": null,
+        "itemId": null,
+        "pendingOfferCount": null,
         "offerType": null,
         "offerStatus": null,
         "offerPrice": null,
