@@ -70,19 +70,51 @@ public class ChatRoom extends BaseCreatedEntity {
 	@Column(name = "last_message_at")
 	private LocalDateTime lastMessageAt;
 
-	/** 미판매 아이템 구매 제안으로 방을 엶. listing 은 없음 — 판매중 채팅방 개설은 별도 흐름임 */
-	public static ChatRoom openForOffer(Item item, User buyer, User seller, PurchaseOffer purchaseOffer) {
+	/**
+	 * 미판매 아이템 구매 제안으로 방을 엶. listing 은 없음 — 판매중 채팅방 개설은 별도 흐름임
+	 *
+	 * <p>lastMessageAt 을 개설 시각으로 먼저 채운다 — 목록 정렬·커서 기준이 메시지와
+	 * 개설을 모두 '활동'으로 보게 해서, 메시지가 아직 없는 방도 null 없이 자연스럽게 섞인다.
+	 */
+	public static ChatRoom openForOffer(Item item, User buyer, User seller, PurchaseOffer purchaseOffer, LocalDateTime now) {
 		return ChatRoom.builder()
 				.item(item)
 				.buyer(buyer)
 				.seller(seller)
 				.purchaseOffer(purchaseOffer)
+				.lastMessageAt(now)
+				.build();
+	}
+
+	/** 판매중 아이템의 채팅. 가격 출처는 listing — purchaseOffer 는 두지 않음(배타적) */
+	public static ChatRoom openForListing(Item item, ItemListing listing, User buyer, User seller, LocalDateTime now) {
+		return ChatRoom.builder()
+				.item(item)
+				.listing(listing)
+				.buyer(buyer)
+				.seller(seller)
+				.lastMessageAt(now)
+				.build();
+	}
+
+	/** 미판매+제안허용 아이템을 아직 제안 없이 염. 헤더 가격은 제안 전까지 null */
+	public static ChatRoom openForUnsold(Item item, User buyer, User seller, LocalDateTime now) {
+		return ChatRoom.builder()
+				.item(item)
+				.buyer(buyer)
+				.seller(seller)
+				.lastMessageAt(now)
 				.build();
 	}
 
 	/** 재제안 시 가격 출처를 최신 제안으로 갱신함 */
 	public void updateOfferPointer(PurchaseOffer purchaseOffer) {
 		this.purchaseOffer = purchaseOffer;
+	}
+
+	/** 메시지 전송과 같은 트랜잭션에서 동기 갱신 */
+	public void updateLastMessageAt(LocalDateTime lastMessageAt) {
+		this.lastMessageAt = lastMessageAt;
 	}
 
 }

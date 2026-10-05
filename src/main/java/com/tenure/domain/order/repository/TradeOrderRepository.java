@@ -46,4 +46,7 @@ public interface TradeOrderRepository extends JpaRepository<TradeOrder, Long>, T
 	/** 자동 구매 확정 배치 대상 id 목록. id 만 돌려주는 이유는 PurchaseOfferRepository 와 같다 */
 	@Query("select o.id from TradeOrder o where o.status = 'DELIVERED' and o.autoConfirmAt <= :now")
 	List<Long> findAutoConfirmableIds(@Param("now") LocalDateTime now);
+
+	/** 이 제안이 수락되어 생긴 거래. 채팅방 헤더 CTA(거래 상세) 의 targetId 근거 */
+	Optional<TradeOrder> findByOfferId(Long offerId);
 }

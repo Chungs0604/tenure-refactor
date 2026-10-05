@@ -56,4 +56,22 @@ public class ChatRoomMember {
 	@Column(name = "left_at")
 	private LocalDateTime leftAt;
 
+	/** 방 개설 시 buyer·seller 양쪽에 1건씩 만든다 */
+	public static ChatRoomMember join(ChatRoom chatRoom, User user) {
+		return ChatRoomMember.builder()
+				.chatRoom(chatRoom)
+				.user(user)
+				.build();
+	}
+
+	/** 읽음 처리. 안읽음 수는 이 메시지 이후 행을 세어 계산한다 */
+	public void markRead(ChatMessage lastReadMessage) {
+		this.lastReadMessage = lastReadMessage;
+	}
+
+	/** 채팅방 나가기. 행은 지우지 않고 이 시각만 찍는다 */
+	public void leave(LocalDateTime now) {
+		this.leftAt = now;
+	}
+
 }

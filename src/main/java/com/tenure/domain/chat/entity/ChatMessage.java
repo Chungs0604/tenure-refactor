@@ -55,8 +55,27 @@ public class ChatMessage extends BaseCreatedEntity {
 	@Column(name = "message_type", nullable = false, length = 10)
 	private ChatMessageType messageType;
 
-	/** 메시지 본문. IMAGE 면 저장소 키 (DEC-006) */
+	/** 메시지 본문. TEXT 일 때만 채운다 — IMAGE 는 chat_message_image 에 여러 장을 담는다 */
 	@Column(name = "content", columnDefinition = "TEXT")
 	private String content;
+
+	/** 텍스트 메시지 */
+	public static ChatMessage ofText(ChatRoom chatRoom, User sender, String content) {
+		return ChatMessage.builder()
+				.chatRoom(chatRoom)
+				.sender(sender)
+				.messageType(ChatMessageType.TEXT)
+				.content(content)
+				.build();
+	}
+
+	/** 이미지 메시지. content 는 비우고 이미지는 ChatMessageImage 로 별도 저장한다 */
+	public static ChatMessage ofImage(ChatRoom chatRoom, User sender) {
+		return ChatMessage.builder()
+				.chatRoom(chatRoom)
+				.sender(sender)
+				.messageType(ChatMessageType.IMAGE)
+				.build();
+	}
 
 }
