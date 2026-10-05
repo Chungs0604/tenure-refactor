@@ -59,7 +59,7 @@ public class ItemService {
 
 	/** 끝난 거래. 이 둘만 아니면 진행 중으로 본다 — 중간에 상태가 늘어도 자동으로 포함된다 */
 	private static final Set<OrderStatus> FINISHED_ORDER_STATUSES =
-			EnumSet.of(OrderStatus.COMPLETED, OrderStatus.CANCELED);
+			EnumSet.of(OrderStatus.SETTLED, OrderStatus.CANCELED);
 
 	private final ItemRepository itemRepository;
 	private final ItemOwnershipRepository itemOwnershipRepository;
