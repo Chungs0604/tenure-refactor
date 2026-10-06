@@ -30,9 +30,21 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
 	@Override
 	public Message<?> preSend(Message<?> message, MessageChannel channel) {
 		StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
-		if (accessor != null && StompCommand.CONNECT.equals(accessor.getCommand())) {
-			accessor.setUser(authenticate(accessor));
+		if (accessor == null) {
+			return message;
 		}
+
+		if (StompCommand.CONNECT.equals(accessor.getCommand())) {
+			accessor.setUser(authenticate(accessor));
+			return message;
+		}
+
+		// CONNECT 없이 곧바로 SEND·SUBSCRIBE 가 오면 principal 이 비어 핸들러에서 NPE 로 샌다 —
+		// 핸드셰이크가 permitAll 이라 여기서 막는 게 유일한 경계다. CONNECT 자체는 위에서 처리했다
+		if (accessor.getCommand() != null && accessor.getUser() == null) {
+			throw new MessagingException("인증되지 않은 연결입니다.");
+		}
+
 		return message;
 	}
 

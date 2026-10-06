@@ -14,6 +14,9 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 
@@ -30,7 +33,7 @@ public interface ChatApi {
 			@Parameter(description = "탭") ChatRoomTab tab,
 			@Parameter(description = "검색어") String keyword,
 			@Parameter(description = "직전 응답의 nextCursor. 첫 페이지는 비운다") String cursor,
-			@Parameter(description = "페이지 크기") int size);
+			@Parameter(description = "페이지 크기") @Min(1) @Max(100) int size);
 
 	@Operation(summary = "채팅방 개설",
 			description = "판매중 아이템은 listing 기준, 미판매 아이템은 offerAllowed 가 꺼져 있으면 열 수 없음. "
@@ -65,17 +68,18 @@ public interface ChatApi {
 			@Parameter(hidden = true) AuthUser authUser,
 			@Parameter(description = "채팅방 id") Long roomId,
 			@Parameter(description = "직전 응답의 nextCursor. 첫 페이지는 비운다") String cursor,
-			@Parameter(description = "페이지 크기") int size);
+			@Parameter(description = "페이지 크기") @Min(1) @Max(100) int size);
 
 	@Operation(summary = "읽음 처리", description = "처리 즉시 상대방에게 WS 로 읽음 이벤트를 push 한다")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "처리 성공"),
+			@ApiResponse(responseCode = "400", description = "COMMON_400 — 이 방의 메시지가 아님"),
 			@ApiResponse(responseCode = "403", description = "CHAT_403")
 	})
 	ResponseEntity<BaseResponse<Void>> read(
 			@Parameter(hidden = true) AuthUser authUser,
 			@Parameter(description = "채팅방 id") Long roomId,
-			ChatReadRequest request);
+			@Valid ChatReadRequest request);
 
 	@Operation(summary = "채팅방 나가기", description = "방과 메시지는 남고 내 참여 상태만 종료된다")
 	@ApiResponses({

@@ -57,13 +57,17 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 /**
@@ -73,6 +77,7 @@ import org.springframework.util.StringUtils;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@Transactional(readOnly = true)
 public class ChatService {
 
 	private final ChatRoomRepository chatRoomRepository;
@@ -93,7 +98,6 @@ public class ChatService {
 	private final SimpMessagingTemplate messagingTemplate;
 
 	/** 채팅방 목록(API-180) */
-	@Transactional(readOnly = true)
 	@Loggable("채팅방 목록 조회")
 	public CursorSlice<ChatRoomSummaryResponse> list(Long viewerId, ChatRoomTab tab, String keyword, Cursor cursor, int size) {
 		List<ChatRoomFeedRow> rows = chatRoomRepository.findAllForFeed(viewerId, tab, keyword, cursor, size);
@@ -127,7 +131,6 @@ public class ChatService {
 	}
 
 	/** 채팅방 헤더(API-182) — 아이템·가격·거래 단계 CTA */
-	@Transactional(readOnly = true)
 	@Loggable("채팅방 헤더 조회")
 	public ChatRoomHeaderResponse header(Long userId, Long roomId) {
 		ChatRoom room = requireRoomDetail(roomId);
@@ -158,7 +161,6 @@ public class ChatService {
 	}
 
 	/** 메시지 목록(API-183). 최신부터 거슬러 올라간다 */
-	@Transactional(readOnly = true)
 	@Loggable("채팅 메시지 목록 조회")
 	public CursorSlice<ChatMessageResponse> messages(Long userId, Long roomId, Cursor cursor, int size) {
 		requireRoom(roomId);
@@ -207,18 +209,30 @@ public class ChatService {
 		// IDENTITY 전략이라 save 호출 시점에 바로 INSERT 됨 — createdAt(@CreatedDate)도 이때 채워짐
 		room.updateLastMessageAt(message.getCreatedAt());
 
-		notificationService.notify(
-				counterpart, NotificationSettingType.CHAT, NotificationCategory.ACTION_REQUIRED,
-				room.getItem().getName(), "새 메시지가 왔어요.",
-				room.getItem().getCoverImageKey(), NotificationTargetType.CHAT_ROOM, room.getId());
+		// 나간 상대는 이 방을 더 볼 수 없다 — 알림·push 를 보내도 누르면 CHAT_403 인 막다른 길이다
+		boolean counterpartActive = chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, counterpart.getId())
+				.map(m -> !m.hasLeft())
+				.orElse(false);
+
+		if (counterpartActive) {
+			notificationService.notify(
+					counterpart, NotificationSettingType.CHAT, NotificationCategory.ACTION_REQUIRED,
+					room.getItem().getName(), "새 메시지가 왔어요.",
+					room.getItem().getCoverImageKey(), NotificationTargetType.CHAT_ROOM, room.getId());
+		}
 
 		ChatMessageResponse response = chatMapper.toMessageResponse(
 				message,
 				request.getMessageType() == ChatMessageType.TEXT ? message.getContent() : null,
 				imageUrls);
 
-		messagingTemplate.convertAndSendToUser(String.valueOf(sender.getId()), queueOf(roomId), response);
-		messagingTemplate.convertAndSendToUser(String.valueOf(counterpart.getId()), queueOf(roomId), response);
+		// 커밋 전에 push 하면 받은 쪽이 아직 DB 에 없는 메시지를 보게 되는 레이스가 생긴다
+		afterCommit(() -> {
+			messagingTemplate.convertAndSendToUser(String.valueOf(sender.getId()), queueOf(roomId), response);
+			if (counterpartActive) {
+				messagingTemplate.convertAndSendToUser(String.valueOf(counterpart.getId()), queueOf(roomId), response);
+			}
+		});
 
 		return response;
 	}
@@ -234,12 +248,12 @@ public class ChatService {
 		member.markRead(lastReadMessage);
 
 		User counterpart = counterpartOf(room, userId);
-		messagingTemplate.convertAndSendToUser(
-				String.valueOf(counterpart.getId()), queueOf(roomId) + "/read",
-				ChatReadEventResponse.builder()
-						.roomId(roomId)
-						.lastReadMessageId(request.getLastReadMessageId())
-						.build());
+		ChatReadEventResponse event = ChatReadEventResponse.builder()
+				.roomId(roomId)
+				.lastReadMessageId(request.getLastReadMessageId())
+				.build();
+		afterCommit(() -> messagingTemplate.convertAndSendToUser(
+				String.valueOf(counterpart.getId()), queueOf(roomId) + "/read", event));
 	}
 
 	/** 채팅방 나가기(API-186). 방·메시지는 남고 이 참여자의 leftAt 만 찍힌다 */
@@ -264,8 +278,12 @@ public class ChatService {
 		requireNotSelf(requester, seller);
 		requireNotBlocked(requester, seller);
 
-		ChatRoom room = chatRoomRepository.findByItemIdAndBuyerIdAndSellerId(item.getId(), requester.getId(), seller.getId())
-				.orElseGet(() -> chatRoomRepository.save(ChatRoom.openForListing(item, listing, requester, seller, now)));
+		ChatRoom room = findOrOpenRoom(item.getId(), requester, seller,
+				() -> ChatRoom.openForListing(item, listing, requester, seller, now));
+		// 미판매로 먼저 열렸던 방이 나중에 판매 전환되면 가격 출처를 listing 으로 옮긴다
+		if (room.getListing() == null || !room.getListing().getId().equals(listing.getId())) {
+			room.updateListingPointer(listing);
+		}
 		ensureMembers(room, requester, seller);
 		return room;
 	}
@@ -282,19 +300,52 @@ public class ChatService {
 
 		requireNotBlocked(requester, seller);
 
-		ChatRoom room = chatRoomRepository.findByItemIdAndBuyerIdAndSellerId(item.getId(), requester.getId(), seller.getId())
-				.orElseGet(() -> chatRoomRepository.save(ChatRoom.openForUnsold(item, requester, seller, now)));
+		ChatRoom room = findOrOpenRoom(item.getId(), requester, seller,
+				() -> ChatRoom.openForUnsold(item, requester, seller, now));
 		ensureMembers(room, requester, seller);
 		return room;
 	}
 
+	/**
+	 * 조회 → 없으면 생성. 조회와 생성 사이에 동시 요청이 끼면(더블탭·재시도) 둘 다 빈 조회를
+	 * 보고 둘 다 저장을 시도해 uk_chat_room 을 위반할 수 있다 — 저장 실패를 잡고 그새 다른
+	 * 요청이 만든 방을 다시 찾아 돌려준다(OfferService.create 와 같은 패턴).
+	 */
+	private ChatRoom findOrOpenRoom(Long itemId, User buyer, User seller, Supplier<ChatRoom> factory) {
+		return chatRoomRepository.findByItemIdAndBuyerIdAndSellerId(itemId, buyer.getId(), seller.getId())
+				.orElseGet(() -> {
+					try {
+						return chatRoomRepository.save(factory.get());
+					} catch (DataIntegrityViolationException e) {
+						log.info("동시 요청으로 같은 채팅방이 먼저 열림 itemId={} buyerId={} sellerId={}",
+								itemId, buyer.getId(), seller.getId());
+						return chatRoomRepository.findByItemIdAndBuyerIdAndSellerId(itemId, buyer.getId(), seller.getId())
+								.orElseThrow(() -> e);
+					}
+				});
+	}
+
+	/**
+	 * 멤버가 없으면 만들고, 있으면 (나갔었어도) 참여 상태로 되돌린다 — 아이템 상세에서
+	 * '채팅하기'를 다시 누르는 것 자체가 재가입 의사표시다.
+	 */
 	private void ensureMembers(ChatRoom room, User buyer, User seller) {
-		if (chatRoomMemberRepository.findByChatRoomIdAndUserId(room.getId(), buyer.getId()).isEmpty()) {
-			chatRoomMemberRepository.save(ChatRoomMember.join(room, buyer));
-		}
-		if (chatRoomMemberRepository.findByChatRoomIdAndUserId(room.getId(), seller.getId()).isEmpty()) {
-			chatRoomMemberRepository.save(ChatRoomMember.join(room, seller));
-		}
+		ensureMember(room, buyer);
+		ensureMember(room, seller);
+	}
+
+	private void ensureMember(ChatRoom room, User user) {
+		ChatRoomMember member = chatRoomMemberRepository.findByChatRoomIdAndUserId(room.getId(), user.getId())
+				.orElseGet(() -> {
+					try {
+						return chatRoomMemberRepository.save(ChatRoomMember.join(room, user));
+					} catch (DataIntegrityViolationException e) {
+						log.info("동시 요청으로 멤버가 먼저 생성됨 roomId={} userId={}", room.getId(), user.getId());
+						return chatRoomMemberRepository.findByChatRoomIdAndUserId(room.getId(), user.getId())
+								.orElseThrow(() -> e);
+					}
+				});
+		member.rejoin();
 	}
 
 	// ── 헤더 CTA ───────────────────────────────────────────────
@@ -390,6 +441,26 @@ public class ChatService {
 
 	private String queueOf(Long roomId) {
 		return "/queue/chat-rooms/" + roomId;
+	}
+
+	/**
+	 * 트랜잭션이 끝까지 커밋돼야 보낸다. 커밋 전에 WS push 를 하면 받은 쪽이 아직 DB 에
+	 * 없는 메시지를 읽음 조회로 다시 확인하는 레이스가 생긴다.
+	 *
+	 * <p>트랜잭션이 없는 호출(단위 테스트 등)에서는 동기화가 활성화돼 있지 않으므로
+	 * 즉시 실행한다 — 기존 테스트가 그대로 통과하는 이유다.
+	 */
+	private void afterCommit(Runnable action) {
+		if (TransactionSynchronizationManager.isSynchronizationActive()) {
+			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+				@Override
+				public void afterCommit() {
+					action.run();
+				}
+			});
+		} else {
+			action.run();
+		}
 	}
 
 	// ── 목록 보조 ───────────────────────────────────────────────

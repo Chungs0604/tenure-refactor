@@ -64,14 +64,30 @@ public class ChatRoomMember {
 				.build();
 	}
 
-	/** 읽음 처리. 안읽음 수는 이 메시지 이후 행을 세어 계산한다 */
+	/**
+	 * 읽음 처리. 단조 증가만 허용한다 — 요청이 뒤섞여 도착해도 읽음 위치가 뒤로 밀리지 않는다.
+	 * 이미 더 최신까지 읽었으면 조용히 무시한다(에러로 다루지 않음 — 클라이언트 재시도·중복
+	 * 전송에서 흔한 입력이다).
+	 */
 	public void markRead(ChatMessage lastReadMessage) {
+		if (this.lastReadMessage != null && lastReadMessage.getId() <= this.lastReadMessage.getId()) {
+			return;
+		}
 		this.lastReadMessage = lastReadMessage;
 	}
 
 	/** 채팅방 나가기. 행은 지우지 않고 이 시각만 찍는다 */
 	public void leave(LocalDateTime now) {
 		this.leftAt = now;
+	}
+
+	/** 나간 방에 다시 들어옴. 아이템 상세에서 '채팅하기'를 다시 누르는 경로(ChatService.open) */
+	public void rejoin() {
+		this.leftAt = null;
+	}
+
+	public boolean hasLeft() {
+		return leftAt != null;
 	}
 
 }

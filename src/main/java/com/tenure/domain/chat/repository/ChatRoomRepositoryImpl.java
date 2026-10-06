@@ -26,10 +26,12 @@ public class ChatRoomRepositoryImpl implements ChatRoomRepositoryCustom {
 	public List<ChatRoomFeedRow> findAllForFeed(
 			Long viewerId, ChatRoomTab tab, String keyword, Cursor cursor, int size
 	) {
+		// 내가 보낸 메시지는 안읽음이 아니다 — sender 제외를 빼면 보내고 나가면 내 배지가 올라간다
 		JPQLQuery<Long> unreadCountSubquery = JPAExpressions.select(chatMessage.count())
 				.from(chatMessage)
 				.where(
 						chatMessage.chatRoom.eq(chatRoom),
+						chatMessage.sender.id.ne(viewerId),
 						chatRoomMember.lastReadMessage.isNull()
 								.or(chatMessage.id.gt(chatRoomMember.lastReadMessage.id)));
 		NumberExpression<Long> unreadCount = Expressions.asNumber(unreadCountSubquery);

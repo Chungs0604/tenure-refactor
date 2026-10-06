@@ -4491,16 +4491,22 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 
 **이미지는 한 메시지에 여러 장이 들어간다.** 화면(`2958:71180`)에서 사진 3장이 **한 말풍선**으로 묶여
 있고 시각·읽음 표시도 하나다. 그래서 `chat_message_image` 에 장수만큼 행을 쌓고 `content` 는 비운다.
-메시지를 장수만큼 쪼개면 전송 중 일부만 실패했을 때 묶음이 깨진다.
+메시지를 장수만큼 쪼개면 전송 중 일부만 실패했을 때 묶음이 깨진다. `imageKeys` 는 최대 10장이다.
 
 **수신** — 양쪽 참여자가 `/user/queue/chat-rooms/{roomId}` 를 구독한다. 전송자 본인에게도 같은
 페이로드가 돌아온다(다중 기기 동기화). 페이로드는 `API-183` 의 `content[]` 행과 같은 모양 —
-`id`·`senderId`·`messageType`·`content`·`images`·`createdAt`.
+`id`·`senderId`·`messageType`·`content`·`images`·`createdAt`. **트랜잭션 커밋 이후에만 push 한다** —
+저장과 같은 트랜잭션이 커밋 전에 실패하면 애초에 push 자체가 나가지 않는다(커밋 전 push 는
+받은 쪽이 아직 DB 에 없는 메시지를 보는 레이스를 만든다). 상대가 방을 나간 뒤에는 이 push·알림을
+건너뛴다 — 받아도 눌러 볼 방법이 없는 알림이기 때문이다.
 
 **읽음 실시간 반영** — `API-185`(읽음 처리) 가 처리되면 상대방이 구독 중인
-`/user/queue/chat-rooms/{roomId}/read` 로 `{ roomId, lastReadMessageId }` 가 push 된다.
-읽음 처리 자체는 여전히 REST(`PATCH`) 다 — 변경되는 것은 상태 한 건뿐이라 소켓으로 옮길 이유가 없고,
-push 는 그 결과를 알리는 부가 채널이다.
+`/user/queue/chat-rooms/{roomId}/read` 로 `{ roomId, lastReadMessageId }` 가 push 된다(역시 커밋
+이후). 읽음 처리 자체는 여전히 REST(`PATCH`) 다 — 변경되는 것은 상태 한 건뿐이라 소켓으로 옮길
+이유가 없고, push 는 그 결과를 알리는 부가 채널이다.
+
+**재가입** — 나갔던 참여자가 아이템 상세에서 `API-181`(채팅방 개설)을 다시 호출하면 그 방에
+재가입한다(`left_at` 해제). 나가기는 영구 제외가 아니라 "지금 안 보기" 다.
 
 **전송 실패** — 검증 실패(`CHAT_400_INVALID_MESSAGE` 등)는 발신자 본인의
 `/user/queue/errors` 로 `"<code>: <message>"` 문자열이 온다. 연결이 끊긴 동안의 메시지는 재전송
@@ -4508,7 +4514,7 @@ push 는 그 결과를 알리는 부가 채널이다.
 따라잡는다(메시지는 이미 저장돼 있으므로 데이터 유실은 없다 — push 가 실패해도 저장은 끝난 뒤다).
 
 에러 코드는 REST 때와 같다 — `CHAT_403`, `CHAT_403_BLOCKED`, `CHAT_400_INVALID_MESSAGE`(신설,
-TEXT 인데 content 가 없거나 IMAGE 인데 imageKeys 가 없음).
+TEXT 인데 content 가 없거나 IMAGE 인데 imageKeys 가 없거나 10장을 넘음).
 
 #### API-185 · `PATCH /api/v1/chat-rooms/{roomId}/read`
 

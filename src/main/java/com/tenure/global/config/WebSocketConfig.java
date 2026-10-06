@@ -24,6 +24,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
 	@Override
 	public void registerStompEndpoints(StompEndpointRegistry registry) {
+		// 기본값(동일 출처만 허용)을 그대로 둔다 — 이 서비스는 앱 화면 기준이라 브라우저 Origin
+		// 검사 대상인 웹 클라이언트가 없다. 웹 클라이언트가 생기면 그때 setAllowedOriginPatterns 로
+		// 허용 출처를 명시한다(REST 쪽 CORS 설정과 같은 목록이어야 함)
 		registry.addEndpoint("/ws-chat");
 	}
 

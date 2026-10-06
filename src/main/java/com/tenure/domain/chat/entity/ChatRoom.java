@@ -112,6 +112,14 @@ public class ChatRoom extends BaseCreatedEntity {
 		this.purchaseOffer = purchaseOffer;
 	}
 
+	/**
+	 * 미판매로 열린 방이 나중에 판매 전환되면 가격 출처를 listing 으로 옮긴다.
+	 * 옮기지 않으면 판매중 아이템인데 헤더 가격이 옛 제안가(또는 null)로 멈춘다.
+	 */
+	public void updateListingPointer(ItemListing listing) {
+		this.listing = listing;
+	}
+
 	/** 메시지 전송과 같은 트랜잭션에서 동기 갱신 */
 	public void updateLastMessageAt(LocalDateTime lastMessageAt) {
 		this.lastMessageAt = lastMessageAt;
