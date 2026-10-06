@@ -63,16 +63,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
-/**
- * 채팅방·메시지. 메시지 전송은 WebSocket 진입점({@code ChatWebSocketController})에서도 이 Service를
- * 그대로 호출한다 — 전송 경로가 둘이어도 검증·저장·알림·브로드캐스트는 한 곳에서 끝낸다.
+/*
+ * 채팅방·메시지 비즈니스 로직. 실시간 push 는 직접 하지 않고 ChatWebSocketService 에 맡김 —
+ * 여기는 "무슨 일이 일어났는지"만 정하고, "그걸 어떻게 실시간으로 알리는지"는 그쪽 책임임.
+ * 메시지 전송은 WebSocket 진입점(ChatWebSocketController)이 sendMessage 를 그대로 호출함.
  */
 @Service
 @RequiredArgsConstructor
@@ -95,18 +93,21 @@ public class ChatService {
 	private final NotificationService notificationService;
 	private final ChatMapper chatMapper;
 	private final FileStorage fileStorage;
-	private final SimpMessagingTemplate messagingTemplate;
+	private final ChatWebSocketService chatWebSocketService;
 
-	/** 채팅방 목록(API-180) */
+	// 채팅방 목록 조회
 	@Loggable("채팅방 목록 조회")
 	public CursorSlice<ChatRoomSummaryResponse> list(Long viewerId, ChatRoomTab tab, String keyword, Cursor cursor, int size) {
+		// 1. tab·keyword·커서로 걸러진 방 목록을 조회함(안읽음 수는 리포지토리가 같이 계산해 옴)
 		List<ChatRoomFeedRow> rows = chatRoomRepository.findAllForFeed(viewerId, tab, keyword, cursor, size);
 		CursorSlice<ChatRoomFeedRow> slice = CursorSlice.of(
 				rows, size, row -> Cursor.of(row.chatRoom().getLastMessageAt(), row.chatRoom().getId()));
 
+		// 2. 화면에 나가는 아이템들의 최근 착용일을 한 번에 배치 조회함 — 행마다 쿼리하면 N+1 임
 		List<Long> itemIds = slice.getContent().stream().map(row -> row.chatRoom().getItem().getId()).toList();
 		Map<Long, LocalDate> wornDates = lastWornDatesOf(itemIds);
 
+		// 3. 방마다 미리보기로 쓸 최신 메시지도 같이 배치 조회함
 		List<Long> roomIds = slice.getContent().stream().map(row -> row.chatRoom().getId()).toList();
 		Map<Long, ChatMessage> latestMessages = roomIds.isEmpty() ? Map.of() : chatMessageRepository
 				.findLatestByChatRoomIdIn(roomIds).stream()
@@ -115,7 +116,7 @@ public class ChatService {
 		return slice.map(row -> toSummaryRow(row, viewerId, wornDates, latestMessages));
 	}
 
-	/** 채팅방 개설(API-181). 이미 있으면 기존 방을 돌려준다(멱등) */
+	// 채팅방 개설. 이미 있으면 기존 방을 그대로 돌려줌(멱등)
 	@Transactional
 	@Loggable("채팅방 개설")
 	public ChatRoomOpenResponse open(Long userId, Long itemId) {
@@ -123,6 +124,7 @@ public class ChatService {
 		User requester = findUser(userId);
 		LocalDateTime now = LocalDateTime.now();
 
+		// 판매중이면 listing 기준으로, 미판매면 현재 소유자 기준으로 연다 — 둘은 서로 다른 흐름임
 		ChatRoom room = item.getSaleStatus() == SaleStatus.ON_SALE
 				? openForListing(item, requester, now)
 				: openForUnsold(item, requester, now);
@@ -130,7 +132,7 @@ public class ChatService {
 		return ChatRoomOpenResponse.builder().roomId(room.getId()).build();
 	}
 
-	/** 채팅방 헤더(API-182) — 아이템·가격·거래 단계 CTA */
+	// 채팅방 헤더 — 아이템·가격·거래 단계 CTA
 	@Loggable("채팅방 헤더 조회")
 	public ChatRoomHeaderResponse header(Long userId, Long roomId) {
 		ChatRoom room = requireRoomDetail(roomId);
@@ -140,6 +142,7 @@ public class ChatService {
 		boolean isBuyer = room.getBuyer().getId().equals(userId);
 		User counterpart = counterpartOf(room, userId);
 
+		// 관련 제안으로 거래 단계를 가리고, 수락된 제안이면 거래까지 찾아 orderId 를 채움
 		PurchaseOffer offer = resolveRelevantOffer(room);
 		TradeOrder order = offer != null && offer.getStatus() == OfferStatus.ACCEPTED
 				? tradeOrderRepository.findByOfferId(offer.getId()).orElse(null)
@@ -160,7 +163,7 @@ public class ChatService {
 				order != null ? order.getId() : null);
 	}
 
-	/** 메시지 목록(API-183). 최신부터 거슬러 올라간다 */
+	// 메시지 목록. 최신부터 거슬러 올라감
 	@Loggable("채팅 메시지 목록 조회")
 	public CursorSlice<ChatMessageResponse> messages(Long userId, Long roomId, Cursor cursor, int size) {
 		requireRoom(roomId);
@@ -170,12 +173,13 @@ public class ChatService {
 		List<ChatMessage> rows = chatMessageRepository.findAllByChatRoomId(roomId, cursorId, PageRequest.of(0, size + 1));
 		CursorSlice<ChatMessage> slice = CursorSlice.of(rows, size, m -> Cursor.of(m.getId()));
 
+		// IMAGE 메시지들의 사진을 한 번에 배치 조회함 — 메시지마다 쿼리하면 N+1 임
 		Map<Long, List<String>> imagesByMessage = imagesOf(slice.getContent());
 
 		return slice.map(m -> toMessageResponse(m, imagesByMessage));
 	}
 
-	/** 메시지 전송. WebSocket 진입점이 이 메서드를 직접 부른다(API-184 는 WS 프로토콜로 대체) */
+	// 메시지 전송. WebSocket 진입점이 이 메서드를 직접 호출함
 	@Transactional
 	@Loggable("채팅 메시지 전송")
 	public ChatMessageResponse sendMessage(Long senderId, Long roomId, ChatMessageSendRequest request) {
@@ -190,6 +194,7 @@ public class ChatService {
 			throw new CustomException(ChatErrorCode.CHAT_400_INVALID_MESSAGE);
 		}
 
+		// 타입별로 필수 필드를 확인하고 저장함 — TEXT 는 content, IMAGE 는 imageKeys 가 있어야 함
 		ChatMessage message;
 		List<String> imageUrls;
 		if (request.getMessageType() == ChatMessageType.TEXT) {
@@ -209,7 +214,7 @@ public class ChatService {
 		// IDENTITY 전략이라 save 호출 시점에 바로 INSERT 됨 — createdAt(@CreatedDate)도 이때 채워짐
 		room.updateLastMessageAt(message.getCreatedAt());
 
-		// 나간 상대는 이 방을 더 볼 수 없다 — 알림·push 를 보내도 누르면 CHAT_403 인 막다른 길이다
+		// 나간 상대는 이 방을 더 볼 수 없음 — 알림·push 를 보내도 누르면 CHAT_403 인 막다른 길이라 건너뜀
 		boolean counterpartActive = chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, counterpart.getId())
 				.map(m -> !m.hasLeft())
 				.orElse(false);
@@ -226,18 +231,16 @@ public class ChatService {
 				request.getMessageType() == ChatMessageType.TEXT ? message.getContent() : null,
 				imageUrls);
 
-		// 커밋 전에 push 하면 받은 쪽이 아직 DB 에 없는 메시지를 보게 되는 레이스가 생긴다
-		afterCommit(() -> {
-			messagingTemplate.convertAndSendToUser(String.valueOf(sender.getId()), queueOf(roomId), response);
-			if (counterpartActive) {
-				messagingTemplate.convertAndSendToUser(String.valueOf(counterpart.getId()), queueOf(roomId), response);
-			}
-		});
+		// 발신자 본인에게도 보냄(다중 기기 동기화), 상대는 나가지 않았을 때만 보냄
+		chatWebSocketService.pushMessage(roomId, sender.getId(), response);
+		if (counterpartActive) {
+			chatWebSocketService.pushMessage(roomId, counterpart.getId(), response);
+		}
 
 		return response;
 	}
 
-	/** 읽음 처리(API-185) + 상대방에게 실시간 push */
+	// 읽음 처리 + 상대방에게 실시간 push
 	@Transactional
 	@Loggable("채팅 읽음 처리")
 	public void read(Long userId, Long roomId, ChatReadRequest request) {
@@ -252,11 +255,10 @@ public class ChatService {
 				.roomId(roomId)
 				.lastReadMessageId(request.getLastReadMessageId())
 				.build();
-		afterCommit(() -> messagingTemplate.convertAndSendToUser(
-				String.valueOf(counterpart.getId()), queueOf(roomId) + "/read", event));
+		chatWebSocketService.pushReadEvent(roomId, counterpart.getId(), event);
 	}
 
-	/** 채팅방 나가기(API-186). 방·메시지는 남고 이 참여자의 leftAt 만 찍힌다 */
+	// 채팅방 나가기. 방·메시지는 남고 이 참여자의 leftAt 만 찍힘
 	@Transactional
 	@Loggable("채팅방 나가기")
 	public void leave(Long userId, Long roomId) {
@@ -267,7 +269,7 @@ public class ChatService {
 
 	// ── 개설 보조 ───────────────────────────────────────────────
 
-	/** 판매중 아이템. listing 이 가격 출처 — 구매 제안·거래 의사와 무관하게 독립적으로 연다 */
+	// 판매중 아이템. listing 이 가격 출처 — 구매 제안·거래 의사와 무관하게 독립적으로 염
 	private ChatRoom openForListing(Item item, User requester, LocalDateTime now) {
 		ItemListing listing = itemListingRepository.findOpenByItemId(item.getId())
 				.orElseThrow(() -> {
@@ -280,7 +282,7 @@ public class ChatService {
 
 		ChatRoom room = findOrOpenRoom(item.getId(), requester, seller,
 				() -> ChatRoom.openForListing(item, listing, requester, seller, now));
-		// 미판매로 먼저 열렸던 방이 나중에 판매 전환되면 가격 출처를 listing 으로 옮긴다
+		// 미판매로 먼저 열렸던 방이 나중에 판매 전환되면 가격 출처를 listing 으로 옮김
 		if (room.getListing() == null || !room.getListing().getId().equals(listing.getId())) {
 			room.updateListingPointer(listing);
 		}
@@ -288,7 +290,7 @@ public class ChatService {
 		return room;
 	}
 
-	/** 미판매 아이템. offerAllowed 가 꺼져 있으면 애초에 열 수 없다 */
+	// 미판매 아이템. offerAllowed 가 꺼져 있으면 애초에 열 수 없음
 	private ChatRoom openForUnsold(Item item, User requester, LocalDateTime now) {
 		User seller = currentOwner(item.getId());
 		requireNotSelf(requester, seller);
@@ -306,10 +308,10 @@ public class ChatService {
 		return room;
 	}
 
-	/**
+	/*
 	 * 조회 → 없으면 생성. 조회와 생성 사이에 동시 요청이 끼면(더블탭·재시도) 둘 다 빈 조회를
-	 * 보고 둘 다 저장을 시도해 uk_chat_room 을 위반할 수 있다 — 저장 실패를 잡고 그새 다른
-	 * 요청이 만든 방을 다시 찾아 돌려준다(OfferService.create 와 같은 패턴).
+	 * 보고 둘 다 저장을 시도해 uk_chat_room 을 위반할 수 있음 — 저장 실패를 잡고 그새 다른
+	 * 요청이 만든 방을 다시 찾아 돌려줌(OfferService.create 와 같은 패턴).
 	 */
 	private ChatRoom findOrOpenRoom(Long itemId, User buyer, User seller, Supplier<ChatRoom> factory) {
 		return chatRoomRepository.findByItemIdAndBuyerIdAndSellerId(itemId, buyer.getId(), seller.getId())
@@ -325,9 +327,9 @@ public class ChatService {
 				});
 	}
 
-	/**
-	 * 멤버가 없으면 만들고, 있으면 (나갔었어도) 참여 상태로 되돌린다 — 아이템 상세에서
-	 * '채팅하기'를 다시 누르는 것 자체가 재가입 의사표시다.
+	/*
+	 * 멤버가 없으면 만들고, 있으면(나갔었어도) 참여 상태로 되돌림 — 아이템 상세에서
+	 * '채팅하기'를 다시 누르는 것 자체가 재가입 의사표시임.
 	 */
 	private void ensureMembers(ChatRoom room, User buyer, User seller) {
 		ensureMember(room, buyer);
@@ -350,7 +352,7 @@ public class ChatService {
 
 	// ── 헤더 CTA ───────────────────────────────────────────────
 
-	/** 좌측 버튼 — 판매 상태 × 역할. 항상 활성 */
+	// 좌측 버튼 — 판매 상태 × 역할로만 갈림. 항상 활성
 	private ChatCtaResponse buildLeftCta(Item item, boolean isBuyer) {
 		boolean onSale = item.getSaleStatus() == SaleStatus.ON_SALE;
 		String label = onSale
@@ -360,8 +362,9 @@ public class ChatService {
 		return ChatCtaResponse.builder().label(label).action(action).targetId(item.getId()).enabled(true).build();
 	}
 
-	/** 우측 버튼 — 관련 제안의 거래 단계. design-audit.md G-2 표 그대로 */
+	// 우측 버튼 — 관련 제안의 거래 단계에 따라 갈림(제안 전/응답 대기/거래 생성 후/종료)
 	private ChatCtaResponse buildRightCta(Item item, boolean isBuyer, PurchaseOffer offer, TradeOrder order) {
+		// 관련 제안이 아예 없으면 아직 '제안 전' 단계임
 		if (offer == null) {
 			return ChatCtaResponse.builder()
 					.label("구매하기").action(ChatCtaAction.PURCHASE).targetId(item.getId()).enabled(true).build();
@@ -373,7 +376,7 @@ public class ChatService {
 				String label = isBuyer
 						? (isTradeIntent ? "보낸 요청 보기" : "보낸 제안 보기")
 						: (isTradeIntent ? "요청 확인" : "제안 확인");
-				// 미판매+구매제안만 offerAllowed 전환에 영향을 받는다 — 거래 의사는 늘 활성
+				// 미판매+구매제안만 offerAllowed 전환에 영향을 받음 — 거래 의사는 늘 활성임
 				boolean enabled = isTradeIntent || Boolean.TRUE.equals(item.getOfferAllowed());
 				yield ChatCtaResponse.builder()
 						.label(label).action(ChatCtaAction.OFFER_DETAIL).targetId(offer.getId()).enabled(enabled).build();
@@ -381,12 +384,13 @@ public class ChatService {
 			case ACCEPTED -> ChatCtaResponse.builder()
 					.label("거래 상세").action(ChatCtaAction.ORDER_DETAIL)
 					.targetId(order != null ? order.getId() : null).enabled(true).build();
+			// 거절·취소·만료는 같은 제안으로는 더 못 들어감 — 비활성으로 종료 상태를 표시함
 			case REJECTED, CANCELED, EXPIRED -> ChatCtaResponse.builder()
 					.label("제안 종료됨").action(ChatCtaAction.OFFER_DETAIL).targetId(offer.getId()).enabled(false).build();
 		};
 	}
 
-	/** 이 방과 관련된 제안. 미판매 방은 chat_room.purchase_offer_id, 판매중 방은 최신 제안을 따로 찾는다 */
+	// 이 방과 관련된 제안. 미판매 방은 chat_room.purchase_offer_id, 판매중 방은 최신 제안을 따로 찾음
 	private PurchaseOffer resolveRelevantOffer(ChatRoom room) {
 		if (room.getPurchaseOffer() != null) {
 			return room.getPurchaseOffer();
@@ -396,7 +400,7 @@ public class ChatService {
 				.orElse(null);
 	}
 
-	/** listing 이 있으면 그 가격, 없으면 관련 제안 금액, 둘 다 없으면(제안 전) null */
+	// listing 이 있으면 그 가격, 없으면 관련 제안 금액, 둘 다 없으면(제안 전) null
 	private String resolvePrice(ChatRoom room, PurchaseOffer offer) {
 		if (room.getListing() != null) {
 			return String.valueOf(room.getListing().getPrice());
@@ -406,6 +410,7 @@ public class ChatService {
 
 	// ── 메시지 보조 ───────────────────────────────────────────────
 
+	// 요청의 imageKeys 순서를 그대로 sortOrder 로 저장함 — 말풍선 안의 노출 순서가 됨
 	private List<String> saveImages(ChatMessage message, List<String> imageKeys) {
 		List<ChatMessageImage> images = new ArrayList<>();
 		for (int i = 0; i < imageKeys.size(); i++) {
@@ -415,6 +420,7 @@ public class ChatService {
 		return images.stream().map(img -> fileStorage.toUrl(img.getImageKey())).toList();
 	}
 
+	// IMAGE 메시지 id 들만 모아 한 번에 사진을 읽고, 메시지 id 별로 묶어 돌려줌
 	private Map<Long, List<String>> imagesOf(Collection<ChatMessage> messages) {
 		List<Long> imageMessageIds = messages.stream()
 				.filter(m -> m.getMessageType() == ChatMessageType.IMAGE)
@@ -439,30 +445,6 @@ public class ChatService {
 		return chatMapper.toMessageResponse(message, content, images);
 	}
 
-	private String queueOf(Long roomId) {
-		return "/queue/chat-rooms/" + roomId;
-	}
-
-	/**
-	 * 트랜잭션이 끝까지 커밋돼야 보낸다. 커밋 전에 WS push 를 하면 받은 쪽이 아직 DB 에
-	 * 없는 메시지를 읽음 조회로 다시 확인하는 레이스가 생긴다.
-	 *
-	 * <p>트랜잭션이 없는 호출(단위 테스트 등)에서는 동기화가 활성화돼 있지 않으므로
-	 * 즉시 실행한다 — 기존 테스트가 그대로 통과하는 이유다.
-	 */
-	private void afterCommit(Runnable action) {
-		if (TransactionSynchronizationManager.isSynchronizationActive()) {
-			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-				@Override
-				public void afterCommit() {
-					action.run();
-				}
-			});
-		} else {
-			action.run();
-		}
-	}
-
 	// ── 목록 보조 ───────────────────────────────────────────────
 
 	private ChatRoomSummaryResponse toSummaryRow(
@@ -483,7 +465,7 @@ public class ChatService {
 				wornDates.get(item.getId()));
 	}
 
-	/** 사진 메시지는 미리보기 문구로 대신한다 — 한 말풍선에 여러 장이라 URL 하나로 대표할 수 없음 */
+	// 사진 메시지는 미리보기 문구로 대신함 — 한 말풍선에 여러 장이라 URL 하나로 대표할 수 없음
 	private String previewOf(ChatMessage latest) {
 		if (latest == null) {
 			return null;
@@ -531,7 +513,7 @@ public class ChatService {
 		return member;
 	}
 
-	/** 읽음 처리 대상 메시지. 다른 방의 메시지 id 를 보내는 입력 오류를 막는다 */
+	// 읽음 처리 대상 메시지. 다른 방의 메시지 id 를 보내는 입력 오류를 막음
 	private ChatMessage requireMessageInRoom(Long messageId, Long roomId) {
 		ChatMessage message = chatMessageRepository.findById(messageId)
 				.orElseThrow(() -> new CustomException(CommonErrorCode.BAD_REQUEST));

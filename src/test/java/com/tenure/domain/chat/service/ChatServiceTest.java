@@ -83,7 +83,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -113,7 +112,7 @@ class ChatServiceTest {
 	@Mock private UserRepository userRepository;
 	@Mock private NotificationService notificationService;
 	@Mock private FileStorage fileStorage;
-	@Mock private SimpMessagingTemplate messagingTemplate;
+	@Mock private ChatWebSocketService chatWebSocketService;
 
 	// 매핑은 검증 대상이라 mock 이 아니라 실제 생성 구현을 넣는다
 	@Spy private ChatMapper chatMapper = new ChatMapperImpl();
@@ -780,10 +779,8 @@ class ChatServiceTest {
 					eq(seller), eq(NotificationSettingType.CHAT), eq(NotificationCategory.ACTION_REQUIRED),
 					eq(item.getName()), any(), eq(item.getCoverImageKey()), eq(NotificationTargetType.CHAT_ROOM),
 					eq(ROOM_ID));
-			verify(messagingTemplate).convertAndSendToUser(
-					eq(String.valueOf(BUYER_ID)), eq("/queue/chat-rooms/" + ROOM_ID), eq(response));
-			verify(messagingTemplate).convertAndSendToUser(
-					eq(String.valueOf(SELLER_ID)), eq("/queue/chat-rooms/" + ROOM_ID), eq(response));
+			verify(chatWebSocketService).pushMessage(eq(ROOM_ID), eq(BUYER_ID), eq(response));
+			verify(chatWebSocketService).pushMessage(eq(ROOM_ID), eq(SELLER_ID), eq(response));
 		}
 
 		@Test
@@ -966,10 +963,8 @@ class ChatServiceTest {
 
 			verify(notificationService, never()).notify(
 					any(), any(), any(), any(), any(), any(), any(), any());
-			verify(messagingTemplate, never()).convertAndSendToUser(
-					eq(String.valueOf(SELLER_ID)), any(), any());
-			verify(messagingTemplate).convertAndSendToUser(
-					eq(String.valueOf(BUYER_ID)), eq("/queue/chat-rooms/" + ROOM_ID), any());
+			verify(chatWebSocketService, never()).pushMessage(eq(ROOM_ID), eq(SELLER_ID), any());
+			verify(chatWebSocketService).pushMessage(eq(ROOM_ID), eq(BUYER_ID), any());
 		}
 	}
 
@@ -997,9 +992,8 @@ class ChatServiceTest {
 			chatService.read(BUYER_ID, ROOM_ID, request);
 
 			assertThat(member.getLastReadMessage()).isEqualTo(message);
-			verify(messagingTemplate).convertAndSendToUser(
-					eq(String.valueOf(SELLER_ID)), eq("/queue/chat-rooms/" + ROOM_ID + "/read"),
-					any(ChatReadEventResponse.class));
+			verify(chatWebSocketService).pushReadEvent(
+					eq(ROOM_ID), eq(SELLER_ID), any(ChatReadEventResponse.class));
 		}
 
 		@Test
