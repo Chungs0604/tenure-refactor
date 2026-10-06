@@ -19,6 +19,7 @@ import com.tenure.domain.chat.dto.response.ChatCtaResponse;
 import com.tenure.domain.chat.dto.response.ChatMessageResponse;
 import com.tenure.domain.chat.dto.response.ChatReadEventResponse;
 import com.tenure.domain.chat.dto.response.ChatRoomHeaderResponse;
+import com.tenure.domain.chat.dto.response.ChatRoomListUpdateResponse;
 import com.tenure.domain.chat.dto.response.ChatRoomOpenResponse;
 import com.tenure.domain.chat.dto.response.ChatRoomSummaryResponse;
 import com.tenure.domain.chat.entity.ChatMessage;
@@ -113,6 +114,7 @@ class ChatServiceTest {
 	@Mock private NotificationService notificationService;
 	@Mock private FileStorage fileStorage;
 	@Mock private ChatWebSocketService chatWebSocketService;
+	@Mock private ChatRoomPresenceRegistry presenceRegistry;
 
 	// 매핑은 검증 대상이라 mock 이 아니라 실제 생성 구현을 넣는다
 	@Spy private ChatMapper chatMapper = new ChatMapperImpl();
@@ -966,6 +968,157 @@ class ChatServiceTest {
 			verify(chatWebSocketService, never()).pushMessage(eq(ROOM_ID), eq(SELLER_ID), any());
 			verify(chatWebSocketService).pushMessage(eq(ROOM_ID), eq(BUYER_ID), any());
 		}
+
+		@Test
+		@DisplayName("상대가 지금 방을 보고 있으면 바로 읽은 걸로 치고 알림·목록갱신은 건너뛴다")
+		void sendMessage_counterpartViewing_marksReadAndPushesReadEventOnly() {
+			User buyer = user(BUYER_ID);
+			User seller = user(SELLER_ID);
+			Item item = item(ITEM_ID, seller, SaleStatus.ON_SALE, false);
+			ItemListing listing = listing(1000L, item, seller, 360000);
+			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
+			ReflectionTestUtils.setField(room, "id", ROOM_ID);
+			ChatRoomMember sellerMember = member(room, seller);
+
+			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
+					.willReturn(Optional.of(member(room, buyer)));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
+					.willReturn(Optional.of(sellerMember));
+			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(presenceRegistry.isViewing(ROOM_ID, SELLER_ID)).willReturn(true);
+			given(chatMessageRepository.save(any(ChatMessage.class))).willAnswer(invocation -> {
+				ChatMessage saved = invocation.getArgument(0);
+				ReflectionTestUtils.setField(saved, "id", 1L);
+				ReflectionTestUtils.setField(saved, "createdAt", LocalDateTime.now());
+				return saved;
+			});
+
+			ChatMessageSendRequest request = ChatMessageSendRequest.builder()
+					.messageType(ChatMessageType.TEXT).content("상대가 보고 있을 때").build();
+
+			ChatMessageResponse response = chatService.sendMessage(BUYER_ID, ROOM_ID, request);
+
+			verify(chatRoomMemberRepository)
+					.markReadIfNewer(eq(sellerMember.getId()), any(ChatMessage.class), eq(response.getId()));
+			verify(chatWebSocketService).pushReadEvent(eq(ROOM_ID), eq(BUYER_ID), any(ChatReadEventResponse.class));
+			verify(chatWebSocketService, never()).pushRoomListUpdate(any(), any());
+			verify(notificationService, never()).notify(
+					any(), any(), any(), any(), any(), any(), any(), any());
+		}
+
+		@Test
+		@DisplayName("상대가 방을 보고 있지 않으면 목록 실시간 갱신을 안읽음 수와 함께 push 한다")
+		void sendMessage_counterpartNotViewing_pushesRoomListUpdateWithUnreadCount() {
+			User buyer = user(BUYER_ID);
+			User seller = user(SELLER_ID);
+			Item item = item(ITEM_ID, seller, SaleStatus.ON_SALE, false);
+			ItemListing listing = listing(1000L, item, seller, 360000);
+			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
+			ReflectionTestUtils.setField(room, "id", ROOM_ID);
+			ChatRoomMember sellerMember = member(room, seller);
+
+			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
+					.willReturn(Optional.of(member(room, buyer)));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
+					.willReturn(Optional.of(sellerMember));
+			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(presenceRegistry.isViewing(ROOM_ID, SELLER_ID)).willReturn(false);
+			given(chatMessageRepository.save(any(ChatMessage.class))).willAnswer(invocation -> {
+				ChatMessage saved = invocation.getArgument(0);
+				ReflectionTestUtils.setField(saved, "id", 1L);
+				ReflectionTestUtils.setField(saved, "createdAt", LocalDateTime.now());
+				return saved;
+			});
+			given(chatMessageRepository.countUnread(ROOM_ID, SELLER_ID, null)).willReturn(5L);
+
+			ChatMessageSendRequest request = ChatMessageSendRequest.builder()
+					.messageType(ChatMessageType.TEXT).content("상대가 안 보고 있을 때").build();
+
+			ChatMessageResponse response = chatService.sendMessage(BUYER_ID, ROOM_ID, request);
+
+			assertThat(sellerMember.getLastReadMessage()).isNull();
+			ArgumentCaptor<ChatRoomListUpdateResponse> captor = ArgumentCaptor.forClass(ChatRoomListUpdateResponse.class);
+			verify(chatWebSocketService).pushRoomListUpdate(eq(SELLER_ID), captor.capture());
+			assertThat(captor.getValue().getRoomId()).isEqualTo(ROOM_ID);
+			assertThat(captor.getValue().getLastMessage()).isEqualTo("상대가 안 보고 있을 때");
+			assertThat(captor.getValue().getLastMessageAt()).isEqualTo(response.getCreatedAt());
+			assertThat(captor.getValue().getUnreadCount()).isEqualTo(5);
+			verify(notificationService).notify(
+					eq(seller), eq(NotificationSettingType.CHAT), eq(NotificationCategory.ACTION_REQUIRED),
+					eq(item.getName()), any(), eq(item.getCoverImageKey()), eq(NotificationTargetType.CHAT_ROOM),
+					eq(ROOM_ID));
+		}
+	}
+
+	@Nested
+	@DisplayName("구독 시 백로그 읽음 처리")
+	class MarkBacklogRead {
+
+		@Test
+		@DisplayName("최신 메시지가 있으면 멤버를 읽음 처리하고 상대에게 읽음 이벤트를 push 한다")
+		void markBacklogRead_latestMessageExists_marksReadAndPushesReadEvent() {
+			User buyer = user(BUYER_ID);
+			User seller = user(SELLER_ID);
+			Item item = item(ITEM_ID, seller, SaleStatus.ON_SALE, false);
+			ItemListing listing = listing(1000L, item, seller, 360000);
+			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
+			ReflectionTestUtils.setField(room, "id", ROOM_ID);
+			ChatRoomMember buyerMember = member(room, buyer);
+			ChatMessage latest = textMessage(1L, room, seller, "최신 메시지");
+
+			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
+					.willReturn(Optional.of(buyerMember));
+			given(chatMessageRepository.findTopByChatRoomIdOrderByIdDesc(ROOM_ID)).willReturn(Optional.of(latest));
+
+			chatService.markBacklogRead(BUYER_ID, ROOM_ID);
+
+			verify(chatRoomMemberRepository).markReadIfNewer(eq(buyerMember.getId()), eq(latest), eq(latest.getId()));
+			verify(chatWebSocketService).pushReadEvent(eq(ROOM_ID), eq(SELLER_ID), any(ChatReadEventResponse.class));
+		}
+
+		@Test
+		@DisplayName("메시지가 없으면 아무 것도 읽음 처리하지 않고 push 도 하지 않는다")
+		void markBacklogRead_noMessages_doesNothing() {
+			User buyer = user(BUYER_ID);
+			User seller = user(SELLER_ID);
+			Item item = item(ITEM_ID, seller, SaleStatus.ON_SALE, false);
+			ItemListing listing = listing(1000L, item, seller, 360000);
+			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
+			ReflectionTestUtils.setField(room, "id", ROOM_ID);
+			ChatRoomMember buyerMember = member(room, buyer);
+
+			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
+					.willReturn(Optional.of(buyerMember));
+			given(chatMessageRepository.findTopByChatRoomIdOrderByIdDesc(ROOM_ID)).willReturn(Optional.empty());
+
+			chatService.markBacklogRead(BUYER_ID, ROOM_ID);
+
+			assertThat(buyerMember.getLastReadMessage()).isNull();
+			verify(chatWebSocketService, never()).pushReadEvent(any(), any(), any());
+		}
+
+		@Test
+		@DisplayName("참여자가 아니면 CHAT_403 이다")
+		void markBacklogRead_notActiveMember_throwsForbidden() {
+			User buyer = user(BUYER_ID);
+			User seller = user(SELLER_ID);
+			Item item = item(ITEM_ID, seller, SaleStatus.ON_SALE, false);
+			ItemListing listing = listing(1000L, item, seller, 360000);
+			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
+			ReflectionTestUtils.setField(room, "id", ROOM_ID);
+
+			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, OTHER_ID)).willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> chatService.markBacklogRead(OTHER_ID, ROOM_ID))
+					.isInstanceOf(CustomException.class)
+					.extracting(ChatServiceTest::errorCodeOf)
+					.isEqualTo(ChatErrorCode.CHAT_403);
+		}
 	}
 
 	@Nested
@@ -991,7 +1144,7 @@ class ChatServiceTest {
 			ChatReadRequest request = ChatReadRequest.builder().lastReadMessageId(1L).build();
 			chatService.read(BUYER_ID, ROOM_ID, request);
 
-			assertThat(member.getLastReadMessage()).isEqualTo(message);
+			verify(chatRoomMemberRepository).markReadIfNewer(eq(member.getId()), eq(message), eq(message.getId()));
 			verify(chatWebSocketService).pushReadEvent(
 					eq(ROOM_ID), eq(SELLER_ID), any(ChatReadEventResponse.class));
 		}

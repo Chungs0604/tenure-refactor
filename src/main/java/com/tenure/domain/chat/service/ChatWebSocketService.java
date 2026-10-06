@@ -2,6 +2,7 @@ package com.tenure.domain.chat.service;
 
 import com.tenure.domain.chat.dto.response.ChatMessageResponse;
 import com.tenure.domain.chat.dto.response.ChatReadEventResponse;
+import com.tenure.domain.chat.dto.response.ChatRoomListUpdateResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,9 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @RequiredArgsConstructor
 public class ChatWebSocketService {
 
+	// 목록 화면 전용 큐 — 방 단위 큐(queueOf)와 분리해서 목록이 열려 있을 때만 한 행을 갱신시킴
+	private static final String LIST_QUEUE = "/queue/chat-rooms-list";
+
 	private final SimpMessagingTemplate messagingTemplate;
 
 	// 메시지를 한 유저 큐로 push 함 — 발신자 본인 큐로도 보내 다른 기기와 동기화함
@@ -23,9 +27,14 @@ public class ChatWebSocketService {
 		afterCommit(() -> messagingTemplate.convertAndSendToUser(String.valueOf(userId), queueOf(roomId), response));
 	}
 
-	// 읽음 이벤트를 상대방 큐로 push 함
+	// 지정한 유저 한 명에게만 보냄 — pushMessage 처럼 양쪽에 보낼지는 호출부(ChatService)가 정함
 	public void pushReadEvent(Long roomId, Long userId, ChatReadEventResponse event) {
 		afterCommit(() -> messagingTemplate.convertAndSendToUser(String.valueOf(userId), queueOf(roomId) + "/read", event));
+	}
+
+	// 상대가 방을 보고 있지 않을 때만 호출됨(ChatService 판단) — 목록의 그 행 하나만 갱신시킴
+	public void pushRoomListUpdate(Long userId, ChatRoomListUpdateResponse response) {
+		afterCommit(() -> messagingTemplate.convertAndSendToUser(String.valueOf(userId), LIST_QUEUE, response));
 	}
 
 	// 트랜잭션이 끝까지 커밋된 뒤에만 보냄 — 커밋 전에 push 하면 받은 쪽이 아직 DB 에 없는
@@ -44,6 +53,7 @@ public class ChatWebSocketService {
 		}
 	}
 
+	// 방마다 큐를 나눠서 같은 유저가 여러 방에 있어도 메시지가 섞이지 않음 — 클라이언트 구독 경로와 정확히 일치해야 함
 	private String queueOf(Long roomId) {
 		return "/queue/chat-rooms/" + roomId;
 	}

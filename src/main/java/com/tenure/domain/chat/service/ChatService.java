@@ -7,6 +7,7 @@ import com.tenure.domain.chat.dto.response.ChatCtaResponse;
 import com.tenure.domain.chat.dto.response.ChatMessageResponse;
 import com.tenure.domain.chat.dto.response.ChatReadEventResponse;
 import com.tenure.domain.chat.dto.response.ChatRoomHeaderResponse;
+import com.tenure.domain.chat.dto.response.ChatRoomListUpdateResponse;
 import com.tenure.domain.chat.dto.response.ChatRoomOpenResponse;
 import com.tenure.domain.chat.dto.response.ChatRoomSummaryResponse;
 import com.tenure.domain.chat.entity.ChatMessage;
@@ -94,20 +95,21 @@ public class ChatService {
 	private final ChatMapper chatMapper;
 	private final FileStorage fileStorage;
 	private final ChatWebSocketService chatWebSocketService;
+	private final ChatRoomPresenceRegistry presenceRegistry;
 
 	// 채팅방 목록 조회
 	@Loggable("채팅방 목록 조회")
 	public CursorSlice<ChatRoomSummaryResponse> list(Long viewerId, ChatRoomTab tab, String keyword, Cursor cursor, int size) {
-		// 1. tab·keyword·커서로 걸러진 방 목록을 조회함(안읽음 수는 리포지토리가 같이 계산해 옴)
+		// tab·keyword·커서로 걸러진 방 목록을 조회함(안읽음 수는 리포지토리가 같이 계산해 옴)
 		List<ChatRoomFeedRow> rows = chatRoomRepository.findAllForFeed(viewerId, tab, keyword, cursor, size);
 		CursorSlice<ChatRoomFeedRow> slice = CursorSlice.of(
 				rows, size, row -> Cursor.of(row.chatRoom().getLastMessageAt(), row.chatRoom().getId()));
 
-		// 2. 화면에 나가는 아이템들의 최근 착용일을 한 번에 배치 조회함 — 행마다 쿼리하면 N+1 임
+		// 화면에 나가는 아이템들의 최근 착용일을 한 번에 배치 조회함 — 행마다 쿼리하면 N+1 임
 		List<Long> itemIds = slice.getContent().stream().map(row -> row.chatRoom().getItem().getId()).toList();
 		Map<Long, LocalDate> wornDates = lastWornDatesOf(itemIds);
 
-		// 3. 방마다 미리보기로 쓸 최신 메시지도 같이 배치 조회함
+		// 방마다 미리보기로 쓸 최신 메시지도 같이 배치 조회함
 		List<Long> roomIds = slice.getContent().stream().map(row -> row.chatRoom().getId()).toList();
 		Map<Long, ChatMessage> latestMessages = roomIds.isEmpty() ? Map.of() : chatMessageRepository
 				.findLatestByChatRoomIdIn(roomIds).stream()
@@ -120,6 +122,8 @@ public class ChatService {
 	@Transactional
 	@Loggable("채팅방 개설")
 	public ChatRoomOpenResponse open(Long userId, Long itemId) {
+
+		// 대상 아이템·요청자를 조회하고 개설 시각을 한 번만 고정해 하위 호출에 그대로 넘김
 		Item item = findActiveItem(itemId);
 		User requester = findUser(userId);
 		LocalDateTime now = LocalDateTime.now();
@@ -129,7 +133,9 @@ public class ChatService {
 				? openForListing(item, requester, now)
 				: openForUnsold(item, requester, now);
 
-		return ChatRoomOpenResponse.builder().roomId(room.getId()).build();
+		return ChatRoomOpenResponse.builder()
+				.roomId(room.getId())
+				.build();
 	}
 
 	// 채팅방 헤더 — 아이템·가격·거래 단계 CTA
@@ -138,6 +144,7 @@ public class ChatService {
 		ChatRoom room = requireRoomDetail(roomId);
 		requireActiveMember(roomId, userId);
 
+		// 보는 사람이 구매자인지 가르고 상대방(반대 역할)을 정함
 		Item item = room.getItem();
 		boolean isBuyer = room.getBuyer().getId().equals(userId);
 		User counterpart = counterpartOf(room, userId);
@@ -148,6 +155,7 @@ public class ChatService {
 				? tradeOrderRepository.findByOfferId(offer.getId()).orElse(null)
 				: null;
 
+		// 가격·좌우 CTA·최근 착용일을 각각 계산해 응답에 조립할 값을 준비함
 		String price = resolvePrice(room, offer);
 		List<ChatCtaResponse> ctas = List.of(buildLeftCta(item, isBuyer), buildRightCta(item, isBuyer, offer, order));
 		LocalDate recentWornDate = lastWornDatesOf(List.of(item.getId())).get(item.getId());
@@ -169,8 +177,11 @@ public class ChatService {
 		requireRoom(roomId);
 		requireActiveMember(roomId, userId);
 
+		// 커서 다음부터 size+1 개를 읽어 다음 페이지 유무를 판정함
 		Long cursorId = cursor != null ? cursor.getId() : null;
-		List<ChatMessage> rows = chatMessageRepository.findAllByChatRoomId(roomId, cursorId, PageRequest.of(0, size + 1));
+
+		PageRequest request = PageRequest.of(0, size + 1);
+		List<ChatMessage> rows = chatMessageRepository.findAllByChatRoomId(roomId, cursorId, request);
 		CursorSlice<ChatMessage> slice = CursorSlice.of(rows, size, m -> Cursor.of(m.getId()));
 
 		// IMAGE 메시지들의 사진을 한 번에 배치 조회함 — 메시지마다 쿼리하면 N+1 임
@@ -191,20 +202,24 @@ public class ChatService {
 		requireNotBlocked(sender, counterpart);
 
 		if (request.getMessageType() == null) {
+			log.warn("메시지 타입 없이 전송을 시도함 roomId={} senderId={}", roomId, senderId);
 			throw new CustomException(ChatErrorCode.CHAT_400_INVALID_MESSAGE);
 		}
 
 		// 타입별로 필수 필드를 확인하고 저장함 — TEXT 는 content, IMAGE 는 imageKeys 가 있어야 함
 		ChatMessage message;
 		List<String> imageUrls;
+
 		if (request.getMessageType() == ChatMessageType.TEXT) {
 			if (!StringUtils.hasText(request.getContent())) {
+				log.warn("content 없이 TEXT 메시지 전송을 시도함 roomId={} senderId={}", roomId, senderId);
 				throw new CustomException(ChatErrorCode.CHAT_400_INVALID_MESSAGE);
 			}
 			message = chatMessageRepository.save(ChatMessage.ofText(room, sender, request.getContent()));
 			imageUrls = null;
 		} else {
 			if (request.getImageKeys() == null || request.getImageKeys().isEmpty()) {
+				log.warn("imageKeys 없이 IMAGE 메시지 전송을 시도함 roomId={} senderId={}", roomId, senderId);
 				throw new CustomException(ChatErrorCode.CHAT_400_INVALID_MESSAGE);
 			}
 			message = chatMessageRepository.save(ChatMessage.ofImage(room, sender));
@@ -215,16 +230,10 @@ public class ChatService {
 		room.updateLastMessageAt(message.getCreatedAt());
 
 		// 나간 상대는 이 방을 더 볼 수 없음 — 알림·push 를 보내도 누르면 CHAT_403 인 막다른 길이라 건너뜀
-		boolean counterpartActive = chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, counterpart.getId())
-				.map(m -> !m.hasLeft())
-				.orElse(false);
-
-		if (counterpartActive) {
-			notificationService.notify(
-					counterpart, NotificationSettingType.CHAT, NotificationCategory.ACTION_REQUIRED,
-					room.getItem().getName(), "새 메시지가 왔어요.",
-					room.getItem().getCoverImageKey(), NotificationTargetType.CHAT_ROOM, room.getId());
-		}
+		ChatRoomMember counterpartMember = chatRoomMemberRepository
+				.findByChatRoomIdAndUserId(roomId, counterpart.getId())
+				.orElse(null);
+		boolean counterpartActive = counterpartMember != null && !counterpartMember.hasLeft();
 
 		ChatMessageResponse response = chatMapper.toMessageResponse(
 				message,
@@ -235,21 +244,68 @@ public class ChatService {
 		chatWebSocketService.pushMessage(roomId, sender.getId(), response);
 		if (counterpartActive) {
 			chatWebSocketService.pushMessage(roomId, counterpart.getId(), response);
+
+			// 상대가 지금 이 방을 보고 있으면 바로 읽은 걸로 침 — 목록 안읽음도 안 늘고 알림도 건너뜀
+			if (presenceRegistry.isViewing(roomId, counterpart.getId())) {
+				chatRoomMemberRepository.markReadIfNewer(counterpartMember.getId(), message, message.getId());
+				ChatReadEventResponse readEvent = ChatReadEventResponse.builder()
+						.roomId(roomId)
+						.lastReadMessageId(message.getId())
+						.build();
+				chatWebSocketService.pushReadEvent(roomId, sender.getId(), readEvent);
+			} else {
+				Long lastReadId = counterpartMember.getLastReadMessage() != null
+						? counterpartMember.getLastReadMessage().getId() : null;
+				long unreadCount = chatMessageRepository.countUnread(roomId, counterpart.getId(), lastReadId);
+				ChatRoomListUpdateResponse listUpdate = ChatRoomListUpdateResponse.builder()
+						.roomId(roomId)
+						.lastMessage(previewOf(message))
+						.lastMessageAt(message.getCreatedAt())
+						.unreadCount((int) unreadCount)
+						.build();
+				chatWebSocketService.pushRoomListUpdate(counterpart.getId(), listUpdate);
+
+				notificationService.notify(
+						counterpart, NotificationSettingType.CHAT, NotificationCategory.ACTION_REQUIRED,
+						room.getItem().getName(), "새 메시지가 왔어요.",
+						room.getItem().getCoverImageKey(), NotificationTargetType.CHAT_ROOM, room.getId());
+			}
 		}
 
 		return response;
+	}
+
+	// 방 구독(= 입장) 시점에 호출됨 — ChatRoomPresenceListener 전용. 그 방의 최신 메시지까지 한 번에 읽음 처리함
+	@Transactional
+	@Loggable("채팅방 구독 시 읽음 처리")
+	public void markBacklogRead(Long userId, Long roomId) {
+		ChatRoom room = requireRoom(roomId);
+		ChatRoomMember member = requireActiveMember(roomId, userId);
+
+		chatMessageRepository.findTopByChatRoomIdOrderByIdDesc(roomId).ifPresent(latest -> {
+			chatRoomMemberRepository.markReadIfNewer(member.getId(), latest, latest.getId());
+			User counterpart = counterpartOf(room, userId);
+			ChatReadEventResponse event = ChatReadEventResponse.builder()
+					.roomId(roomId)
+					.lastReadMessageId(latest.getId())
+					.build();
+			chatWebSocketService.pushReadEvent(roomId, counterpart.getId(), event);
+		});
 	}
 
 	// 읽음 처리 + 상대방에게 실시간 push
 	@Transactional
 	@Loggable("채팅 읽음 처리")
 	public void read(Long userId, Long roomId, ChatReadRequest request) {
+		// 방과 활성 멤버십을 확인해 권한 없는 요청을 막음
 		ChatRoom room = requireRoom(roomId);
 		ChatRoomMember member = requireActiveMember(roomId, userId);
 
+		// 요청이 가리키는 메시지가 실제로 이 방의 것인지 확인하고 멤버의 읽음 위치를 갱신함
 		ChatMessage lastReadMessage = requireMessageInRoom(request.getLastReadMessageId(), roomId);
-		member.markRead(lastReadMessage);
+		chatRoomMemberRepository.markReadIfNewer(member.getId(), lastReadMessage, lastReadMessage.getId());
 
+		// 상대방에게만 읽음 이벤트를 보냄 — 읽음을 처리한 사람 본인은 이미 알고 있음
 		User counterpart = counterpartOf(room, userId);
 		ChatReadEventResponse event = ChatReadEventResponse.builder()
 				.roomId(roomId)
@@ -273,10 +329,11 @@ public class ChatService {
 	private ChatRoom openForListing(Item item, User requester, LocalDateTime now) {
 		ItemListing listing = itemListingRepository.findOpenByItemId(item.getId())
 				.orElseThrow(() -> {
-					log.info("판매중인데 열린 판매 등록이 없는 아이템임 itemId={}", item.getId());
+					log.warn("판매중인데 열린 판매 등록이 없는 아이템임 itemId={}", item.getId());
 					return new CustomException(ItemErrorCode.ITEM_404);
 				});
 		User seller = listing.getSeller();
+		// 판매자 기준으로 자기 상품·차단 관계를 확인함
 		requireNotSelf(requester, seller);
 		requireNotBlocked(requester, seller);
 
@@ -292,11 +349,12 @@ public class ChatService {
 
 	// 미판매 아이템. offerAllowed 가 꺼져 있으면 애초에 열 수 없음
 	private ChatRoom openForUnsold(Item item, User requester, LocalDateTime now) {
+		// 현재 소유자를 구함 — 이후 자기 상품·오퍼 허용·차단 확인에 전부 씀
 		User seller = currentOwner(item.getId());
 		requireNotSelf(requester, seller);
 
 		if (!Boolean.TRUE.equals(item.getOfferAllowed())) {
-			log.info("구매 제안을 받지 않는 미판매 상품에 채팅을 시도함 itemId={}", item.getId());
+			log.warn("구매 제안을 받지 않는 미판매 상품에 채팅을 시도함 itemId={}", item.getId());
 			throw new CustomException(ChatErrorCode.CHAT_400_NOT_OPENABLE);
 		}
 
@@ -437,6 +495,7 @@ public class ChatService {
 						Collectors.mapping(img -> fileStorage.toUrl(img.getImageKey()), Collectors.toList())));
 	}
 
+	// 메시지 타입과 안 맞는 필드는 null 로 비워 내려보냄 — TEXT 는 images, IMAGE 는 content 를 안 씀
 	private ChatMessageResponse toMessageResponse(ChatMessage message, Map<Long, List<String>> imagesByMessage) {
 		String content = message.getMessageType() == ChatMessageType.TEXT ? message.getContent() : null;
 		List<String> images = message.getMessageType() == ChatMessageType.IMAGE
@@ -447,6 +506,7 @@ public class ChatService {
 
 	// ── 목록 보조 ───────────────────────────────────────────────
 
+	// wornDates·latestMessages 는 list() 가 배치로 미리 조회해 넘긴 맵 — 행마다 쿼리하지 않음
 	private ChatRoomSummaryResponse toSummaryRow(
 			ChatRoomFeedRow row, Long viewerId, Map<Long, LocalDate> wornDates, Map<Long, ChatMessage> latestMessages
 	) {
@@ -479,35 +539,47 @@ public class ChatService {
 		return room.getBuyer().getId().equals(viewerId) ? room.getSeller() : room.getBuyer();
 	}
 
+	// 본인이 올린 상품에는 채팅을 열 수 없음
 	private void requireNotSelf(User requester, User seller) {
 		if (requester.getId().equals(seller.getId())) {
-			log.info("본인 상품에 채팅을 시도함 userId={}", requester.getId());
+			log.warn("본인 상품에 채팅을 시도함 userId={}", requester.getId());
 			throw new CustomException(ChatErrorCode.CHAT_400_SELF);
 		}
 	}
 
+	// 차단은 양방향으로 확인함 — 내가 차단했든 상대가 차단했든 채팅은 막힘
 	private void requireNotBlocked(User a, User b) {
 		if (userBlockRepository.existsBlock(a.getId(), b.getId()) || userBlockRepository.existsBlock(b.getId(), a.getId())) {
-			log.info("차단 관계인 상대와 채팅을 시도함 userId={} counterpartId={}", a.getId(), b.getId());
+			log.warn("차단 관계인 상대와 채팅을 시도함 userId={} counterpartId={}", a.getId(), b.getId());
 			throw new CustomException(ChatErrorCode.CHAT_403_BLOCKED);
 		}
 	}
 
+	// fetch join 없는 가벼운 조회 — 연관 엔티티까지 필요 없는 곳에서 씀
 	private ChatRoom requireRoom(Long roomId) {
 		return chatRoomRepository.findById(roomId)
-				.orElseThrow(() -> new CustomException(ChatErrorCode.CHAT_404_ROOM));
+				.orElseThrow(() -> {
+					log.warn("존재하지 않는 채팅방임 roomId={}", roomId);
+					return new CustomException(ChatErrorCode.CHAT_404_ROOM);
+				});
 	}
 
 	private ChatRoom requireRoomDetail(Long roomId) {
 		return chatRoomRepository.findDetailById(roomId)
-				.orElseThrow(() -> new CustomException(ChatErrorCode.CHAT_404_ROOM));
+				.orElseThrow(() -> {
+					log.warn("존재하지 않는 채팅방임 roomId={}", roomId);
+					return new CustomException(ChatErrorCode.CHAT_404_ROOM);
+				});
 	}
 
 	private ChatRoomMember requireActiveMember(Long roomId, Long userId) {
 		ChatRoomMember member = chatRoomMemberRepository.findByChatRoomIdAndUserId(roomId, userId)
-				.orElseThrow(() -> new CustomException(ChatErrorCode.CHAT_403));
+				.orElseThrow(() -> {
+					log.warn("채팅방 멤버가 아님 roomId={} userId={}", roomId, userId);
+					return new CustomException(ChatErrorCode.CHAT_403);
+				});
 		if (member.getLeftAt() != null) {
-			log.info("나간 채팅방에 접근을 시도함 roomId={} userId={}", roomId, userId);
+			log.warn("나간 채팅방에 접근을 시도함 roomId={} userId={}", roomId, userId);
 			throw new CustomException(ChatErrorCode.CHAT_403);
 		}
 		return member;
@@ -516,9 +588,12 @@ public class ChatService {
 	// 읽음 처리 대상 메시지. 다른 방의 메시지 id 를 보내는 입력 오류를 막음
 	private ChatMessage requireMessageInRoom(Long messageId, Long roomId) {
 		ChatMessage message = chatMessageRepository.findById(messageId)
-				.orElseThrow(() -> new CustomException(CommonErrorCode.BAD_REQUEST));
+				.orElseThrow(() -> {
+					log.warn("존재하지 않는 메시지로 읽음 처리를 시도함 messageId={}", messageId);
+					return new CustomException(CommonErrorCode.BAD_REQUEST);
+				});
 		if (!message.getChatRoom().getId().equals(roomId)) {
-			log.info("다른 방의 메시지로 읽음 처리를 시도함 messageId={} roomId={}", messageId, roomId);
+			log.warn("다른 방의 메시지로 읽음 처리를 시도함 messageId={} roomId={}", messageId, roomId);
 			throw new CustomException(CommonErrorCode.BAD_REQUEST);
 		}
 		return message;
@@ -527,7 +602,7 @@ public class ChatService {
 	private Item findActiveItem(Long itemId) {
 		return itemRepository.findActive(itemId)
 				.orElseThrow(() -> {
-					log.info("없거나 삭제된 아이템임 itemId={}", itemId);
+					log.warn("없거나 삭제된 아이템임 itemId={}", itemId);
 					return new CustomException(ItemErrorCode.ITEM_404);
 				});
 	}
@@ -536,7 +611,7 @@ public class ChatService {
 		return itemOwnershipRepository.findCurrent(itemId)
 				.map(ItemOwnership::getOwner)
 				.orElseThrow(() -> {
-					log.info("소유 구간이 없는 아이템임 itemId={}", itemId);
+					log.warn("소유 구간이 없는 아이템임 itemId={}", itemId);
 					return new CustomException(ItemErrorCode.ITEM_404);
 				});
 	}
@@ -544,7 +619,7 @@ public class ChatService {
 	private User findUser(Long userId) {
 		return userRepository.findById(userId)
 				.orElseThrow(() -> {
-					log.info("없는 사용자임 userId={}", userId);
+					log.warn("없는 사용자임 userId={}", userId);
 					return new CustomException(UserErrorCode.USER_404);
 				});
 	}
