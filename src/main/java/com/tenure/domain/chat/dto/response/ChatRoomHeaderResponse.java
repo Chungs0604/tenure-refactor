@@ -38,4 +38,8 @@ public class ChatRoomHeaderResponse {
 
 	@Schema(description = "진행 중인 거래 id. 없으면 null", example = "1")
 	private final Long orderId;
+
+	@Schema(description = "상대방이 지금까지 읽은 마지막 메시지 id. 아직 하나도 안 읽었으면 null — "
+			+ "내가 보낸 메시지 중 이 id 보다 큰 것만 '상대가 아직 안 읽음' 배지를 그리면 됨", example = "12")
+	private final Long counterpartLastReadMessageId;
 }

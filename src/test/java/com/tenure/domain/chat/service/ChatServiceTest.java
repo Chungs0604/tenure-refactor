@@ -414,6 +414,55 @@ class ChatServiceTest {
 		}
 
 		@Test
+		@DisplayName("상대가 메시지를 읽은 적 있으면 그 마지막 읽은 메시지 id 를 내려준다")
+		void header_counterpartHasRead_returnsLastReadMessageId() {
+			User buyer = user(BUYER_ID);
+			User seller = user(SELLER_ID);
+			Item item = item(ITEM_ID, seller, SaleStatus.ON_SALE, false);
+			ItemListing listing = listing(1000L, item, seller, 360000);
+			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
+			ReflectionTestUtils.setField(room, "id", ROOM_ID);
+			ChatMessage lastRead = textMessage(7L, room, buyer, "읽은 메시지");
+			ChatRoomMember sellerMember = member(room, seller);
+			sellerMember.markRead(lastRead);
+
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
+					.willReturn(Optional.of(member(room, buyer)));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
+					.willReturn(Optional.of(sellerMember));
+			given(purchaseOfferRepository.findLatestByItemIdAndBuyerId(ITEM_ID, BUYER_ID)).willReturn(Optional.empty());
+			given(itemWearRecordRepository.findLastWornDates(List.of(ITEM_ID))).willReturn(List.of());
+
+			ChatRoomHeaderResponse response = chatService.header(BUYER_ID, ROOM_ID);
+
+			assertThat(response.getCounterpartLastReadMessageId()).isEqualTo(7L);
+		}
+
+		@Test
+		@DisplayName("상대가 아직 하나도 안 읽었으면 null 이다")
+		void header_counterpartNeverRead_returnsNull() {
+			User buyer = user(BUYER_ID);
+			User seller = user(SELLER_ID);
+			Item item = item(ITEM_ID, seller, SaleStatus.ON_SALE, false);
+			ItemListing listing = listing(1000L, item, seller, 360000);
+			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
+			ReflectionTestUtils.setField(room, "id", ROOM_ID);
+
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
+					.willReturn(Optional.of(member(room, buyer)));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
+					.willReturn(Optional.of(member(room, seller)));
+			given(purchaseOfferRepository.findLatestByItemIdAndBuyerId(ITEM_ID, BUYER_ID)).willReturn(Optional.empty());
+			given(itemWearRecordRepository.findLastWornDates(List.of(ITEM_ID))).willReturn(List.of());
+
+			ChatRoomHeaderResponse response = chatService.header(BUYER_ID, ROOM_ID);
+
+			assertThat(response.getCounterpartLastReadMessageId()).isNull();
+		}
+
+		@Test
 		@DisplayName("판매중 방이어도 최근 제안이 있으면 그 제안을 기준으로 CTA 를 만든다")
 		void header_onSaleRoomWithPendingOffer_usesRepositoryFallback() {
 			User buyer = user(BUYER_ID);
