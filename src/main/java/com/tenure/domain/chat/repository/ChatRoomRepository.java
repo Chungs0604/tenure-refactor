@@ -14,7 +14,7 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long>, ChatR
 	Optional<ChatRoom> findByItemIdAndBuyerIdAndSellerId(
 			@Param("itemId") Long itemId, @Param("buyerId") Long buyerId, @Param("sellerId") Long sellerId);
 
-	/** 헤더(API-182) 전용 — 아이템·판매등록·구매제안·구매자·판매자를 한 번에 읽어 화면 조립에 추가 조회가 없게 함 */
+	/** 헤더 조회 전용 — 아이템·판매등록·구매제안·구매자·판매자를 한 번에 읽어 화면 조립에 추가 조회가 없게 함 */
 	@Query("select r from ChatRoom r "
 			+ "join fetch r.item join fetch r.buyer join fetch r.seller "
 			+ "left join fetch r.listing left join fetch r.purchaseOffer "

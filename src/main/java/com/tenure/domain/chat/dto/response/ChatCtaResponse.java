@@ -7,7 +7,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 
-/** 헤더 버튼 하나. 좌측(아이템 이동)·우측(거래 단계) 두 개가 항상 내려간다 (design-audit.md G-2) */
+/** 헤더 버튼 하나. 좌측(아이템 이동)·우측(거래 단계) 두 개가 항상 내려감 */
 @Getter
 @Builder
 @AllArgsConstructor(access = AccessLevel.PRIVATE)

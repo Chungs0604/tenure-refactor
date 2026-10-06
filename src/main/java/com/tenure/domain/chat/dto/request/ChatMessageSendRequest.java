@@ -12,11 +12,10 @@ import lombok.NoArgsConstructor;
 
 /**
  * 메시지 전송(WS). TEXT 면 content 필수, IMAGE 면 imageKeys 1장 이상 — 타입별 필수 여부는
- * 어노테이션으로 표현할 수 없어 ChatService 가 확인한다.
+ * 어노테이션으로 표현할 수 없어 ChatService 가 확인함.
  *
- * <p>spring-messaging 이 jakarta.validation 을 자동으로 붙이므로({@code @Payload @Valid})
- * 여기 어노테이션도 실제로 동작한다 — 개수·길이 상한만 선언적으로 막고, 타입별 필수 여부는
- * 여전히 Service 의 몫이다.
+ * spring-messaging 이 검증기를 자동으로 붙여줘서 여기 어노테이션도 실제로 동작함 —
+ * 개수·길이 상한만 선언적으로 막고, 타입별 필수 여부는 여전히 Service 의 몫임.
  */
 @Getter
 @Builder

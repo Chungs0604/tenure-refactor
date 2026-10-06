@@ -9,7 +9,7 @@ import org.springframework.data.repository.query.Param;
 
 public interface ChatMessageImageRepository extends JpaRepository<ChatMessageImage, Long> {
 
-	/** 메시지 목록 조회 시 IMAGE 메시지들의 사진을 한 번에 읽는다 — N+1 방지 */
+	/** 메시지 목록 조회 시 IMAGE 메시지들의 사진을 한 번에 읽음 — N+1 방지 */
 	@Query("select i from ChatMessageImage i "
 			+ "where i.chatMessage.id in :chatMessageIds "
 			+ "order by i.chatMessage.id, i.sortOrder")

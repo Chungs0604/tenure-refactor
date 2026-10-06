@@ -6,7 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 
-/** 헤더(API-182) 의 상대 — 목록과 달리 닉네임만 */
+/** 채팅방 헤더의 상대 — 목록과 달리 닉네임만 내려줌 */
 @Getter
 @Builder
 @AllArgsConstructor(access = AccessLevel.PRIVATE)

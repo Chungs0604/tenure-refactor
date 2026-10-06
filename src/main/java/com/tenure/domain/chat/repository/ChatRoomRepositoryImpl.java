@@ -26,7 +26,8 @@ public class ChatRoomRepositoryImpl implements ChatRoomRepositoryCustom {
 	public List<ChatRoomFeedRow> findAllForFeed(
 			Long viewerId, ChatRoomTab tab, String keyword, Cursor cursor, int size
 	) {
-		// 내가 보낸 메시지는 안읽음이 아니다 — sender 제외를 빼면 보내고 나가면 내 배지가 올라간다
+		// 방마다 "이 조회자 기준 안읽음 수"를 서브쿼리로 계산함 — 내가 보낸 메시지는 제외함
+		// (sender 제외를 빼면 보내고 나가면 내 배지가 올라감)
 		JPQLQuery<Long> unreadCountSubquery = JPAExpressions.select(chatMessage.count())
 				.from(chatMessage)
 				.where(
@@ -39,8 +40,10 @@ public class ChatRoomRepositoryImpl implements ChatRoomRepositoryCustom {
 		List<Tuple> rows = queryFactory
 				.select(chatRoom, unreadCount)
 				.from(chatRoom)
+				// 이 조회자의 멤버십에 조인함 — leftAt·lastReadMessage 는 조회자 기준이라 꼭 필요함
 				.join(chatRoomMember).on(
 						chatRoomMember.chatRoom.eq(chatRoom), chatRoomMember.user.id.eq(viewerId))
+				// 목록 행 조립에 바로 쓰는 값들이라 지연 로딩 추가 쿼리 없이 한 번에 읽음
 				.join(chatRoom.item).fetchJoin()
 				.join(chatRoom.buyer).fetchJoin()
 				.join(chatRoom.seller).fetchJoin()
@@ -52,6 +55,7 @@ public class ChatRoomRepositoryImpl implements ChatRoomRepositoryCustom {
 						afterLastMessageAt(cursor),
 						unread(tab, unreadCount))
 				.orderBy(chatRoom.lastMessageAt.desc(), chatRoom.id.desc())
+				// size + 1 건을 읽어서 다음 페이지 유무를 판정함(Service 의 CursorSlice 가 자름)
 				.limit(size + 1L)
 				.fetch();
 
@@ -68,12 +72,12 @@ public class ChatRoomRepositoryImpl implements ChatRoomRepositoryCustom {
 		};
 	}
 
-	/** UNREAD 탭만 안읽음 수로 한 번 더 거른다. 나머지 탭은 전부 보여주고 수만 함께 내린다 */
+	/** UNREAD 탭만 안읽음 수로 한 번 더 거름. 나머지 탭은 전부 보여주고 수만 함께 내림 */
 	private BooleanExpression unread(ChatRoomTab tab, NumberExpression<Long> unreadCount) {
 		return tab == ChatRoomTab.UNREAD ? unreadCount.gt(0L) : null;
 	}
 
-	/** 상대 닉네임 또는 아이템명. 상대는 역할에 따라 갈린다 — 내가 구매자면 판매자가 상대다 */
+	/** 상대 닉네임 또는 아이템명. 상대는 역할에 따라 갈림 — 내가 구매자면 판매자가 상대임 */
 	private BooleanExpression matchesKeyword(String keyword, Long viewerId) {
 		if (keyword == null || keyword.isBlank()) {
 			return null;
@@ -85,9 +89,9 @@ public class ChatRoomRepositoryImpl implements ChatRoomRepositoryCustom {
 	}
 
 	/**
-	 * 정렬이 (lastMessageAt desc, id desc) 라 조건도 같은 순서로 비교한다.
+	 * 정렬이 (lastMessageAt desc, id desc) 라 조건도 같은 순서로 비교함.
 	 *
-	 * lastMessageAt 은 방 개설 시각으로 항상 채워져 있다(ChatRoom 팩토리) — null 이 아니다
+	 * lastMessageAt 은 방 개설 시각으로 항상 채워져 있음(ChatRoom 팩토리) — null 이 아님.
 	 */
 	private BooleanExpression afterLastMessageAt(Cursor cursor) {
 		if (cursor == null) {

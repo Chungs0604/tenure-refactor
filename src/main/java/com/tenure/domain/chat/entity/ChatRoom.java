@@ -22,10 +22,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * 아이템별 1:1 채팅방. 헤더에 아이템 정보('판매 중 · 최근 착용 1일 전')와 거래 단계별 CTA 가 붙는다.
+ * 아이템별 1:1 채팅방. 헤더에 아이템 정보('판매 중 · 최근 착용 1일 전')와 거래 단계별 CTA 가 붙음.
  *
- * <p>생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
- * 스키마에서 읽을 수 없다. {@code @Builder} 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
+ * 생성 메서드는 기능 구현 시 추가함 — 무엇이 필수 인자인지는 도메인 규칙이라 스키마에서
+ * 읽을 수 없음. 빌더가 PRIVATE 이라 팩토리 없이는 만들 수 없음.
  */
 @Entity
 @Table(name = "chat_room")
@@ -71,10 +71,10 @@ public class ChatRoom extends BaseCreatedEntity {
 	private LocalDateTime lastMessageAt;
 
 	/**
-	 * 미판매 아이템 구매 제안으로 방을 엶. listing 은 없음 — 판매중 채팅방 개설은 별도 흐름임
+	 * 미판매 아이템 구매 제안으로 방을 엶. listing 은 없음 — 판매중 채팅방 개설은 별도 흐름임.
 	 *
-	 * <p>lastMessageAt 을 개설 시각으로 먼저 채운다 — 목록 정렬·커서 기준이 메시지와
-	 * 개설을 모두 '활동'으로 보게 해서, 메시지가 아직 없는 방도 null 없이 자연스럽게 섞인다.
+	 * lastMessageAt 을 개설 시각으로 먼저 채움 — 목록 정렬·커서 기준이 메시지와 개설을
+	 * 모두 '활동'으로 보게 해서, 메시지가 아직 없는 방도 null 없이 자연스럽게 섞임.
 	 */
 	public static ChatRoom openForOffer(Item item, User buyer, User seller, PurchaseOffer purchaseOffer, LocalDateTime now) {
 		return ChatRoom.builder()

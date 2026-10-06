@@ -72,7 +72,7 @@ public interface ChatMapper {
 	@Mapping(target = "createdAt", source = "message.createdAt")
 	ChatMessageResponse toMessageResponse(ChatMessage message, String content, List<String> images);
 
-	/** 탈퇴 계정은 저장된 닉네임 대신 고정 문구를 보여준다 — OrderMapper 와 같은 기준 */
+	/** 탈퇴 계정은 저장된 닉네임 대신 고정 문구를 보여줌 — OrderMapper 와 같은 기준 */
 	default String displayNickname(User user) {
 		return user.isWithdrawn() ? UserMapper.WITHDRAWN_NICKNAME : user.getNickname();
 	}

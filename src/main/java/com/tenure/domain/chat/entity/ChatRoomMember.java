@@ -20,8 +20,8 @@ import lombok.NoArgsConstructor;
 /**
  * 참여자별 읽음 위치와 나가기 상태. 안읽음 배지와 '읽지않음' 필터의 원천.
  *
- * <p>생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
- * 스키마에서 읽을 수 없다. {@code @Builder} 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
+ * 생성 메서드는 기능 구현 시 추가함 — 무엇이 필수 인자인지는 도메인 규칙이라 스키마에서
+ * 읽을 수 없음. 빌더가 PRIVATE 이라 팩토리 없이는 만들 수 없음.
  */
 @Entity
 @Table(name = "chat_room_member")
@@ -65,9 +65,9 @@ public class ChatRoomMember {
 	}
 
 	/**
-	 * 읽음 처리. 단조 증가만 허용한다 — 요청이 뒤섞여 도착해도 읽음 위치가 뒤로 밀리지 않는다.
-	 * 이미 더 최신까지 읽었으면 조용히 무시한다(에러로 다루지 않음 — 클라이언트 재시도·중복
-	 * 전송에서 흔한 입력이다).
+	 * 읽음 처리. 단조 증가만 허용함 — 요청이 뒤섞여 도착해도 읽음 위치가 뒤로 밀리지 않음.
+	 * 이미 더 최신까지 읽었으면 조용히 무시함(에러로 다루지 않음 — 클라이언트 재시도·중복
+	 * 전송에서 흔한 입력임).
 	 */
 	public void markRead(ChatMessage lastReadMessage) {
 		if (this.lastReadMessage != null && lastReadMessage.getId() <= this.lastReadMessage.getId()) {

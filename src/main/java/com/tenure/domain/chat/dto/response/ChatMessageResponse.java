@@ -10,10 +10,10 @@ import lombok.Builder;
 import lombok.Getter;
 
 /**
- * 메시지 한 건. REST 히스토리 조회(API-183)와 WS 실시간 브로드캐스트가 같은 형태를 쓴다.
+ * 메시지 한 건. REST 히스토리 조회와 WS 실시간 브로드캐스트가 같은 형태를 씀.
  *
- * <p>content·images 는 messageType 에 따라 둘 중 하나만 채워진다 — 명세의 content:String 단일
- * 필드로는 한 말풍선의 여러 장을 담을 수 없어(DEC-006) images 를 따로 뒀다(문서 동기화 대상).
+ * content·images 는 messageType 에 따라 둘 중 하나만 채워짐 — 한 말풍선에 여러 장이
+ * 묶이는 이미지 메시지는 content 하나로 담을 수 없어 images 를 따로 둠.
  */
 @Getter
 @Builder

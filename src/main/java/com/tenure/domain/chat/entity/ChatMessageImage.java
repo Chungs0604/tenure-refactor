@@ -16,10 +16,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * 이미지 메시지의 사진. 한 말풍선에 여러 장이 묶여 나가므로 메시지와 1:N 이다(DEC-006).
+ * 이미지 메시지의 사진. 한 말풍선에 여러 장이 묶여 나가므로 메시지와 1:N 임.
  *
- * <p>생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
- * 스키마에서 읽을 수 없다. {@code @Builder} 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
+ * 생성 메서드는 기능 구현 시 추가함 — 무엇이 필수 인자인지는 도메인 규칙이라 스키마에서
+ * 읽을 수 없음. 빌더가 PRIVATE 이라 팩토리 없이는 만들 수 없음.
  */
 @Entity
 @Table(name = "chat_message_image")

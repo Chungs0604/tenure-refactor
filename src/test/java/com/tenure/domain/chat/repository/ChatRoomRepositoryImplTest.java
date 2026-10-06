@@ -24,10 +24,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /**
- * 채팅방 목록(API-180) 커스텀 쿼리.
+ * 채팅방 목록 커스텀 쿼리.
  *
- * H2 가 아니라 실제 MySQL 에서 돈다. tab 필터·키워드 검색·나간 방 제외·안읽음 수 서브쿼리·
- * 커서 페이지네이션이 모두 QueryDSL 한 메서드에 몰려 있어 사람이 실수하기 쉬운 지점이다.
+ * H2 가 아니라 실제 MySQL 에서 돌림. tab 필터·키워드 검색·나간 방 제외·안읽음 수 서브쿼리·
+ * 커서 페이지네이션이 모두 QueryDSL 한 메서드에 몰려 있어 사람이 실수하기 쉬운 지점임.
  */
 @DisplayName("채팅방 목록 쿼리")
 class ChatRoomRepositoryImplTest extends RepositorySliceTestSupport {

@@ -11,8 +11,8 @@ import org.springframework.data.repository.query.Param;
 public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> {
 
 	/**
-	 * 메시지 목록(API-183). 최신부터 오래된 순으로 거슬러 올라간다 — 정렬·커서 키가 모두 id.
-	 * cursor 가 없으면(첫 페이지) 최신부터.
+	 * 메시지 목록. 최신부터 오래된 순으로 거슬러 올라감 — 정렬·커서 키가 모두 id.
+	 * cursor 가 없으면(첫 페이지) 최신부터 읽음.
 	 */
 	@Query("select m from ChatMessage m "
 			+ "where m.chatRoom.id = :chatRoomId "
@@ -22,8 +22,8 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
 			@Param("chatRoomId") Long chatRoomId, @Param("cursorId") Long cursorId, Pageable pageable);
 
 	/**
-	 * 채팅방 목록(API-180)의 미리보기 한 줄. 방마다 최신 메시지 하나 — 상관 서브쿼리로
-	 * 그룹별 최댓값만 남긴다(ItemWearRecordRepository.findOwnershipPreviews 와 같은 기법)
+	 * 채팅방 목록의 미리보기 한 줄. 방마다 최신 메시지 하나 — 상관 서브쿼리로 그룹별
+	 * 최댓값만 남김(ItemWearRecordRepository.findOwnershipPreviews 와 같은 기법).
 	 */
 	@Query("select m from ChatMessage m "
 			+ "where m.chatRoom.id in :chatRoomIds "
