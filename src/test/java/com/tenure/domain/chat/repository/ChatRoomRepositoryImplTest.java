@@ -228,6 +228,20 @@ class ChatRoomRepositoryImplTest extends RepositorySliceTestSupport {
 
 			assertThat(rows).extracting(ChatRoomFeedRow::unreadCount).containsExactly(2L);
 		}
+
+		@Test
+		@DisplayName("내가 보낸 메시지는 내 안읽음 수에 들어가지 않는다")
+		void findAllForFeed_myOwnMessages_excludedFromMyUnreadCount() {
+			ChatRoom room = persistRoom(persistItem(seller), buyer, seller, LocalDateTime.now());
+			persistMember(room, buyer);
+			persistMessage(room, buyer, "내가 보낸 메시지");
+			persistMessage(room, seller, "상대가 보낸 메시지");
+
+			List<ChatRoomFeedRow> rows =
+					chatRoomRepository.findAllForFeed(buyer.getId(), ChatRoomTab.ALL, null, null, 20);
+
+			assertThat(rows).extracting(ChatRoomFeedRow::unreadCount).containsExactly(1L);
+		}
 	}
 
 	@Nested

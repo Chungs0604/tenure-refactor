@@ -82,6 +82,7 @@ import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -144,6 +145,7 @@ class ChatServiceTest {
 			});
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID)).willReturn(Optional.empty());
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID)).willReturn(Optional.empty());
+			given(chatRoomMemberRepository.save(any(ChatRoomMember.class))).willAnswer(invocation -> invocation.getArgument(0));
 
 			ChatRoomOpenResponse response = chatService.open(BUYER_ID, ITEM_ID);
 
@@ -173,6 +175,7 @@ class ChatServiceTest {
 			});
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID)).willReturn(Optional.empty());
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID)).willReturn(Optional.empty());
+			given(chatRoomMemberRepository.save(any(ChatRoomMember.class))).willAnswer(invocation -> invocation.getArgument(0));
 
 			ChatRoomOpenResponse response = chatService.open(BUYER_ID, ITEM_ID);
 
@@ -267,6 +270,89 @@ class ChatServiceTest {
 			assertThat(response.getRoomId()).isEqualTo(ROOM_ID);
 			verify(chatRoomRepository, never()).save(any());
 			verify(chatRoomMemberRepository, never()).save(any());
+		}
+
+		@Test
+		@DisplayName("나갔던 사용자가 다시 열면 재가입된다(leftAt 해제)")
+		void open_existingRoomLeftByRequester_rejoins() {
+			User buyer = user(BUYER_ID);
+			User seller = user(SELLER_ID);
+			Item item = item(ITEM_ID, seller, SaleStatus.ON_SALE, false);
+			ItemListing listing = listing(1000L, item, seller, 360000);
+			ChatRoom existingRoom = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
+			ReflectionTestUtils.setField(existingRoom, "id", ROOM_ID);
+			ChatRoomMember leftBuyer = member(existingRoom, buyer);
+			leftBuyer.leave(LocalDateTime.now());
+
+			given(itemRepository.findActive(ITEM_ID)).willReturn(Optional.of(item));
+			given(userRepository.findById(BUYER_ID)).willReturn(Optional.of(buyer));
+			given(itemListingRepository.findOpenByItemId(ITEM_ID)).willReturn(Optional.of(listing));
+			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(chatRoomRepository.findByItemIdAndBuyerIdAndSellerId(ITEM_ID, BUYER_ID, SELLER_ID))
+					.willReturn(Optional.of(existingRoom));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
+					.willReturn(Optional.of(leftBuyer));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
+					.willReturn(Optional.of(member(existingRoom, seller)));
+
+			ChatRoomOpenResponse response = chatService.open(BUYER_ID, ITEM_ID);
+
+			assertThat(response.getRoomId()).isEqualTo(ROOM_ID);
+			assertThat(leftBuyer.hasLeft()).isFalse();
+		}
+
+		@Test
+		@DisplayName("동시 요청으로 유니크 제약을 위반해도 그새 만들어진 방을 찾아 돌려준다")
+		void open_concurrentRequestViolatesUniqueConstraint_fallsBackToExistingRoom() {
+			User buyer = user(BUYER_ID);
+			User seller = user(SELLER_ID);
+			Item item = item(ITEM_ID, seller, SaleStatus.ON_SALE, false);
+			ItemListing listing = listing(1000L, item, seller, 360000);
+			ChatRoom roomCreatedByOtherRequest = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
+			ReflectionTestUtils.setField(roomCreatedByOtherRequest, "id", ROOM_ID);
+
+			given(itemRepository.findActive(ITEM_ID)).willReturn(Optional.of(item));
+			given(userRepository.findById(BUYER_ID)).willReturn(Optional.of(buyer));
+			given(itemListingRepository.findOpenByItemId(ITEM_ID)).willReturn(Optional.of(listing));
+			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(chatRoomRepository.findByItemIdAndBuyerIdAndSellerId(ITEM_ID, BUYER_ID, SELLER_ID))
+					.willReturn(Optional.empty(), Optional.of(roomCreatedByOtherRequest));
+			given(chatRoomRepository.save(any(ChatRoom.class)))
+					.willThrow(new DataIntegrityViolationException("uk_chat_room"));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
+					.willReturn(Optional.of(member(roomCreatedByOtherRequest, buyer)));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
+					.willReturn(Optional.of(member(roomCreatedByOtherRequest, seller)));
+
+			ChatRoomOpenResponse response = chatService.open(BUYER_ID, ITEM_ID);
+
+			assertThat(response.getRoomId()).isEqualTo(ROOM_ID);
+		}
+
+		@Test
+		@DisplayName("미판매로 열렸던 방이 나중에 판매 전환되면 listing 포인터가 갱신된다")
+		void open_existingRoomWithoutListing_updatesListingPointerOnSaleConversion() {
+			User buyer = user(BUYER_ID);
+			User seller = user(SELLER_ID);
+			Item item = item(ITEM_ID, seller, SaleStatus.ON_SALE, false);
+			ItemListing listing = listing(1000L, item, seller, 360000);
+			ChatRoom existingRoom = ChatRoom.openForUnsold(item, buyer, seller, LocalDateTime.now());
+			ReflectionTestUtils.setField(existingRoom, "id", ROOM_ID);
+
+			given(itemRepository.findActive(ITEM_ID)).willReturn(Optional.of(item));
+			given(userRepository.findById(BUYER_ID)).willReturn(Optional.of(buyer));
+			given(itemListingRepository.findOpenByItemId(ITEM_ID)).willReturn(Optional.of(listing));
+			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(chatRoomRepository.findByItemIdAndBuyerIdAndSellerId(ITEM_ID, BUYER_ID, SELLER_ID))
+					.willReturn(Optional.of(existingRoom));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
+					.willReturn(Optional.of(member(existingRoom, buyer)));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
+					.willReturn(Optional.of(member(existingRoom, seller)));
+
+			chatService.open(BUYER_ID, ITEM_ID);
+
+			assertThat(existingRoom.getListing()).isEqualTo(listing);
 		}
 	}
 
@@ -671,6 +757,8 @@ class ChatServiceTest {
 			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
+					.willReturn(Optional.of(member(room, seller)));
 			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
 			given(chatMessageRepository.save(any(ChatMessage.class))).willAnswer(invocation -> {
 				ChatMessage saved = invocation.getArgument(0);
@@ -845,6 +933,44 @@ class ChatServiceTest {
 
 			verify(chatMessageRepository, never()).save(any());
 		}
+
+		@Test
+		@DisplayName("상대가 나간 뒤에는 알림·push 를 보내지 않는다")
+		void sendMessage_counterpartLeft_skipsNotifyAndPush() {
+			User buyer = user(BUYER_ID);
+			User seller = user(SELLER_ID);
+			Item item = item(ITEM_ID, seller, SaleStatus.ON_SALE, false);
+			ItemListing listing = listing(1000L, item, seller, 360000);
+			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
+			ReflectionTestUtils.setField(room, "id", ROOM_ID);
+			ChatRoomMember leftSeller = member(room, seller);
+			leftSeller.leave(LocalDateTime.now());
+
+			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
+					.willReturn(Optional.of(member(room, buyer)));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
+					.willReturn(Optional.of(leftSeller));
+			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(chatMessageRepository.save(any(ChatMessage.class))).willAnswer(invocation -> {
+				ChatMessage saved = invocation.getArgument(0);
+				ReflectionTestUtils.setField(saved, "id", 1L);
+				ReflectionTestUtils.setField(saved, "createdAt", LocalDateTime.now());
+				return saved;
+			});
+
+			ChatMessageSendRequest request = ChatMessageSendRequest.builder()
+					.messageType(ChatMessageType.TEXT).content("상대가 나간 뒤 메시지").build();
+
+			chatService.sendMessage(BUYER_ID, ROOM_ID, request);
+
+			verify(notificationService, never()).notify(
+					any(), any(), any(), any(), any(), any(), any(), any());
+			verify(messagingTemplate, never()).convertAndSendToUser(
+					eq(String.valueOf(SELLER_ID)), any(), any());
+			verify(messagingTemplate).convertAndSendToUser(
+					eq(String.valueOf(BUYER_ID)), eq("/queue/chat-rooms/" + ROOM_ID), any());
+		}
 	}
 
 	@Nested
@@ -922,6 +1048,30 @@ class ChatServiceTest {
 					.isInstanceOf(CustomException.class)
 					.extracting(ChatServiceTest::errorCodeOf)
 					.isEqualTo(ChatErrorCode.CHAT_403);
+		}
+
+		@Test
+		@DisplayName("이미 더 최신까지 읽었으면 과거 메시지 id 로 재요청해도 읽음 위치가 뒤로 밀리지 않는다")
+		void read_olderMessageAfterNewerAlreadyRead_doesNotRewind() {
+			User buyer = user(BUYER_ID);
+			User seller = user(SELLER_ID);
+			Item item = item(ITEM_ID, seller, SaleStatus.ON_SALE, false);
+			ItemListing listing = listing(1000L, item, seller, 360000);
+			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
+			ReflectionTestUtils.setField(room, "id", ROOM_ID);
+			ChatRoomMember member = member(room, buyer);
+			ChatMessage older = textMessage(1L, room, seller, "오래된 메시지");
+			ChatMessage newer = textMessage(2L, room, seller, "최신 메시지");
+			member.markRead(newer);
+
+			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID)).willReturn(Optional.of(member));
+			given(chatMessageRepository.findById(1L)).willReturn(Optional.of(older));
+
+			ChatReadRequest request = ChatReadRequest.builder().lastReadMessageId(1L).build();
+			chatService.read(BUYER_ID, ROOM_ID, request);
+
+			assertThat(member.getLastReadMessage()).isEqualTo(newer);
 		}
 	}
 
