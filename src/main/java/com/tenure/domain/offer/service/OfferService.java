@@ -219,7 +219,7 @@ public class OfferService {
 
 		// 미판매+제안 방만 이 제안을 가격 출처로 가짐 — 판매중 채팅은 listing_id 가 그 역할을 함
 		if (basis.offerType() == OfferType.PURCHASE_OFFER) {
-			openOrUpdateChatRoom(item, buyer, seller, offer);
+			openOrUpdateChatRoom(item, buyer, seller, offer, now);
 		}
 
 		notificationService.notify(
@@ -577,11 +577,11 @@ public class OfferService {
 	}
 
 	/** 미판매+제안 방을 찾아 열거나, 재제안이면 가격 출처를 최신 제안으로 갱신함 */
-	private void openOrUpdateChatRoom(Item item, User buyer, User seller, PurchaseOffer offer) {
+	private void openOrUpdateChatRoom(Item item, User buyer, User seller, PurchaseOffer offer, LocalDateTime now) {
 		chatRoomRepository.findByItemIdAndBuyerIdAndSellerId(item.getId(), buyer.getId(), seller.getId())
 				.ifPresentOrElse(
 						room -> room.updateOfferPointer(offer),
-						() -> chatRoomRepository.save(ChatRoom.openForOffer(item, buyer, seller, offer)));
+						() -> chatRoomRepository.save(ChatRoom.openForOffer(item, buyer, seller, offer, now)));
 	}
 
 	/** 정산 계좌가 없으면 표시할 것이 없음 — 판매자가 아직 계좌를 등록 안 한 경우일 수 있음 */

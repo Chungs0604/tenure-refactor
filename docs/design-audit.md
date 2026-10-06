@@ -667,6 +667,13 @@ FREE_NUMBER  0 · 1 · 2 · 3 · 4 · 5 · 6
 → `ctas[]` 배열로 바꾸고 `label`·`action`·`targetId`·`enabled` 를 내린다.
 라벨 조합이 여덟 가지라 클라이언트가 분기를 복제하면 어긋난다.
 
+**2026-10-05 구현 시 추가 확정** — 거래 단계에 네 번째 상태가 더 있다. 제안이 거절·취소·
+만료(`REJECTED`/`CANCELED`/`EXPIRED`)되면 방은 남지만 그 제안으로는 더 못 들어가므로,
+`응답 대기`/`거래 후`와 같은 축에 **`제안 종료됨`(비활성)** 을 추가했다 — `action` 은
+`OFFER_DETAIL` 을 그대로 쓰고 `enabled: false` 로만 막는다. 이 방에서 재제안을 보내면 새
+`PurchaseOffer` 가 생기며 CTA 는 다시 그 최신 제안 기준으로 계산되므로 종료 상태에 영구히
+갇히지 않는다.
+
 ### 경미
 
 - 택배사 표기가 화면마다 다르다 — 선택 화면은 `CJ대한통운`, 거래 상세는 `CJ 택배`.
@@ -1177,7 +1184,7 @@ nullable 이 됐는데 `trade_order.listing_id` 는 `NOT NULL` 로 남아 있었
 | ~~🟡~~ | ~~`Q6` 대분류별 사이즈 체계 매핑~~ | **2026-09-29 해소** | 상세 수정 바텀시트 10종에서 확보했다. 표는 위 `아이템 구현 전 피그마 정밀 점검` 절에 있다 |
 | 🟡 | `Q7` 인증번호 재전송 쿨다운·한도 | **배포 전** | Redis 키 1개 + `AuthService`. 제한이 없으면 메일 발송이 어뷰징 통로다 |
 | ~~🟡~~ | ~~`Q8` 판매를 내릴 때 남은 `PENDING` 제안~~ | **2026-10-04 해소** | `ListingService.changeSaleStatus` 에서 `OfferService.cancelPendingForDelist` 를 호출한다. `OfferCancelReason` 에 `LISTING_DELISTED` 를 추가해 자동 취소와 같이 1회 제한에서 제외했다 |
-| ~~🟢~~ | ~~`notification.target_type` 딥링크 대상~~ | **2026-10-04 일부 확정** | `offer` 가 발행하는 알림은 `OFFER`(제안 전송·거절·시스템 취소)와 `ORDER`(수락) 로 확정했다. `chat` 쪽은 그 도메인 구현 시 마저 확정한다 |
+| ~~🟢~~ | ~~`notification.target_type` 딥링크 대상~~ | **2026-10-05 전체 확정** | `offer` 가 발행하는 알림은 `OFFER`(제안 전송·거절·시스템 취소)와 `ORDER`(수락) 로 확정했다(2026-10-04). `chat` 은 새 메시지마다 `NotificationSettingType.CHAT`·`NotificationCategory.ACTION_REQUIRED`·`NotificationTargetType.CHAT_ROOM` 으로 발행한다 — 이미 있던 `CHAT` 설정 토글("상대방에게 새 채팅이 오면 알림을 받아요")을 실제로 쓰기 시작했다 |
 | 🟢 | `ReportTargetType.USER` 복원 | 사용자 신고 화면이 생기면 | enum 값 추가뿐 |
 
 ## 구현 순서에 따른 권고

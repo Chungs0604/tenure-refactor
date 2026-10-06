@@ -151,7 +151,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | API-181 | `POST` | `/api/v1/items/{itemId}/chat-rooms` | 채팅방 개설 | SCR-026 | ChatRoom, ChatRoomMember | O |
 | API-182 | `GET` | `/api/v1/chat-rooms/{roomId}` | 채팅방 헤더 (아이템·거래 단계 CTA) | SCR-042 | ChatRoom, Item, ItemListing | O |
 | API-183 | `GET` | `/api/v1/chat-rooms/{roomId}/messages` | 메시지 목록 (커서 페이징) | SCR-042 | ChatMessage | O |
-| API-184 | `POST` | `/api/v1/chat-rooms/{roomId}/messages` | 메시지 전송 (텍스트 / 이미지) | SCR-042 | ChatMessage, ChatRoom | O |
+| API-184 | `WS` | `/app/chat-rooms/{roomId}/messages` | 메시지 전송 (텍스트 / 이미지) — STOMP, REST 아님 | SCR-042 | ChatMessage, ChatRoom | O |
 | API-185 | `PATCH` | `/api/v1/chat-rooms/{roomId}/read` | 읽음 처리 | SCR-042 | ChatRoomMember | O |
 | API-186 | `DELETE` | `/api/v1/chat-rooms/{roomId}/me` | 채팅방 나가기 | SCR-043 | ChatRoomMember | O |
 | API-190 | `GET` | `/api/v1/notifications` | 알림 목록 (탭 5종) | SCR-044 | Notification | O |
@@ -487,6 +487,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | `CHAT_400_NOT_OPENABLE` | 400 | 구매 제안을 받지 않는 미판매 상품은 채팅을 시작할 수 없습니다. | API-181 |
 | `CHAT_403_BLOCKED` | 403 | 차단 관계라 메시지를 보낼 수 없습니다. | API-184 |
 | `CHAT_400_SELF` | 400 | 본인의 상품에는 채팅방을 열 수 없습니다. | API-181 |
+| `CHAT_400_INVALID_MESSAGE` | 400 | 메시지 내용이 올바르지 않습니다. | API-184 |
 
 ### NotificationErrorCode
 
@@ -4247,6 +4248,9 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 쿼리 `tab=ALL|BUYING|SELLING|UNREAD` + `keyword?` + 페이징. 정렬 `lastMessageAt,desc`.
 항목마다 `unreadCount` 와 아이템 요약(`최근 착용 N일 전` 포함)을 내려준다.
 헤더에 **검색 아이콘**이 있다(`2958:68949`) — 상대 닉네임·아이템명으로 방을 찾는다.
+목록 화면이 열려 있는 동안은 이 REST 응답 외에 `API-184`의 목록 실시간 반영(`/user/queue/chat-rooms-list`)
+push 로도 `unreadCount`·`lastMessage`가 갱신된다(2026-10-06) — 화면을 새로 열 때는 이 API로, 열려 있는
+동안은 그 push로 받는다.
 
 **쿼리 파라미터**
 
@@ -4397,7 +4401,20 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
     "price": "360000",
     "saleStatus": "<SaleStatus>",
     "recentWornDate": "2026-06-21",
-    "cta": "<String>",
+    "ctas": [
+      {
+        "label": "아이템 상세",
+        "action": "ITEM_DETAIL",
+        "targetId": 1,
+        "enabled": true
+      },
+      {
+        "label": "구매하기",
+        "action": "PURCHASE",
+        "targetId": 1,
+        "enabled": true
+      }
+    ],
     "orderId": 1
   }
 }
@@ -4418,60 +4435,16 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 | `cursor` | String |  | 직전 응답의 nextCursor | 첫 페이지는 비운다 |
 | `size` | Integer |  | 1~100, 기본 30 | 메시지는 한 번에 더 받는다 |
 
-**응답** (`data` 배열)
+**응답** (`data` — CursorResponse. 다른 커서 목록과 같은 포맷이다 — 본문의 "커서 페이징"과 어긋나던 예전 예시를 맞췄다)
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
-| `id` | Long | — |
-| `senderId` | Long | — |
-| `messageType` | ChatMessageType | TEXT \| IMAGE |
-| `content` | String | IMAGE 면 URL 로 변환해 내려준다 |
-| `createdAt` | LocalDateTime | '오후 6:30' |
-
-```json
-{
-  "success": true,
-  "code": "COMMON_200",
-  "message": "요청에 성공했습니다.",
-  "data": [
-    {
-      "id": 1,
-      "senderId": 1,
-      "messageType": "<ChatMessageType>",
-      "content": "<String>",
-      "createdAt": "2026-06-21T18:30:00"
-    }
-  ]
-}
-```
-
-에러 — CHAT_404_ROOM, CHAT_403
-
-#### API-184 · `POST /api/v1/chat-rooms/{roomId}/messages`
-
-메시지 전송 (텍스트 / 이미지). 인증 **필요**. 관련 화면 SCR-042.
-
-요청 `{ messageType: TEXT|IMAGE, content?, imageKeys[]? }`. 전송과 같은 트랜잭션에서
-`chat_room.last_message_at` 을 갱신한다.
-
-**이미지는 한 메시지에 여러 장이 들어간다.** 화면(`2958:71180`)에서 사진 3장이 **한 말풍선**으로 묶여
-있고 시각·읽음 표시도 하나다. 그래서 `chat_message_image` 에 장수만큼 행을 쌓고 `content` 는 비운다.
-메시지를 장수만큼 쪼개면 전송 중 일부만 실패했을 때 묶음이 깨진다.
-
-**요청 본문**
-
-| 필드 | 타입 | 필수 | 제약 | 설명 |
-|---|---|:--:|---|---|
-| `messageType` | ChatMessageType | O | TEXT \| IMAGE | — |
-| `content` | String | △ | TEXT 면 필수 | 본문. IMAGE 면 보내지 않는다 |
-| `imageKeys` | String[] | △ | IMAGE 면 1장 이상 | `API-060` 이 돌려준 저장소 키. 배열 순서가 말풍선 안의 노출 순서다 |
-
-**응답** (`data`)
-
-| 필드 | 타입 | 설명 |
-|---|---|---|
-| `id` | Long | — |
-| `createdAt` | LocalDateTime | — |
+| `content[].id` | Long | — |
+| `content[].senderId` | Long | — |
+| `content[].messageType` | ChatMessageType | TEXT \| IMAGE |
+| `content[].content` | String | TEXT 일 때만 값이 있다 |
+| `content[].images` | String[] | IMAGE 일 때만 값이 있다. 한 말풍선의 여러 장이 순서대로 들어간다(DEC-006) — `content` 단일 필드로는 다건을 담을 수 없어 분리했다 |
+| `content[].createdAt` | LocalDateTime | '오후 6:30' |
 
 ```json
 {
@@ -4479,13 +4452,87 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
   "code": "COMMON_200",
   "message": "요청에 성공했습니다.",
   "data": {
-    "id": 1,
-    "createdAt": "2026-06-21T18:30:00"
+    "content": [
+      {
+        "id": 1,
+        "senderId": 1,
+        "messageType": "TEXT",
+        "content": "<String>",
+        "images": null,
+        "createdAt": "2026-06-21T18:30:00"
+      },
+      {
+        "id": 2,
+        "senderId": 1,
+        "messageType": "IMAGE",
+        "content": null,
+        "images": ["https://cdn.tenure.app/chat/2026/06/ab12.jpg"],
+        "createdAt": "2026-06-21T18:31:00"
+      }
+    ],
+    "nextCursor": "djF8Mnwy",
+    "hasNext": true
   }
 }
 ```
 
-에러 — CHAT_403, CHAT_403_BLOCKED
+에러 — CHAT_404_ROOM, CHAT_403
+
+#### API-184 · 메시지 전송 (WebSocket, STOMP) — 2026-10-05 REST 에서 전환, 2026-10-06 presence·목록 실시간 반영 추가
+
+~~`POST /api/v1/chat-rooms/{roomId}/messages`~~ 대신 **WebSocket(STOMP)** 으로 보낸다.
+채팅은 실시간 수신이 필수라 REST 폴링 대신 WS 를 쓰기로 했다 — 전송도 조회(`API-183`)와
+분리하지 않고 같은 소켓으로 보낸다.
+
+**연결** — `/ws-chat` 에 STOMP CONNECT. 네이티브 헤더 `Authorization: Bearer <access token>` 으로
+인증한다(기존 REST 와 같은 토큰·판정 기준). HTTP 핸드셰이크 자체는 인증을 요구하지 않는다 —
+경계는 CONNECT 프레임이다.
+
+**전송** — `/app/chat-rooms/{roomId}/messages` 로 SEND. payload 는 REST 때와 같다
+`{ messageType: TEXT|IMAGE, content?, imageKeys[]? }`. 검증·저장·`chat_room.last_message_at`
+갱신·알림 발행은 전송과 같은 트랜잭션에서 끝난다(`ChatService.sendMessage`).
+
+**이미지는 한 메시지에 여러 장이 들어간다.** 화면(`2958:71180`)에서 사진 3장이 **한 말풍선**으로 묶여
+있고 시각·읽음 표시도 하나다. 그래서 `chat_message_image` 에 장수만큼 행을 쌓고 `content` 는 비운다.
+메시지를 장수만큼 쪼개면 전송 중 일부만 실패했을 때 묶음이 깨진다. `imageKeys` 는 최대 10장이다.
+
+**수신** — 양쪽 참여자가 `/user/queue/chat-rooms/{roomId}` 를 구독한다. 전송자 본인에게도 같은
+페이로드가 돌아온다(다중 기기 동기화). 페이로드는 `API-183` 의 `content[]` 행과 같은 모양 —
+`id`·`senderId`·`messageType`·`content`·`images`·`createdAt`. **트랜잭션 커밋 이후에만 push 한다** —
+저장과 같은 트랜잭션이 커밋 전에 실패하면 애초에 push 자체가 나가지 않는다(커밋 전 push 는
+받은 쪽이 아직 DB 에 없는 메시지를 보는 레이스를 만든다). 상대가 방을 나간 뒤에는 이 push·알림을
+건너뛴다 — 받아도 눌러 볼 방법이 없는 알림이기 때문이다. 나가지 않았어도 **지금 그 방을 보고
+있으면**(아래 presence) 알림은 안 가고 곧바로 읽음 처리된다.
+
+**읽음 실시간 반영** — `API-185`(읽음 처리) 가 처리되면 상대방이 구독 중인
+`/user/queue/chat-rooms/{roomId}/read` 로 `{ roomId, lastReadMessageId }` 가 push 된다(역시 커밋
+이후). 읽음 처리 자체는 여전히 REST(`PATCH`) 다 — 변경되는 것은 상태 한 건뿐이라 소켓으로 옮길
+이유가 없고, push 는 그 결과를 알리는 부가 채널이다.
+
+**presence — 지금 보고 있는지(2026-10-06 추가)** — `/user/queue/chat-rooms/{roomId}` 구독 자체를
+"방에 들어옴"으로 본다. 구독하는 순간 그 방의 안읽은 메시지를 전부 읽음 처리하고(위 '읽음 실시간
+반영'과 같은 push 가 상대에게 간다), 구독이 떠 있는 동안 도착하는 새 메시지도 매번 그 자리에서
+읽음 처리된다 — 그래서 방을 보고 있는 동안은 알림도, 목록 안읽음 증가도 없다. 구독을 해제하거나
+연결이 끊기면 다음 메시지부터는 "안 보고 있음"으로 바뀐다. 단일 인스턴스 배포를 전제로 서버
+메모리에서만 추적한다 — 인스턴스를 여러 개로 늘리면 공유 저장소(Redis 등)로 옮겨야 정확해진다.
+클라이언트가 화면을 벗어날 때 실제로 구독을 해제해야 이 판정이 맞다 — 구독을 안 끊으면 백그라운드
+에서도 "보고 있음"으로 남는다.
+
+**목록 실시간 반영(2026-10-06 추가)** — 상대가 그 방을 보고 있지 않을 때, `/user/queue/chat-rooms-list`
+로 `{ roomId, lastMessage, lastMessageAt, unreadCount }` 가 push 된다(역시 커밋 이후). 채팅방 목록
+화면은 이 큐를 구독해서 `API-180` 재조회 없이 해당 행의 안읽음 배지·미리보기를 갱신한다. 방을 보고
+있을 때는 안읽음이 늘지 않으니 이 push 도 없다.
+
+**재가입** — 나갔던 참여자가 아이템 상세에서 `API-181`(채팅방 개설)을 다시 호출하면 그 방에
+재가입한다(`left_at` 해제). 나가기는 영구 제외가 아니라 "지금 안 보기" 다.
+
+**전송 실패** — 검증 실패(`CHAT_400_INVALID_MESSAGE` 등)는 발신자 본인의
+`/user/queue/errors` 로 `"<code>: <message>"` 문자열이 온다. 연결이 끊긴 동안의 메시지는 재전송
+책임이 클라이언트에 있다 — 서버는 재큐잉하지 않는다. 끊김 복구는 재연결 후 `API-183` 재조회로
+따라잡는다(메시지는 이미 저장돼 있으므로 데이터 유실은 없다 — push 가 실패해도 저장은 끝난 뒤다).
+
+에러 코드는 REST 때와 같다 — `CHAT_403`, `CHAT_403_BLOCKED`, `CHAT_400_INVALID_MESSAGE`(신설,
+TEXT 인데 content 가 없거나 IMAGE 인데 imageKeys 가 없거나 10장을 넘음).
 
 #### API-185 · `PATCH /api/v1/chat-rooms/{roomId}/read`
 

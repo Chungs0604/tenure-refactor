@@ -44,6 +44,11 @@ public class SecurityConfig {
 			"/uploads/**"                                  // 로컬 저장소 정적 노출 (DEC-006)
 	};
 
+	/** 채팅 WS 핸드셰이크. 실제 인증 경계는 STOMP CONNECT 프레임이다(StompAuthChannelInterceptor) */
+	private static final String[] PUBLIC_WS = {
+			"/ws-chat/**"
+	};
+
 	private final JwtTokenProvider jwtTokenProvider;
 	private final JsonAuthEntryPoint jsonAuthEntryPoint;
 
@@ -57,6 +62,7 @@ public class SecurityConfig {
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(PUBLIC_DOCS).permitAll()
+						.requestMatchers(PUBLIC_WS).permitAll()
 						.requestMatchers(HttpMethod.POST, PUBLIC_POST).permitAll()
 						.requestMatchers(HttpMethod.GET, PUBLIC_GET).permitAll()
 						.requestMatchers(HttpMethod.PATCH, "/api/v1/auth/password").permitAll()  // API-006

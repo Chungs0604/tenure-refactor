@@ -20,8 +20,8 @@ import lombok.NoArgsConstructor;
 /**
  * 참여자별 읽음 위치와 나가기 상태. 안읽음 배지와 '읽지않음' 필터의 원천.
  *
- * <p>생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
- * 스키마에서 읽을 수 없다. {@code @Builder} 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
+ * 생성 메서드는 기능 구현 시 추가함 — 무엇이 필수 인자인지는 도메인 규칙이라 스키마에서
+ * 읽을 수 없음. 빌더가 PRIVATE 이라 팩토리 없이는 만들 수 없음.
  */
 @Entity
 @Table(name = "chat_room_member")
@@ -55,5 +55,39 @@ public class ChatRoomMember {
 	/** '채팅방 나가기' */
 	@Column(name = "left_at")
 	private LocalDateTime leftAt;
+
+	/** 방 개설 시 buyer·seller 양쪽에 1건씩 만든다 */
+	public static ChatRoomMember join(ChatRoom chatRoom, User user) {
+		return ChatRoomMember.builder()
+				.chatRoom(chatRoom)
+				.user(user)
+				.build();
+	}
+
+	/**
+	 * 읽음 처리. 단조 증가만 허용함 — 요청이 뒤섞여 도착해도 읽음 위치가 뒤로 밀리지 않음.
+	 * 이미 더 최신까지 읽었으면 조용히 무시함(에러로 다루지 않음 — 클라이언트 재시도·중복
+	 * 전송에서 흔한 입력임).
+	 */
+	public void markRead(ChatMessage lastReadMessage) {
+		if (this.lastReadMessage != null && lastReadMessage.getId() <= this.lastReadMessage.getId()) {
+			return;
+		}
+		this.lastReadMessage = lastReadMessage;
+	}
+
+	/** 채팅방 나가기. 행은 지우지 않고 이 시각만 찍는다 */
+	public void leave(LocalDateTime now) {
+		this.leftAt = now;
+	}
+
+	/** 나간 방에 다시 들어옴. 아이템 상세에서 '채팅하기'를 다시 누르는 경로(ChatService.open) */
+	public void rejoin() {
+		this.leftAt = null;
+	}
+
+	public boolean hasLeft() {
+		return leftAt != null;
+	}
 
 }

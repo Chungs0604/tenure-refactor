@@ -32,6 +32,9 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-aspectj'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 
+	// 채팅 실시간 송수신 (STOMP)
+	implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
 	// refresh token 저장소 (DEC-010) — RDB 테이블을 두지 않는다
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 

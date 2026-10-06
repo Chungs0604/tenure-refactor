@@ -49,6 +49,14 @@ public class Cursor {
 				.build();
 	}
 
+	/** 정렬 키가 id 자체인 목록(예: 채팅 메시지)에 쓴다 */
+	public static Cursor of(Long id) {
+		return Cursor.builder()
+				.sortKey(id.toString())
+				.id(id)
+				.build();
+	}
+
 	/**
 	 * 인코딩된 문자열에서 되살린다. 정렬 키가 이미 ISO 표기라 그대로 담는다.
 	 *
