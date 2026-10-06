@@ -59,9 +59,11 @@ public interface ChatMapper {
 	@Mapping(target = "recentWornDate", source = "recentWornDate")
 	@Mapping(target = "ctas", source = "ctas")
 	@Mapping(target = "orderId", source = "orderId")
+	@Mapping(target = "counterpartLastReadMessageId", source = "counterpartLastReadMessageId")
 	ChatRoomHeaderResponse toHeaderResponse(
 			Long roomId, ChatHeaderCounterpartResponse counterpart, ChatItemSummaryResponse item, String price,
-			SaleStatus saleStatus, LocalDate recentWornDate, List<ChatCtaResponse> ctas, Long orderId);
+			SaleStatus saleStatus, LocalDate recentWornDate, List<ChatCtaResponse> ctas, Long orderId,
+			Long counterpartLastReadMessageId);
 
 	@Mapping(target = "id", source = "message.id")
 	@Mapping(target = "roomId", source = "message.chatRoom.id")

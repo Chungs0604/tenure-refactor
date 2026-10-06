@@ -160,6 +160,13 @@ public class ChatService {
 		List<ChatCtaResponse> ctas = List.of(buildLeftCta(item, isBuyer), buildRightCta(item, isBuyer, offer, order));
 		LocalDate recentWornDate = lastWornDatesOf(List.of(item.getId())).get(item.getId());
 
+		// 상대가 지금까지 읽은 위치 — 들어오는 시점(재조회) 기준값이고, 그 뒤로는 WS 읽음 이벤트로 갱신됨
+		Long counterpartLastReadMessageId = chatRoomMemberRepository
+				.findByChatRoomIdAndUserId(roomId, counterpart.getId())
+				.map(ChatRoomMember::getLastReadMessage)
+				.map(ChatMessage::getId)
+				.orElse(null);
+
 		return chatMapper.toHeaderResponse(
 				room.getId(),
 				chatMapper.toHeaderCounterpartResponse(counterpart),
@@ -168,7 +175,8 @@ public class ChatService {
 				item.getSaleStatus(),
 				recentWornDate,
 				ctas,
-				order != null ? order.getId() : null);
+				order != null ? order.getId() : null,
+				counterpartLastReadMessageId);
 	}
 
 	// 메시지 목록. 최신부터 거슬러 올라감
