@@ -1013,7 +1013,8 @@ erDiagram
 
 인덱스: `uk_notification_setting`(user_id, setting_type) · UNIQUE
 
-> 제약 — 가입 시 9종을 모두 만든다. 기본값은 항목마다 다르다 — 팔로우 알림·서비스 소식·혜택 및 마케팅만 OFF 이고 나머지는 ON *(강제: application)*
+> 제약 — 가입 시 9종을 일괄로 만들지 않는다. 토글을 처음 건드린 유형만 행이 생기고, 행이 없는 유형은
+> 기본값으로 본다. 기본값은 항목마다 다르다 — 팔로우 알림·서비스 소식·혜택 및 마케팅만 OFF 이고 나머지는 ON *(강제: application)*
 
 ### 5.2 OOTD 게시물
 
@@ -1683,7 +1684,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `title` | VARCHAR(200) | String |  | O |  | `design` | 알림 목록 항목 제목 |
 | `body` | VARCHAR(500) | String |  |  |  | `design` | 알림 본문 |
 | `image_key` | VARCHAR(500) | String |  |  |  | `design` | 행 썸네일. 다형 참조라 조인할 수 없어 발행 시점에 키를 스냅샷한다 |
-| `target_type` | VARCHAR(30) | NotificationTargetType |  |  |  | `inferred` | 딥링크 대상 종류 |
+| `target_type` | VARCHAR(30) | NotificationTargetType |  |  |  | `design` | 딥링크 대상 종류. ITEM\|ORDER\|OFFER\|CHAT_ROOM (2026-10-07 확정, POST 는 발행처가 없어 뺌) |
 | `target_id` | BIGINT | Long |  |  |  | `inferred` | 다형 참조라 FK 없음 |
 | `read_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | 읽음 표시 (읽지 않은 항목 강조) |
 | `created_at` | DATETIME(6) | LocalDateTime |  | O |  | `design` | '어제', '10월 24일', '4:28 pm' |

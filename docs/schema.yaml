@@ -1266,13 +1266,14 @@ enums:
   evidence: '''최근 본 사용자가 있거나 최근 검색이 있을 경우'' + ''방금 보신 OOTD와 유사한 게시물'' — 게시물과 사용자 열람 이력을 모두 추적한다'
 - name: NotificationTargetType
   values:
-  - POST
   - ITEM
   - ORDER
   - OFFER
   - CHAT_ROOM
-  source: inferred
-  evidence: 알림 탭 4종(확인 필요·아이템 소식·거래 현황·관심 등록)이 게시물·아이템·거래·제안 4개 타입으로 연결되고, CHAT_ROOM 은 탭에 묶이지 않는 별도 딥링크 대상이라 총 5종이다. 딥링크 대상 목록은 화면에 명시되지 않음
+  source: design
+  evidence: notification 구현 시점(2026-10-07)에 발행처 전부가 확정됐다. offer 가 OFFER(제안 전송·거절·시스템 취소)와
+    ORDER(수락)로, chat 이 새 메시지마다 CHAT_ROOM 으로, listing 이 가격 변경·판매 완료·판매 중 재전환 때
+    관심 등록자에게 ITEM 으로 발행한다. POST 는 발행하는 곳이 없어 뺐다 — 필요해지면 다시 넣는다
   value_evidence_table: notification
 - name: WearRecordVoidReason
   values:
@@ -2161,7 +2162,8 @@ entities:
     - setting_type
     unique: true
   constraints:
-  - rule: 가입 시 9종을 모두 만든다. 기본값은 항목마다 다르다 — 팔로우 알림·서비스 소식·혜택 및 마케팅만 OFF 이고 나머지는 ON
+  - rule: 가입 시 9종을 일괄로 만들지 않는다 — 토글을 처음 건드린 유형만 행이 생기고, 행이 없는 유형은
+      기본값으로 본다. 기본값은 항목마다 다르다 — 팔로우 알림·서비스 소식·혜택 및 마케팅만 OFF 이고 나머지는 ON
     enforced_by: application
     source: design
     evidence: 알림 설정 화면의 토글 상태. '필수' 그룹 4종과 채팅 알림·관심 아이템은 켜진 채로 그려져 있다
