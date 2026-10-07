@@ -93,4 +93,11 @@ public class Notification extends BaseCreatedEntity {
 				.build();
 	}
 
+	/** 읽음 처리. 이미 읽었으면 그대로 둠 — 나중에 읽은 시각으로 덮어쓰지 않음 */
+	public void read(LocalDateTime now) {
+		if (this.readAt == null) {
+			this.readAt = now;
+		}
+	}
+
 }

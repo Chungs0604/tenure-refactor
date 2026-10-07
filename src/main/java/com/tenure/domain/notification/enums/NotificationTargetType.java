@@ -1,11 +1,11 @@
 package com.tenure.domain.notification.enums;
 
 /**
- * 알림 탭 4종이 각각 게시물·아이템·거래·제안으로 연결된다. 딥링크 대상 목록은 화면에 명시되지 않음
+ * 알림 딥링크 대상. offer 가 OFFER·ORDER 로, chat 이 CHAT_ROOM 으로, listing 이 ITEM 으로
+ * 발행한다(2026-10-07 전체 확정). POST 는 발행하는 곳이 없어 빼 두었다 — 필요해지면 다시 넣는다.
  */
 public enum NotificationTargetType {
 
-	POST,
 	ITEM,
 	ORDER,
 	OFFER,
