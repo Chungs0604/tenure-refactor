@@ -847,7 +847,7 @@ class ChatServiceTest {
 			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
 			ReflectionTestUtils.setField(room, "id", ROOM_ID);
 
-			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
@@ -887,7 +887,7 @@ class ChatServiceTest {
 			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
 			ReflectionTestUtils.setField(room, "id", ROOM_ID);
 
-			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
 			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
@@ -913,7 +913,7 @@ class ChatServiceTest {
 			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
 			ReflectionTestUtils.setField(room, "id", ROOM_ID);
 
-			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
 			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
@@ -954,7 +954,7 @@ class ChatServiceTest {
 			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
 			ReflectionTestUtils.setField(room, "id", ROOM_ID);
 
-			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
 			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
@@ -986,7 +986,7 @@ class ChatServiceTest {
 			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
 			ReflectionTestUtils.setField(room, "id", ROOM_ID);
 
-			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
 			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
@@ -1009,7 +1009,7 @@ class ChatServiceTest {
 			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
 			ReflectionTestUtils.setField(room, "id", ROOM_ID);
 
-			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
 			given(userBlockRepository.existsBlock(BUYER_ID, SELLER_ID)).willReturn(true);
@@ -1037,7 +1037,7 @@ class ChatServiceTest {
 			ChatRoomMember leftSeller = member(room, seller);
 			leftSeller.leave(LocalDateTime.now());
 
-			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
@@ -1072,7 +1072,7 @@ class ChatServiceTest {
 			ReflectionTestUtils.setField(room, "id", ROOM_ID);
 			ChatRoomMember sellerMember = member(room, seller);
 
-			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
@@ -1110,7 +1110,7 @@ class ChatServiceTest {
 			ReflectionTestUtils.setField(room, "id", ROOM_ID);
 			ChatRoomMember sellerMember = member(room, seller);
 
-			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))

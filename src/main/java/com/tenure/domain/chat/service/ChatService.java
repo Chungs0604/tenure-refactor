@@ -205,7 +205,8 @@ public class ChatService {
 	@Transactional
 	@Loggable("채팅 메시지 전송")
 	public ChatMessageResponse sendMessage(Long senderId, Long roomId, ChatMessageSendRequest request) {
-		ChatRoom room = requireRoom(roomId);
+		// 알림 발송 경로에서 room.getItem() 을 쓰므로 fetch join 으로 한 번에 가져옴 — N+1 방지
+		ChatRoom room = requireRoomDetail(roomId);
 		requireActiveMember(roomId, senderId);
 
 		User sender = senderId.equals(room.getBuyer().getId()) ? room.getBuyer() : room.getSeller();
