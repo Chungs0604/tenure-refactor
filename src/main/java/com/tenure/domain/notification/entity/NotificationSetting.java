@@ -58,4 +58,21 @@ public class NotificationSetting {
 	@Column(name = "updated_at", nullable = false)
 	private LocalDateTime updatedAt;
 
+	/** 설정 변경 시점에 그 유형이 처음 토글되는 경우에 만듦 — 가입 시 일괄 생성은 하지 않음 */
+	public static NotificationSetting register(
+			User user, NotificationSettingType settingType, Boolean enabled, LocalDateTime now
+	) {
+		return NotificationSetting.builder()
+				.user(user)
+				.settingType(settingType)
+				.enabled(enabled)
+				.updatedAt(now)
+				.build();
+	}
+
+	public void changeEnabled(Boolean enabled, LocalDateTime now) {
+		this.enabled = enabled;
+		this.updatedAt = now;
+	}
+
 }

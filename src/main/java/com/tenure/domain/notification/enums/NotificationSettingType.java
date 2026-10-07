@@ -6,10 +6,11 @@ import lombok.RequiredArgsConstructor;
 /**
  * 알림 설정 화면(3063:28457)의 토글 9종.
  *
- * <p>알림 목록 화면의 탭({@link NotificationCategory})과 <b>축이 다르다</b> —
+ * 알림 목록 화면의 탭(NotificationCategory)과 축이 다르다 —
  * 설정은 '무엇을 받을지', 탭은 '무엇을 모아볼지'다. v3 는 한 enum 을 공유해 두 축이 섞여 있었다.
  *
- * <p>가입 시 9종을 모두 만든다. 기본값은 항목마다 다르다.
+ * 가입 시 9종을 일괄로 만들지는 않는다 — 토글을 처음 건드리는 시점에 그 유형만 행이 생긴다.
+ * 행이 없는 유형은 기본값(isDefaultEnabled)으로 본다. 기본값은 항목마다 다르다.
  */
 @Getter
 @RequiredArgsConstructor

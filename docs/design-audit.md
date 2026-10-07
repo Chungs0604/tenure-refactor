@@ -1184,7 +1184,7 @@ nullable 이 됐는데 `trade_order.listing_id` 는 `NOT NULL` 로 남아 있었
 | ~~🟡~~ | ~~`Q6` 대분류별 사이즈 체계 매핑~~ | **2026-09-29 해소** | 상세 수정 바텀시트 10종에서 확보했다. 표는 위 `아이템 구현 전 피그마 정밀 점검` 절에 있다 |
 | 🟡 | `Q7` 인증번호 재전송 쿨다운·한도 | **배포 전** | Redis 키 1개 + `AuthService`. 제한이 없으면 메일 발송이 어뷰징 통로다 |
 | ~~🟡~~ | ~~`Q8` 판매를 내릴 때 남은 `PENDING` 제안~~ | **2026-10-04 해소** | `ListingService.changeSaleStatus` 에서 `OfferService.cancelPendingForDelist` 를 호출한다. `OfferCancelReason` 에 `LISTING_DELISTED` 를 추가해 자동 취소와 같이 1회 제한에서 제외했다 |
-| ~~🟢~~ | ~~`notification.target_type` 딥링크 대상~~ | **2026-10-05 전체 확정** | `offer` 가 발행하는 알림은 `OFFER`(제안 전송·거절·시스템 취소)와 `ORDER`(수락) 로 확정했다(2026-10-04). `chat` 은 새 메시지마다 `NotificationSettingType.CHAT`·`NotificationCategory.ACTION_REQUIRED`·`NotificationTargetType.CHAT_ROOM` 으로 발행한다 — 이미 있던 `CHAT` 설정 토글("상대방에게 새 채팅이 오면 알림을 받아요")을 실제로 쓰기 시작했다 |
+| ~~🟢~~ | ~~`notification.target_type` 딥링크 대상~~ | **2026-10-07 전체 확정** | `offer` 가 발행하는 알림은 `OFFER`(제안 전송·거절·시스템 취소)와 `ORDER`(수락) 로 확정했다(2026-10-04). `chat` 은 새 메시지마다 `NotificationSettingType.CHAT`·`NotificationCategory.ACTION_REQUIRED`·`NotificationTargetType.CHAT_ROOM` 으로 발행한다 — 이미 있던 `CHAT` 설정 토글("상대방에게 새 채팅이 오면 알림을 받아요")을 실제로 쓰기 시작했다. notification 도메인 구현(2026-10-07)에서 `listing` 쪽도 채워졌다 — 판매 전환·가격 변경·판매 완료 때 관심 등록(알림 켠) 사용자에게 `NotificationTargetType.ITEM` 으로 발행한다. `POST` 는 끝까지 발행하는 곳이 없어 enum 에서 뺐다 |
 | 🟢 | `ReportTargetType.USER` 복원 | 사용자 신고 화면이 생기면 | enum 값 추가뿐 |
 
 ## 구현 순서에 따른 권고
@@ -1270,3 +1270,65 @@ auth 보강       →  🟡 Q7, 소셜 로그인(자격증명 준비돼 있어�
 했다 — 묶음 4 가 헤더를 "CTA 2개까지만" 보고 이 모달 전환 화면은 같이 보지 못해 생긴 공백이다.
 
 → `API-182` 응답에 `blocked`(Boolean, 양방향 차단 조회) 필드를 추가했다.
+
+## notification 구현 전 정밀 재점검에서 드러난 보정 (2026-10-07)
+
+1차 감사(묶음 5)는 알림 목록·설정 두 화면만 다뤘고 A-1·A-20·A-22 세 건을 반영했다. 그 뒤
+notification 컨트롤러를 실제로 만들기 직전에 Figma 를 다시 열어 그보다 더 세부적인 디테일을
+대조했다. A-1·A-20·A-22 는 이미 반영돼 있어 재확인만 했고, 아래는 그 이후에 추가로 드러난 것이다.
+
+### N-1. 알림 발행 코드가 거래·채팅에만 있고 위시리스트·아이템 쪽은 비어 있었다
+
+`notification.notify()` 를 호출하는 곳을 전부 찾아보니 `OrderService`·`OfferService`·`ChatService`
+뿐이었다. 그런데 알림 목록 화면 예시 6건 중 3건("가격이 128,000원으로 변경됐어요", "판매
+완료됐어요", "판매 중으로 전환됐어요")은 전부 아이템 가격·판매상태 알림이고, 이걸 보낼 자리인
+`listing`·`item`·`wishlist` 도메인 어디에도 발행 코드가 없었다. 설정 화면의 `WISHLIST_ITEM`
+토글("관심 등록한 아이템의 가격 변동이나 거래 상태를 알려드려요")도 실제로는 한 번도 안 쓰이고
+있었던 셈이다.
+
+→ `ListingService.create()`(판매 전환) · `update()`(가격 변경, 실제로 바뀐 경우만) ·
+`changeSaleStatus()`(판매 완료로 바뀔 때만, 미판매 전환은 화면 근거가 없어 제외)에 위시리스트
+발행 훅을 추가했다. 수신자는 `WishlistRepository.findAlarmEnabledUsersByItemId` 로 "담았고
+벨도 켠" 사람만 거른다. `FOLLOW` 알림은 같은 성격의 공백이지만 `follow` 도메인 자체가 엔티티만
+있고 Service·Controller 가 없어(API-052·053 미구현) 이번 범위에서는 뺐다 — 팔로우 기능을
+구현할 때 같이 채운다.
+
+### N-2. 알림 설정 9종을 가입 시 일괄 생성한다는 제약이 실제로는 안 맞았다
+
+스키마·명세 모두 "가입 시 9종을 모두 만든다"로 적혀 있었는데, `auth`·`user` 가입 흐름 어디에도
+`notification_setting` 을 만드는 코드가 없었다. 그 상태에서 기존 `notify()` 는 설정 행이 없으면
+무조건 `true`(받음)로 보고 있었는데, 이러면 기본값이 OFF 인 유형(`FOLLOW`·`SERVICE_NEWS`·
+`MARKETING`)도 가입 직후엔 받아야 할 것처럼 동작하는 버그였다.
+
+→ 가입 시 일괄 생성을 포기하고, 설정 조회(`API-040`)·발행(`notify`) 양쪽 다 "행이 없으면 그
+유형의 기본값을 쓴다"로 통일했다. 토글을 실제로 바꾸는 시점(`API-041`)에만 그 유형의 행이
+생긴다. 가입 흐름은 건드리지 않았다.
+
+### N-3. 알림 설정 "필수" 그룹에 실제로 끌 수 없게 막는 로직이 없었다
+
+화면엔 "필수" 그룹에 잠금 아이콘 같은 표시가 없어서 껐을 때 서버가 막아야 하는지 애매했다.
+그룹 이름이 "필수"인 이상 꺼지면 안 되는 쪽으로 보고 확정했다.
+
+→ `API-041` 이 필수 그룹(`TRADE_REQUEST`·`REQUEST_STATUS`·`REQUEST_AUTO_CANCEL`·
+`TRADE_STATUS`) 항목을 `enabled: false` 로 받으면 `NOTIFICATION_400_REQUIRED` 로 요청 전체를
+거부한다. 여러 항목을 한 번에 보냈을 때 그중 하나만 필수 그룹 위반이어도 전부 반영하지 않는다
+— 검증을 먼저 끝내고 나서 적용하는 순서라 일부만 바뀌는 일이 없다.
+
+### N-4. "전체 읽음" 버튼의 화면 진입점이 없다
+
+`API-192` 는 명세에 이미 있었는데, 알림 목록 화면(`2958:68634`) 헤더엔 뒤로가기와 설정 아이콘
+뿐이고 "전체 읽음" 이라는 버튼·텍스트가 없다.
+
+→ 디자인에 없는 것으로 보고 API 는 그대로 만들어 뒀다. 진입점은 프론트 쪽 후속 과제로 남긴다.
+
+### OK — 1차 감사와 일치 확인
+
+- 설정 9종 3그룹(필수 4·활동 3·서비스 2) 라벨·기본값 완전 일치 (A-1)
+- 알림 행 썸네일 `image_key`, 날짜 헤더 그룹핑 전부 일치 (A-20, A-22)
+
+### 코드 후속 조치
+
+- 알림 목록 조회에서 ITEM 대상 행마다 아이템을 개별 조회하던 N+1을 배치 조회(`findAllByIds`)로
+  고쳤다
+- 위시리스트 알림처럼 한 사건을 여러 명에게 동시에 발행할 때 수신자 수만큼 설정 조회가 나가던
+  것을 `NotificationService.notifyAll()` 로 한 번에 처리하도록 바꿨다(설정 조회 1번 + 저장 1번)

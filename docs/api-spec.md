@@ -495,6 +495,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 |---|:--:|---|---|
 | `NOTIFICATION_404` | 404 | 알림을 찾을 수 없습니다. | API-191 |
 | `NOTIFICATION_403` | 403 | 본인의 알림이 아닙니다. | API-191 |
+| `NOTIFICATION_400_REQUIRED` | 400 | 필수 알림은 끌 수 없습니다. | API-041 |
 
 ### MediaErrorCode
 
@@ -1413,7 +1414,8 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 알림 목록 화면의 탭(`NotificationCategory`)과는 **축이 다르다** — 설정은 '무엇을 받을지',
 탭은 '무엇을 모아볼지'다. 그래서 enum 을 나눴다(`NotificationSettingType`).
 
-가입 시 9종을 모두 만들고, **기본값은 항목마다 다르다.**
+가입 시 9종을 일괄로 만들지는 않는다 — 토글을 처음 건드리는 시점에 그 유형만 행이 생긴다.
+행이 없는 유형은 **기본값**으로 본다. 기본값은 항목마다 다르다.
 
 | 그룹 | settingType | 화면 문구 | 기본값 |
 |---|---|---|:--:|
@@ -1465,16 +1467,21 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 요청 `{ settings[{ settingType, enabled }] }` — 부분 갱신. 활성화할 때마다 토스트를 띄운다.
 
+필수 그룹(`TRADE_REQUEST`·`REQUEST_STATUS`·`REQUEST_AUTO_CANCEL`·`TRADE_STATUS`)을 `enabled: false`로
+보내면 요청 전체를 거부한다(`NOTIFICATION_400_REQUIRED`) — 화면에 잠금 표시는 없지만 그룹명대로
+끌 수 없는 것으로 확정했다. 여러 항목을 한 번에 보냈을 때 그중 하나라도 필수 그룹 OFF면 **전부** 반영되지
+않는다(부분 적용 없음).
+
 **요청 본문**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
 | `settings[].settingType` | NotificationSettingType | O | 9종 중 하나 | API-040 의 표 참고 |
-| `settings[].enabled` | Boolean | O | — | — |
+| `settings[].enabled` | Boolean | O | — | 필수 그룹은 `false` 불가 |
 
 **응답** `data` 는 `null` 이다.
 
-에러 — COMMON_400
+에러 — COMMON_400, NOTIFICATION_400_REQUIRED
 
 ### 소셜
 
@@ -4584,6 +4591,12 @@ TEXT 인데 content 가 없거나 IMAGE 인데 imageKeys 가 없거나 10장을 
 행마다 **아이템 썸네일**이 붙는데 다형 참조라 대상 테이블과 조인할 수 없다. 발행 시점에 `image_key` 를 스냅샷해
 `imageUrl` 로 내려준다. 제목은 아이템명(`Levis / LVC 1955 501`), 본문이 사건(`가격이 128,000원으로 변경됐어요.`)이다.
 
+행 좌측 원형 점 색상(대부분 주황, `ACTION_REQUIRED` 행만 빨강)은 서버 필드가 아니다 — 클라이언트가
+`category` 값으로 매핑한다.
+
+"전체 읽음" 버튼의 화면 진입점은 Figma 헤더(뒤로가기 + 설정 아이콘)에 없다. API 는 그대로 만들어 두고
+UI 연결은 프론트 과제로 남긴다.
+
 **쿼리 파라미터**
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
@@ -4601,7 +4614,7 @@ TEXT 인데 content 가 없거나 IMAGE 인데 imageKeys 가 없거나 10장을 
 | `imageUrl` | String | 행 썸네일. 없으면 null |
 | `title` | String | 아이템명 — `Levis / LVC 1955 501` |
 | `body` | String | 사건 — `가격이 128,000원으로 변경됐어요.` |
-| `targetType` | NotificationTargetType | POST \| ITEM \| ORDER \| OFFER \| CHAT_ROOM |
+| `targetType` | NotificationTargetType | ITEM \| ORDER \| OFFER \| CHAT_ROOM |
 | `targetId` | Long | — |
 | `targetDeleted` | Boolean | true 면 '삭제된 게시물입니다' |
 | `readAt` | LocalDateTime | null 이면 미읽음 |
@@ -4631,6 +4644,9 @@ TEXT 인데 content 가 없거나 IMAGE 인데 imageKeys 가 없거나 10장을 
   }
 }
 ```
+
+발행 주체 — `offer`(`OFFER`·`ORDER`), `chat`(`CHAT_ROOM`), `listing`(`ITEM`, 관심 등록자에게만). 전부
+각 도메인 Service 가 `NotificationService` 를 직접 주입받아 같은 트랜잭션에서 호출한다(동기, 이벤트 버스 없음).
 
 에러 — COMMON_401
 
