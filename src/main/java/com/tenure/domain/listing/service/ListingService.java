@@ -18,6 +18,10 @@ import com.tenure.domain.listing.exception.ListingErrorCode;
 import com.tenure.domain.listing.mapper.ListingMapper;
 import com.tenure.domain.listing.repository.ItemListingRepository;
 import com.tenure.domain.listing.repository.ListingFeaturedPostRepository;
+import com.tenure.domain.notification.enums.NotificationCategory;
+import com.tenure.domain.notification.enums.NotificationSettingType;
+import com.tenure.domain.notification.enums.NotificationTargetType;
+import com.tenure.domain.notification.service.NotificationService;
 import com.tenure.domain.offer.service.OfferService;
 import com.tenure.domain.order.enums.OrderStatus;
 import com.tenure.domain.order.repository.TradeOrderRepository;
@@ -27,6 +31,7 @@ import com.tenure.domain.post.entity.Post;
 import com.tenure.domain.post.exception.PostErrorCode;
 import com.tenure.domain.post.repository.PostRepository;
 import com.tenure.domain.user.entity.User;
+import com.tenure.domain.wishlist.repository.WishlistRepository;
 import com.tenure.global.exception.CustomException;
 import com.tenure.global.logging.Loggable;
 import java.time.LocalDateTime;
@@ -80,6 +85,8 @@ public class ListingService {
 	private final PostRepository postRepository;
 	private final TradeOrderRepository tradeOrderRepository;
 	private final OfferService offerService;
+	private final WishlistRepository wishlistRepository;
+	private final NotificationService notificationService;
 	private final ListingMapper listingMapper;
 
 	/**
@@ -131,6 +138,10 @@ public class ListingService {
 		// 배지를 그리는 상태는 아이템이 가짐
 		item.changeSaleStatus(SaleStatus.ON_SALE);
 
+		// 이 아이템을 미판매 상태일 때 관심 등록해 둔 사람이 있을 수 있음 — 다시 팔린다는 것을 알림
+		// 알림 받을 사람이 없으면 notifyAll 내부에서 바로 끝나므로 여기서 미리 거를 필요 없음
+		notifyWishlisters(item, "판매 중으로 전환됐어요.");
+
 		return listingMapper.toListingIdResponse(listing);
 	}
 
@@ -157,6 +168,9 @@ public class ListingService {
 		// 수정 화면도 전체 폼이라 아이템까지 갈아끼움
 		Category category = applyItemChanges(item, request.getItem());
 
+		// changeTerms 가 price 를 덮어쓰기 전에 지금 값을 떼어 둠 — 나중에 바뀌었는지 비교할 기준값임
+		Integer previousPrice = listing.getPrice();
+
 		// 행을 새로 만들지 않고 조건만 덮어씀
 		listing.changeTerms(
 				request.getPrice(),
@@ -167,6 +181,12 @@ public class ListingService {
 		itemFormApplier.replaceMeasurements(item, category, request.getMeasurements());
 		itemFormApplier.replaceConditions(item, request.getConditions());
 		replaceFeaturedPosts(listing, userId, request.getFeaturedPostIds());
+
+		// 가격만 알림 대상임 — 위에서 떼어 둔 previousPrice 와 지금 요청값을 비교해서 실제로 바뀐 경우만 보냄
+		// 배송비·판매자 설명만 바뀐 요청은 여기 안 걸려서 알림이 안 나감
+		if (!previousPrice.equals(request.getPrice())) {
+			notifyWishlisters(item, String.format("가격이 %,d원으로 변경됐어요.", request.getPrice()));
+		}
 
 		return listingMapper.toListingIdResponse(listing);
 	}
@@ -206,6 +226,11 @@ public class ListingService {
 		offerService.cancelPendingForDelist(itemId);
 
 		item.changeSaleStatus(saleStatus);
+
+		// 두 상태(NOT_FOR_SALE·SOLD) 중 판매 완료만 알림을 보냄 — 미판매 전환은 화면 근거가 없어 뺌
+		if (saleStatus == SaleStatus.SOLD) {
+			notifyWishlisters(item, "판매 완료됐어요.");
+		}
 
 		return listingMapper.toSaleStatusResponse(item);
 	}
@@ -359,6 +384,19 @@ public class ListingService {
 			throw new CustomException(ItemErrorCode.ITEM_403);
 		}
 		return item;
+	}
+
+	/**
+	 * 가격 변동·거래 상태를 관심 등록한 사람에게 알림. 벨을 꺼둔 사람은 WishlistRepository 가 이미 걸러줌.
+	 * 수신자 수만큼 설정 조회가 나가지 않게 notifyAll 로 한 번에 발행함
+	 */
+	private void notifyWishlisters(Item item, String body) {
+		// 이 아이템을 담고 알림(벨)도 켜 둔 사용자만 받아옴 — 담기만 하고 벨을 끈 사람은 쿼리에서 이미 빠짐
+		// 받아온 목록을 notificationService.notifyAll 에 그대로 넘겨 설정 조회·저장을 한 번씩만 하게 함
+		notificationService.notifyAll(
+				wishlistRepository.findAlarmEnabledUsersByItemId(item.getId()),
+				NotificationSettingType.WISHLIST_ITEM, NotificationCategory.WISHLIST,
+				item.getName(), body, item.getCoverImageKey(), NotificationTargetType.ITEM, item.getId());
 	}
 
 	private User currentOwner(Long itemId) {

@@ -1,5 +1,6 @@
 package com.tenure.domain.wishlist.repository;
 
+import com.tenure.domain.user.entity.User;
 import com.tenure.domain.wishlist.entity.Wishlist;
 import java.util.Collection;
 import java.util.List;
@@ -29,4 +30,8 @@ public interface WishlistRepository extends JpaRepository<Wishlist, Long> {
 
 	/** 히어로 우측 벨 상태. 담기만 하고 알림을 껐어도 관심 등록은 되어 있다. */
 	boolean existsByUserIdAndItemId(Long userId, Long itemId);
+
+	/** 가격 변동·거래 상태 알림 발행 대상. 벨을 꺼둔 사람은 받지 않는다 */
+	@Query("select w.user from Wishlist w where w.item.id = :itemId and w.alarmEnabled = true")
+	List<User> findAlarmEnabledUsersByItemId(@Param("itemId") Long itemId);
 }
