@@ -69,6 +69,7 @@ import com.tenure.global.storage.FileStorage;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -1419,6 +1420,28 @@ class ChatServiceTest {
 			CursorSlice<ChatRoomSummaryResponse> slice = chatService.list(BUYER_ID, ChatRoomTab.ALL, null, null, 20);
 
 			assertThat(slice.getContent().get(0).getLastMessage()).isEqualTo("사진을 보냈습니다");
+		}
+
+		@Test
+		@DisplayName("착용 이력이 있으면 recentWornDate 가 채워진다")
+		void list_itemHasWornRecord_fillsRecentWornDate() {
+			User viewer = user(BUYER_ID);
+			User seller = user(SELLER_ID);
+			Item item = item(ITEM_ID, seller, SaleStatus.ON_SALE, false);
+			ItemListing listing = listing(1000L, item, seller, 360000);
+			ChatRoom room = ChatRoom.openForListing(item, listing, viewer, seller, LocalDateTime.now());
+			ReflectionTestUtils.setField(room, "id", ROOM_ID);
+			LocalDate wornDate = LocalDate.of(2026, 6, 20);
+
+			given(chatRoomRepository.findAllForFeed(BUYER_ID, ChatRoomTab.ALL, null, null, 20))
+					.willReturn(List.of(new ChatRoomFeedRow(room, 0L)));
+			List<Object[]> wornDateRows = Collections.singletonList(new Object[] {ITEM_ID, wornDate});
+			given(itemWearRecordRepository.findLastWornDates(List.of(ITEM_ID))).willReturn(wornDateRows);
+			given(chatMessageRepository.findLatestByChatRoomIdIn(any())).willReturn(List.of());
+
+			CursorSlice<ChatRoomSummaryResponse> slice = chatService.list(BUYER_ID, ChatRoomTab.ALL, null, null, 20);
+
+			assertThat(slice.getContent().get(0).getRecentWornDate()).isEqualTo(wornDate);
 		}
 	}
 
