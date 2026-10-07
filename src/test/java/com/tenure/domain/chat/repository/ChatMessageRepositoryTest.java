@@ -13,12 +13,14 @@ import com.tenure.support.RepositorySliceTestSupport;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
 
 /**
  * findTopByChatRoomIdOrderByIdDesc·countUnread 검증.
@@ -80,6 +82,61 @@ class ChatMessageRepositoryTest extends RepositorySliceTestSupport {
 			Optional<ChatMessage> result = chatMessageRepository.findTopByChatRoomIdOrderByIdDesc(room.getId());
 
 			assertThat(result).isEmpty();
+		}
+	}
+
+	@Nested
+	@DisplayName("메시지 커서 페이지네이션")
+	class FindAllByChatRoomId {
+
+		@Test
+		@DisplayName("커서가 없으면 최신부터 내림차순으로 돌려준다")
+		void noCursor_returnsNewestFirst() {
+			ChatMessage m1 = persistMessage(room, buyer, "m1");
+			ChatMessage m2 = persistMessage(room, seller, "m2");
+			ChatMessage m3 = persistMessage(room, buyer, "m3");
+
+			List<ChatMessage> result = chatMessageRepository.findAllByChatRoomId(room.getId(), null, PageRequest.of(0, 10));
+
+			assertThat(result).extracting(ChatMessage::getId)
+					.containsExactly(m3.getId(), m2.getId(), m1.getId());
+		}
+
+		@Test
+		@DisplayName("커서를 주면 그 id 보다 작은 메시지만 돌려준다")
+		void withCursor_returnsOnlyOlderMessages() {
+			ChatMessage m1 = persistMessage(room, buyer, "m1");
+			ChatMessage m2 = persistMessage(room, seller, "m2");
+			persistMessage(room, buyer, "m3");
+
+			List<ChatMessage> result = chatMessageRepository
+					.findAllByChatRoomId(room.getId(), m2.getId(), PageRequest.of(0, 10));
+
+			assertThat(result).extracting(ChatMessage::getId).containsExactly(m1.getId());
+		}
+
+		@Test
+		@DisplayName("pageable 크기만큼만 돌려준다")
+		void respectsPageableSize() {
+			persistMessage(room, buyer, "m1");
+			persistMessage(room, seller, "m2");
+			persistMessage(room, buyer, "m3");
+
+			List<ChatMessage> result = chatMessageRepository.findAllByChatRoomId(room.getId(), null, PageRequest.of(0, 2));
+
+			assertThat(result).hasSize(2);
+		}
+
+		@Test
+		@DisplayName("다른 방의 메시지는 섞이지 않는다")
+		void excludesMessagesFromOtherRooms() {
+			ChatMessage own = persistMessage(room, buyer, "이 방 메시지");
+			ChatRoom otherRoom = persistRoom(persistItem(seller), buyer, seller);
+			persistMessage(otherRoom, seller, "다른 방 메시지");
+
+			List<ChatMessage> result = chatMessageRepository.findAllByChatRoomId(room.getId(), null, PageRequest.of(0, 10));
+
+			assertThat(result).extracting(ChatMessage::getId).containsExactly(own.getId());
 		}
 	}
 
