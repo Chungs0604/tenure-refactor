@@ -4,6 +4,7 @@ import com.tenure.domain.chat.dto.response.ChatCounterpartResponse;
 import com.tenure.domain.chat.dto.response.ChatCtaResponse;
 import com.tenure.domain.chat.dto.response.ChatHeaderCounterpartResponse;
 import com.tenure.domain.chat.dto.response.ChatItemSummaryResponse;
+import com.tenure.domain.chat.dto.response.ChatListItemSummaryResponse;
 import com.tenure.domain.chat.dto.response.ChatMessageResponse;
 import com.tenure.domain.chat.dto.response.ChatRoomHeaderResponse;
 import com.tenure.domain.chat.dto.response.ChatRoomSummaryResponse;
@@ -40,6 +41,8 @@ public interface ChatMapper {
 	@Mapping(target = "coverImageUrl", source = "coverImageUrl")
 	ChatItemSummaryResponse toItemSummaryResponse(Item item, String coverImageUrl);
 
+	ChatListItemSummaryResponse toListItemSummaryResponse(Item item);
+
 	@Mapping(target = "roomId", source = "roomId")
 	@Mapping(target = "counterpart", source = "counterpart")
 	@Mapping(target = "lastMessage", source = "lastMessage")
@@ -49,7 +52,7 @@ public interface ChatMapper {
 	@Mapping(target = "recentWornDate", source = "recentWornDate")
 	ChatRoomSummaryResponse toRoomSummaryResponse(
 			Long roomId, ChatCounterpartResponse counterpart, String lastMessage, LocalDateTime lastMessageAt,
-			Integer unreadCount, ChatItemSummaryResponse item, LocalDate recentWornDate);
+			Integer unreadCount, ChatListItemSummaryResponse item, LocalDate recentWornDate);
 
 	@Mapping(target = "roomId", source = "roomId")
 	@Mapping(target = "counterpart", source = "counterpart")
@@ -60,10 +63,11 @@ public interface ChatMapper {
 	@Mapping(target = "ctas", source = "ctas")
 	@Mapping(target = "orderId", source = "orderId")
 	@Mapping(target = "counterpartLastReadMessageId", source = "counterpartLastReadMessageId")
+	@Mapping(target = "blocked", source = "blocked")
 	ChatRoomHeaderResponse toHeaderResponse(
 			Long roomId, ChatHeaderCounterpartResponse counterpart, ChatItemSummaryResponse item, String price,
 			SaleStatus saleStatus, LocalDate recentWornDate, List<ChatCtaResponse> ctas, Long orderId,
-			Long counterpartLastReadMessageId);
+			Long counterpartLastReadMessageId, boolean blocked);
 
 	@Mapping(target = "id", source = "message.id")
 	@Mapping(target = "roomId", source = "message.chatRoom.id")

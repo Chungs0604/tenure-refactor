@@ -69,6 +69,7 @@ import com.tenure.global.storage.FileStorage;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -440,6 +441,49 @@ class ChatServiceTest {
 		}
 
 		@Test
+		@DisplayName("차단 관계면 blocked 가 true 다")
+		void header_blockedRelationship_returnsBlockedTrue() {
+			User buyer = user(BUYER_ID);
+			User seller = user(SELLER_ID);
+			Item item = item(ITEM_ID, seller, SaleStatus.ON_SALE, false);
+			ItemListing listing = listing(1000L, item, seller, 360000);
+			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
+			ReflectionTestUtils.setField(room, "id", ROOM_ID);
+
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
+					.willReturn(Optional.of(member(room, buyer)));
+			given(purchaseOfferRepository.findLatestByItemIdAndBuyerId(ITEM_ID, BUYER_ID)).willReturn(Optional.empty());
+			given(itemWearRecordRepository.findLastWornDates(List.of(ITEM_ID))).willReturn(List.of());
+			given(userBlockRepository.existsBlock(BUYER_ID, SELLER_ID)).willReturn(true);
+
+			ChatRoomHeaderResponse response = chatService.header(BUYER_ID, ROOM_ID);
+
+			assertThat(response.isBlocked()).isTrue();
+		}
+
+		@Test
+		@DisplayName("차단 관계가 아니면 blocked 가 false 다")
+		void header_notBlocked_returnsBlockedFalse() {
+			User buyer = user(BUYER_ID);
+			User seller = user(SELLER_ID);
+			Item item = item(ITEM_ID, seller, SaleStatus.ON_SALE, false);
+			ItemListing listing = listing(1000L, item, seller, 360000);
+			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
+			ReflectionTestUtils.setField(room, "id", ROOM_ID);
+
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
+					.willReturn(Optional.of(member(room, buyer)));
+			given(purchaseOfferRepository.findLatestByItemIdAndBuyerId(ITEM_ID, BUYER_ID)).willReturn(Optional.empty());
+			given(itemWearRecordRepository.findLastWornDates(List.of(ITEM_ID))).willReturn(List.of());
+
+			ChatRoomHeaderResponse response = chatService.header(BUYER_ID, ROOM_ID);
+
+			assertThat(response.isBlocked()).isFalse();
+		}
+
+		@Test
 		@DisplayName("상대가 아직 하나도 안 읽었으면 null 이다")
 		void header_counterpartNeverRead_returnsNull() {
 			User buyer = user(BUYER_ID);
@@ -804,7 +848,7 @@ class ChatServiceTest {
 			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
 			ReflectionTestUtils.setField(room, "id", ROOM_ID);
 
-			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
@@ -844,7 +888,7 @@ class ChatServiceTest {
 			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
 			ReflectionTestUtils.setField(room, "id", ROOM_ID);
 
-			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
 			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
@@ -870,7 +914,7 @@ class ChatServiceTest {
 			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
 			ReflectionTestUtils.setField(room, "id", ROOM_ID);
 
-			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
 			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
@@ -911,7 +955,7 @@ class ChatServiceTest {
 			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
 			ReflectionTestUtils.setField(room, "id", ROOM_ID);
 
-			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
 			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
@@ -943,7 +987,7 @@ class ChatServiceTest {
 			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
 			ReflectionTestUtils.setField(room, "id", ROOM_ID);
 
-			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
 			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
@@ -966,7 +1010,7 @@ class ChatServiceTest {
 			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
 			ReflectionTestUtils.setField(room, "id", ROOM_ID);
 
-			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
 			given(userBlockRepository.existsBlock(BUYER_ID, SELLER_ID)).willReturn(true);
@@ -994,7 +1038,7 @@ class ChatServiceTest {
 			ChatRoomMember leftSeller = member(room, seller);
 			leftSeller.leave(LocalDateTime.now());
 
-			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
@@ -1029,7 +1073,7 @@ class ChatServiceTest {
 			ReflectionTestUtils.setField(room, "id", ROOM_ID);
 			ChatRoomMember sellerMember = member(room, seller);
 
-			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
@@ -1067,7 +1111,7 @@ class ChatServiceTest {
 			ReflectionTestUtils.setField(room, "id", ROOM_ID);
 			ChatRoomMember sellerMember = member(room, seller);
 
-			given(chatRoomRepository.findById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
@@ -1376,6 +1420,28 @@ class ChatServiceTest {
 			CursorSlice<ChatRoomSummaryResponse> slice = chatService.list(BUYER_ID, ChatRoomTab.ALL, null, null, 20);
 
 			assertThat(slice.getContent().get(0).getLastMessage()).isEqualTo("사진을 보냈습니다");
+		}
+
+		@Test
+		@DisplayName("착용 이력이 있으면 recentWornDate 가 채워진다")
+		void list_itemHasWornRecord_fillsRecentWornDate() {
+			User viewer = user(BUYER_ID);
+			User seller = user(SELLER_ID);
+			Item item = item(ITEM_ID, seller, SaleStatus.ON_SALE, false);
+			ItemListing listing = listing(1000L, item, seller, 360000);
+			ChatRoom room = ChatRoom.openForListing(item, listing, viewer, seller, LocalDateTime.now());
+			ReflectionTestUtils.setField(room, "id", ROOM_ID);
+			LocalDate wornDate = LocalDate.of(2026, 6, 20);
+
+			given(chatRoomRepository.findAllForFeed(BUYER_ID, ChatRoomTab.ALL, null, null, 20))
+					.willReturn(List.of(new ChatRoomFeedRow(room, 0L)));
+			List<Object[]> wornDateRows = Collections.singletonList(new Object[] {ITEM_ID, wornDate});
+			given(itemWearRecordRepository.findLastWornDates(List.of(ITEM_ID))).willReturn(wornDateRows);
+			given(chatMessageRepository.findLatestByChatRoomIdIn(any())).willReturn(List.of());
+
+			CursorSlice<ChatRoomSummaryResponse> slice = chatService.list(BUYER_ID, ChatRoomTab.ALL, null, null, 20);
+
+			assertThat(slice.getContent().get(0).getRecentWornDate()).isEqualTo(wornDate);
 		}
 	}
 
