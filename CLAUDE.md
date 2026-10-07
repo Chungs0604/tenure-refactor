@@ -70,10 +70,25 @@ global/          config, exception, response
 
 경로만 적는다. 전부 크기가 커서 자동으로 읽어들이지 않고, 필요할 때 해당 파일을 연다.
 
+- 제품 범위·왜: `docs/PRD.md` — 기능 범위, 구현 현황, 의도적으로 뺀 것
 - 데이터 모델 정본: `docs/schema.yaml` — 엔티티·컬럼·제약·설계 결정(DEC-001 등)
 - 사람이 읽는 뷰: `docs/erd.md` — schema.yaml 에서 생성된다
 - API 명세: `docs/api-spec.md` — API ID 와 엔드포인트
 - 설계 감사 경위: `docs/design-audit.md`
+
+## 새 도메인 착수 전 (IMPORTANT)
+
+새 도메인 구현을 시작하기 전에 순서대로 확인한다.
+
+1. 컨트롤러 존재 여부로 구현 현황을 재조사한다 — `docs/PRD.md` §4 "구현 현황"은 기능이 추가될
+   때마다 바로 낡으므로 그 문서 숫자를 그대로 믿지 않는다.
+   ```
+   find src/main/java/com/tenure/domain -iname "*Controller.java"
+   ```
+2. `docs/design-audit.md` 끝의 🚦 절에서 이번 도메인 관련 미결 Q·DEC가 남아있는지 확인한다.
+   `listing` 때 `DEC-005`처럼 선결 결정이 안 끝나면 설계가 중간에 바뀐다.
+3. 위 두 확인 결과가 `docs/PRD.md` §4·§5 와 어긋나면 착수 전에 먼저 보고하고, 어긋나지 않으면
+   착수한다.
 
 ## 이 프로젝트 고유 결정
 
