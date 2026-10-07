@@ -42,4 +42,7 @@ public class ChatRoomHeaderResponse {
 	@Schema(description = "상대방이 지금까지 읽은 마지막 메시지 id. 아직 하나도 안 읽었으면 null — "
 			+ "내가 보낸 메시지 중 이 id 보다 큰 것만 '상대가 아직 안 읽음' 배지를 그리면 됨", example = "12")
 	private final Long counterpartLastReadMessageId;
+
+	@Schema(description = "상대와 차단 관계인지. true 면 메시지 입력을 비활성 상태로 그리면 됨", example = "false")
+	private final boolean blocked;
 }

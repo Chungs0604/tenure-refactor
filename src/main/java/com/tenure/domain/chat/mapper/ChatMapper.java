@@ -60,10 +60,11 @@ public interface ChatMapper {
 	@Mapping(target = "ctas", source = "ctas")
 	@Mapping(target = "orderId", source = "orderId")
 	@Mapping(target = "counterpartLastReadMessageId", source = "counterpartLastReadMessageId")
+	@Mapping(target = "blocked", source = "blocked")
 	ChatRoomHeaderResponse toHeaderResponse(
 			Long roomId, ChatHeaderCounterpartResponse counterpart, ChatItemSummaryResponse item, String price,
 			SaleStatus saleStatus, LocalDate recentWornDate, List<ChatCtaResponse> ctas, Long orderId,
-			Long counterpartLastReadMessageId);
+			Long counterpartLastReadMessageId, boolean blocked);
 
 	@Mapping(target = "id", source = "message.id")
 	@Mapping(target = "roomId", source = "message.chatRoom.id")

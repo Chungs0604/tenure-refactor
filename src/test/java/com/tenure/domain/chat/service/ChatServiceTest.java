@@ -440,6 +440,49 @@ class ChatServiceTest {
 		}
 
 		@Test
+		@DisplayName("차단 관계면 blocked 가 true 다")
+		void header_blockedRelationship_returnsBlockedTrue() {
+			User buyer = user(BUYER_ID);
+			User seller = user(SELLER_ID);
+			Item item = item(ITEM_ID, seller, SaleStatus.ON_SALE, false);
+			ItemListing listing = listing(1000L, item, seller, 360000);
+			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
+			ReflectionTestUtils.setField(room, "id", ROOM_ID);
+
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
+					.willReturn(Optional.of(member(room, buyer)));
+			given(purchaseOfferRepository.findLatestByItemIdAndBuyerId(ITEM_ID, BUYER_ID)).willReturn(Optional.empty());
+			given(itemWearRecordRepository.findLastWornDates(List.of(ITEM_ID))).willReturn(List.of());
+			given(userBlockRepository.existsBlock(BUYER_ID, SELLER_ID)).willReturn(true);
+
+			ChatRoomHeaderResponse response = chatService.header(BUYER_ID, ROOM_ID);
+
+			assertThat(response.isBlocked()).isTrue();
+		}
+
+		@Test
+		@DisplayName("차단 관계가 아니면 blocked 가 false 다")
+		void header_notBlocked_returnsBlockedFalse() {
+			User buyer = user(BUYER_ID);
+			User seller = user(SELLER_ID);
+			Item item = item(ITEM_ID, seller, SaleStatus.ON_SALE, false);
+			ItemListing listing = listing(1000L, item, seller, 360000);
+			ChatRoom room = ChatRoom.openForListing(item, listing, buyer, seller, LocalDateTime.now());
+			ReflectionTestUtils.setField(room, "id", ROOM_ID);
+
+			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
+			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
+					.willReturn(Optional.of(member(room, buyer)));
+			given(purchaseOfferRepository.findLatestByItemIdAndBuyerId(ITEM_ID, BUYER_ID)).willReturn(Optional.empty());
+			given(itemWearRecordRepository.findLastWornDates(List.of(ITEM_ID))).willReturn(List.of());
+
+			ChatRoomHeaderResponse response = chatService.header(BUYER_ID, ROOM_ID);
+
+			assertThat(response.isBlocked()).isFalse();
+		}
+
+		@Test
 		@DisplayName("상대가 아직 하나도 안 읽었으면 null 이다")
 		void header_counterpartNeverRead_returnsNull() {
 			User buyer = user(BUYER_ID);

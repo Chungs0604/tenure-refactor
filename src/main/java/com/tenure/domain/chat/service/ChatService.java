@@ -167,6 +167,8 @@ public class ChatService {
 				.map(ChatMessage::getId)
 				.orElse(null);
 
+		User viewer = isBuyer ? room.getBuyer() : room.getSeller();
+
 		return chatMapper.toHeaderResponse(
 				room.getId(),
 				chatMapper.toHeaderCounterpartResponse(counterpart),
@@ -176,7 +178,8 @@ public class ChatService {
 				recentWornDate,
 				ctas,
 				order != null ? order.getId() : null,
-				counterpartLastReadMessageId);
+				counterpartLastReadMessageId,
+				isBlocked(viewer, counterpart));
 	}
 
 	// 메시지 목록. 최신부터 거슬러 올라감
@@ -557,10 +560,14 @@ public class ChatService {
 
 	// 차단은 양방향으로 확인함 — 내가 차단했든 상대가 차단했든 채팅은 막힘
 	private void requireNotBlocked(User a, User b) {
-		if (userBlockRepository.existsBlock(a.getId(), b.getId()) || userBlockRepository.existsBlock(b.getId(), a.getId())) {
+		if (isBlocked(a, b)) {
 			log.warn("차단 관계인 상대와 채팅을 시도함 userId={} counterpartId={}", a.getId(), b.getId());
 			throw new CustomException(ChatErrorCode.CHAT_403_BLOCKED);
 		}
+	}
+
+	private boolean isBlocked(User a, User b) {
+		return userBlockRepository.existsBlock(a.getId(), b.getId()) || userBlockRepository.existsBlock(b.getId(), a.getId());
 	}
 
 	// fetch join 없는 가벼운 조회 — 연관 엔티티까지 필요 없는 곳에서 씀

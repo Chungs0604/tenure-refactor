@@ -4383,6 +4383,7 @@ push 로도 `unreadCount`·`lastMessage`가 갱신된다(2026-10-06) — 화면�
 | `ctas[].enabled` | Boolean | `구매제안 X` 로 바뀐 방에서는 우측 버튼이 false |
 | `orderId` | Long | 진행 중 거래가 있으면 |
 | `counterpartLastReadMessageId` | Long | 상대가 지금까지 읽은 마지막 메시지 id. 하나도 안 읽었으면 null — 내가 보낸 메시지 중 이 id 보다 큰 것만 "상대가 아직 안 읽음" 배지(`2958:71180`의 '1')를 그리면 됨(2026-10-06 추가). 방에 들어올 때 이 값으로 초기화하고, 그 뒤로는 `API-184`의 읽음 실시간 반영 push 로 갱신한다 |
+| `blocked` | Boolean | 상대와 차단 관계인지(양방향). true 면 메시지 입력창을 비활성 상태로 그린다(`2958:71293`, 2026-10-07 추가) |
 
 ```json
 {
@@ -4417,7 +4418,8 @@ push 로도 `unreadCount`·`lastMessage`가 갱신된다(2026-10-06) — 화면�
       }
     ],
     "orderId": 1,
-    "counterpartLastReadMessageId": 12
+    "counterpartLastReadMessageId": 12,
+    "blocked": false
   }
 }
 ```
