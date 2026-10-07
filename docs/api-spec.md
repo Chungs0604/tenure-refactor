@@ -4272,8 +4272,10 @@ push 로도 `unreadCount`·`lastMessage`가 갱신된다(2026-10-06) — 화면�
 | `unreadCount` | Integer | 배지 |
 | `item.brandName` | String | 'Levis / LVC 19…' |
 | `item.name` | String | — |
-| `item.coverImageUrl` | String | 목록 썸네일 |
 | `recentWornDate` | LocalDate | '최근 착용 1일 전' |
+
+목록 행(`2958:68949`)엔 상대 아바타와 브랜드·아이템명 텍스트만 있고 별도 아이템 썸네일이 없다
+(2026-10-07 재확인) — `item.coverImageUrl` 은 내려주지 않는다. 썸네일은 `API-182` 헤더에서만 쓴다.
 
 ```json
 {
@@ -4293,8 +4295,7 @@ push 로도 `unreadCount`·`lastMessage`가 갱신된다(2026-10-06) — 화면�
         "unreadCount": 1,
         "item": {
           "brandName": "<String>",
-          "name": "<String>",
-          "coverImageUrl": "https://cdn.tenure.app/item/2026/06/ab12.jpg"
+          "name": "<String>"
         },
         "recentWornDate": "2026-06-21"
       }

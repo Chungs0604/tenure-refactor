@@ -30,7 +30,7 @@ public class ChatRoomSummaryResponse {
 	private final Integer unreadCount;
 
 	@Schema(description = "아이템 요약")
-	private final ChatItemSummaryResponse item;
+	private final ChatListItemSummaryResponse item;
 
 	@Schema(description = "최근 착용일. 인증이 없으면 null", example = "2026-06-21")
 	private final LocalDate recentWornDate;

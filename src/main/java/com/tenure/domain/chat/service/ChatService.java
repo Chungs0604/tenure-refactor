@@ -533,7 +533,7 @@ public class ChatService {
 				previewOf(latest),
 				room.getLastMessageAt(),
 				(int) row.unreadCount(),
-				chatMapper.toItemSummaryResponse(item, fileStorage.toUrl(item.getCoverImageKey())),
+				chatMapper.toListItemSummaryResponse(item),
 				wornDates.get(item.getId()));
 	}
 
