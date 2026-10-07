@@ -36,6 +36,10 @@ import com.tenure.domain.listing.mapper.ListingMapper;
 import com.tenure.domain.listing.mapper.ListingMapperImpl;
 import com.tenure.domain.listing.repository.ItemListingRepository;
 import com.tenure.domain.listing.repository.ListingFeaturedPostRepository;
+import com.tenure.domain.notification.enums.NotificationCategory;
+import com.tenure.domain.notification.enums.NotificationSettingType;
+import com.tenure.domain.notification.enums.NotificationTargetType;
+import com.tenure.domain.notification.service.NotificationService;
 import com.tenure.domain.offer.service.OfferService;
 import com.tenure.domain.order.repository.TradeOrderRepository;
 import com.tenure.domain.payout.exception.PayoutErrorCode;
@@ -47,6 +51,7 @@ import com.tenure.domain.post.repository.PostRepository;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.user.enums.Gender;
 import com.tenure.domain.user.enums.UserGrade;
+import com.tenure.domain.wishlist.repository.WishlistRepository;
 import com.tenure.global.exception.CustomException;
 import com.tenure.global.exception.ErrorCode;
 import java.math.BigDecimal;
@@ -92,6 +97,8 @@ class ListingServiceTest {
 	@Mock private PostRepository postRepository;
 	@Mock private TradeOrderRepository tradeOrderRepository;
 	@Mock private OfferService offerService;
+	@Mock private WishlistRepository wishlistRepository;
+	@Mock private NotificationService notificationService;
 
 	// 매핑은 검증 대상이라 mock 이 아니라 실제 생성 구현을 넣는다
 	@Spy private ListingMapper listingMapper = new ListingMapperImpl();
@@ -227,6 +234,22 @@ class ListingServiceTest {
 					.isInstanceOf(CustomException.class)
 					.extracting(ListingServiceTest::errorCodeOf)
 					.isEqualTo(ItemErrorCode.ITEM_403);
+		}
+
+		@Test
+		@DisplayName("관심 등록하고 알림을 켠 사용자에게 판매 전환을 알린다")
+		void create_notifiesAlarmEnabledWishlisters() {
+			Item item = item();
+			givenSellable(item, UserGrade.RECORD);
+			User wishUser = user(900L, UserGrade.RECORD);
+			given(wishlistRepository.findAlarmEnabledUsersByItemId(ITEM_ID)).willReturn(List.of(wishUser));
+
+			listingService.create(USER_ID, ITEM_ID, request(320000, 5000, FeeBearer.BUYER));
+
+			verify(notificationService).notifyAll(
+					eq(List.of(wishUser)), eq(NotificationSettingType.WISHLIST_ITEM), eq(NotificationCategory.WISHLIST),
+					eq(item.getName()), eq("판매 중으로 전환됐어요."), eq(item.getCoverImageKey()),
+					eq(NotificationTargetType.ITEM), eq(ITEM_ID));
 		}
 	}
 
@@ -368,6 +391,37 @@ class ListingServiceTest {
 		}
 
 		@Test
+		@DisplayName("판매 완료로 바꾸면 관심 등록한 사람에게 알린다")
+		void change_toSold_notifiesWishlisters() {
+			Item item = item();
+			givenOwnedItem(item);
+			given(itemListingRepository.findOpenByItemId(ITEM_ID)).willReturn(Optional.empty());
+			User wishUser = user(900L, UserGrade.RECORD);
+			given(wishlistRepository.findAlarmEnabledUsersByItemId(ITEM_ID)).willReturn(List.of(wishUser));
+
+			listingService.changeSaleStatus(USER_ID, ITEM_ID, SaleStatus.SOLD);
+
+			verify(notificationService).notifyAll(
+					eq(List.of(wishUser)), eq(NotificationSettingType.WISHLIST_ITEM), eq(NotificationCategory.WISHLIST),
+					eq(item.getName()), eq("판매 완료됐어요."), eq(item.getCoverImageKey()),
+					eq(NotificationTargetType.ITEM), eq(ITEM_ID));
+		}
+
+		@Test
+		@DisplayName("미판매로 바꾸면 알리지 않는다")
+		void change_toNotForSale_doesNotNotify() {
+			Item item = item();
+			item.changeSaleStatus(SaleStatus.ON_SALE);
+			ItemListing listing = listing(item, seller(UserGrade.RECORD));
+			givenOwnedItem(item);
+			given(itemListingRepository.findOpenByItemId(ITEM_ID)).willReturn(Optional.of(listing));
+
+			listingService.changeSaleStatus(USER_ID, ITEM_ID, SaleStatus.NOT_FOR_SALE);
+
+			verify(notificationService, never()).notifyAll(any(), any(), any(), any(), any(), any(), any(), any());
+		}
+
+		@Test
 		@DisplayName("진행 중인 거래가 있으면 막는다 — 거래가 상태를 직접 옮긴다")
 		void change_inTrade_rejected() {
 			Item item = item();
@@ -438,6 +492,35 @@ class ListingServiceTest {
 					.isInstanceOf(CustomException.class)
 					.extracting(ListingServiceTest::errorCodeOf)
 					.isEqualTo(ListingErrorCode.LISTING_404);
+		}
+
+		@Test
+		@DisplayName("가격이 바뀌면 관심 등록한 사람에게 새 가격을 알린다")
+		void update_priceChanged_notifiesWishlistersWithNewPrice() {
+			Item item = item();
+			ItemListing listing = listing(item, seller(UserGrade.RECORD));
+			givenUpdatableListing(listing);
+			User wishUser = user(900L, UserGrade.RECORD);
+			given(wishlistRepository.findAlarmEnabledUsersByItemId(ITEM_ID)).willReturn(List.of(wishUser));
+
+			listingService.update(USER_ID, LISTING_ID, request(400000, 3000, FeeBearer.SPLIT));
+
+			verify(notificationService).notifyAll(
+					eq(List.of(wishUser)), eq(NotificationSettingType.WISHLIST_ITEM), eq(NotificationCategory.WISHLIST),
+					eq(item.getName()), eq("가격이 400,000원으로 변경됐어요."), eq(item.getCoverImageKey()),
+					eq(NotificationTargetType.ITEM), eq(ITEM_ID));
+		}
+
+		@Test
+		@DisplayName("가격이 안 바뀌면 알리지 않는다 — 배송비·설명만 바뀐 경우")
+		void update_priceUnchanged_doesNotNotify() {
+			Item item = item();
+			ItemListing listing = listing(item, seller(UserGrade.RECORD));
+			givenUpdatableListing(listing);
+
+			listingService.update(USER_ID, LISTING_ID, request(320000, 3000, FeeBearer.SPLIT));
+
+			verify(notificationService, never()).notifyAll(any(), any(), any(), any(), any(), any(), any(), any());
 		}
 	}
 
