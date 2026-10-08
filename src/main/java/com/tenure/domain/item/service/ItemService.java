@@ -23,8 +23,6 @@ import com.tenure.global.exception.CustomException;
 import com.tenure.global.logging.Loggable;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.EnumSet;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -56,10 +54,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class ItemService {
-
-	/** 끝난 거래. 이 둘만 아니면 진행 중으로 본다 — 중간에 상태가 늘어도 자동으로 포함된다 */
-	private static final Set<OrderStatus> FINISHED_ORDER_STATUSES =
-			EnumSet.of(OrderStatus.SETTLED, OrderStatus.CANCELED);
 
 	private final ItemRepository itemRepository;
 	private final ItemOwnershipRepository itemOwnershipRepository;
@@ -167,7 +161,7 @@ public class ItemService {
 		}
 
 		// 끝나지 않은 거래가 있어도 막음
-		if (tradeOrderRepository.existsInProgress(itemId, FINISHED_ORDER_STATUSES)) {
+		if (tradeOrderRepository.existsInProgress(itemId, OrderStatus.FINISHED)) {
 			log.info("진행 중인 거래가 있어 삭제할 수 없다 itemId={}", itemId);
 			throw new CustomException(ItemErrorCode.ITEM_409_ON_SALE);
 		}

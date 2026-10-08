@@ -3,6 +3,7 @@ package com.tenure.domain.user.controller;
 import com.tenure.domain.auth.exception.AuthErrorCode;
 import com.tenure.domain.user.dto.request.UserCreateRequest;
 import com.tenure.domain.user.dto.request.UserUpdateRequest;
+import com.tenure.domain.user.dto.request.UserWithdrawRequest;
 import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.AvailabilityResponse;
 import com.tenure.domain.user.dto.response.MyProfileResponse;
@@ -12,6 +13,7 @@ import com.tenure.domain.user.dto.response.UserUpdateResponse;
 import com.tenure.domain.user.enums.AgreementType;
 import com.tenure.domain.user.enums.Gender;
 import com.tenure.domain.user.enums.UserGrade;
+import com.tenure.domain.user.enums.WithdrawalReason;
 import com.tenure.domain.user.exception.UserErrorCode;
 import com.tenure.domain.user.service.UserService;
 import com.tenure.global.exception.CustomException;
@@ -36,6 +38,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -585,6 +588,75 @@ class UserControllerTest extends ControllerSliceTestSupport {
 	}
 
 	@Nested
+	@DisplayName("DELETE /api/v1/users/me")
+	class Withdraw {
+
+		@Test
+		@DisplayName("정상 요청이면 200 을 반환한다")
+		void withdraw_validRequest_returnsOk() throws Exception {
+			mvc.perform(delete(USERS_URL + "/me")
+							.with(authentication(principalOf(USER_ID)))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(withdrawRequest(WithdrawalReason.LOW_USAGE))))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.success").value(true));
+		}
+
+		@Test
+		@DisplayName("토큰이 없으면 401 이고 서비스를 호출하지 않는다")
+		void withdraw_noAuth_returnsUnauthorized() throws Exception {
+			mvc.perform(delete(USERS_URL + "/me")
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(withdrawRequest(WithdrawalReason.LOW_USAGE))))
+					.andExpect(status().isUnauthorized())
+					.andExpect(jsonPath("$.code").value("COMMON_401"));
+
+			verifyNoInteractions(userService);
+		}
+
+		@Test
+		@DisplayName("사유가 없으면 400 이고 서비스를 호출하지 않는다")
+		void withdraw_missingReason_returnsBadRequest() throws Exception {
+			mvc.perform(delete(USERS_URL + "/me")
+							.with(authentication(principalOf(USER_ID)))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content("{}"))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.code").value("COMMON_400"));
+
+			verifyNoInteractions(userService);
+		}
+
+		@Test
+		@DisplayName("이미 탈퇴한 계정이면 409 USER_409_WITHDRAWN 을 반환한다")
+		void withdraw_alreadyWithdrawn_returnsConflict() throws Exception {
+			willThrow(new CustomException(UserErrorCode.USER_409_WITHDRAWN))
+					.given(userService).withdraw(eq(USER_ID), any(UserWithdrawRequest.class));
+
+			mvc.perform(delete(USERS_URL + "/me")
+							.with(authentication(principalOf(USER_ID)))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(withdrawRequest(WithdrawalReason.LOW_USAGE))))
+					.andExpect(status().isConflict())
+					.andExpect(jsonPath("$.code").value("USER_409_WITHDRAWN"));
+		}
+
+		@Test
+		@DisplayName("진행 중인 거래가 있으면 409 USER_409_ACTIVE_TRADE 를 반환한다")
+		void withdraw_activeTrade_returnsConflict() throws Exception {
+			willThrow(new CustomException(UserErrorCode.USER_409_ACTIVE_TRADE))
+					.given(userService).withdraw(eq(USER_ID), any(UserWithdrawRequest.class));
+
+			mvc.perform(delete(USERS_URL + "/me")
+							.with(authentication(principalOf(USER_ID)))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(withdrawRequest(WithdrawalReason.LOW_USAGE))))
+					.andExpect(status().isConflict())
+					.andExpect(jsonPath("$.code").value("USER_409_ACTIVE_TRADE"));
+		}
+	}
+
+	@Nested
 	@DisplayName("공개되지 않은 경로")
 	class Protected {
 
@@ -627,6 +699,10 @@ class UserControllerTest extends ControllerSliceTestSupport {
 
 		override.accept(builder);
 		return builder.build();
+	}
+
+	private static UserWithdrawRequest withdrawRequest(WithdrawalReason reason) {
+		return UserWithdrawRequest.builder().reason(reason).build();
 	}
 
 	private static AvailabilityResponse available(boolean available) {

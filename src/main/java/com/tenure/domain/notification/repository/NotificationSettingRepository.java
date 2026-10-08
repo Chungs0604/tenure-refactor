@@ -6,6 +6,9 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface NotificationSettingRepository extends JpaRepository<NotificationSetting, Long> {
 
@@ -20,4 +23,9 @@ public interface NotificationSettingRepository extends JpaRepository<Notificatio
 
 	/** 다수에게 동시에 발행할 때(위시리스트 알림 등) 수신자 수만큼 쿼리가 늘지 않게 한 번에 조회함 */
 	List<NotificationSetting> findByUserIdInAndSettingType(Collection<Long> userIds, NotificationSettingType settingType);
+
+	/** 회원탈퇴 시 하드 삭제 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("delete from NotificationSetting s where s.user.id = :userId")
+	void deleteAllByUserId(@Param("userId") Long userId);
 }

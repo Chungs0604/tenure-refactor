@@ -46,6 +46,11 @@ public class JwtTokenProvider {
 		return build(userId, properties.accessExpiration(), null);
 	}
 
+	/** access token 최대 수명. 탈퇴 시 WithdrawnUserStore 표시의 TTL 로 그대로 쓴다. */
+	public Duration accessTokenTtl() {
+		return properties.accessExpiration();
+	}
+
 	/**
 	 * refresh token 을 발급한다. 함께 돌려주는 {@code tokenId} 를 저장소 키에 쓴다.
 	 *

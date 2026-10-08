@@ -29,4 +29,9 @@ public interface ShippingAddressRepository extends JpaRepository<ShippingAddress
 	@Query("update ShippingAddress a set a.isDefault = false "
 			+ "where a.user.id = :userId and a.isDefault = true")
 	int releaseDefault(@Param("userId") Long userId);
+
+	/** 회원탈퇴 시 하드 삭제. 스냅샷(purchase_offer·order_shipment)이 있어 참조가 끊기지 않음 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("delete from ShippingAddress a where a.user.id = :userId")
+	void deleteAllByUserId(@Param("userId") Long userId);
 }

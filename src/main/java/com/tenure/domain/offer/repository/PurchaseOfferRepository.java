@@ -61,14 +61,32 @@ public interface PurchaseOfferRepository extends JpaRepository<PurchaseOffer, Lo
 	 * 같은 아이템의 대기 중인 제안 id 목록. 일부러 엔티티가 아니라 id 만 돌려줌 — 엔티티로
 	 * 읽으면 그 순간 영속성 컨텍스트에 올라가, 뒤이어 잠금 재조회를 해도 Hibernate 가 이미 올라간
 	 * 인스턴스를 그대로 돌려주고 최신 값으로 덮어쓰지 않는다(잠금 자체는 걸리지만 읽은 값이 낡음).
-	 * 건마다 id 로만 다시 잠가야 재확인이 의미를 가짐
+	 * 건마다 id 로만 다시 잠가야 재확인이 의미를 가짐.
+	 *
+	 * <p>id 오름차순으로 고정함 — 여러 건을 한 트랜잭션에서 순서대로 잠그는 다른 경로
+	 * (findExpirableIds·findPendingIdsByBuyerOrSellerId)와 항상 같은 순서로 잠가야
+	 * 서로 반대 순서로 걸어 교착하는 일이 없음
 	 */
-	@Query("select o.id from PurchaseOffer o where o.item.id = :itemId and o.status = 'PENDING'")
+	@Query("select o.id from PurchaseOffer o where o.item.id = :itemId and o.status = 'PENDING' order by o.id")
 	List<Long> findPendingIdsByItemId(@Param("itemId") Long itemId);
 
 	/** 만료 배치 대상 id 목록. 이유는 findPendingIdsByItemId 와 같음 */
-	@Query("select o.id from PurchaseOffer o where o.status = 'PENDING' and o.expiresAt <= :now")
+	@Query("select o.id from PurchaseOffer o where o.status = 'PENDING' and o.expiresAt <= :now order by o.id")
 	List<Long> findExpirableIds(@Param("now") LocalDateTime now);
+
+	/**
+	 * 탈퇴 시 정리 대상(내가 보낸 것 + 받은 것을 합쳐) id 목록. 이유는 findPendingIdsByItemId 와
+	 * 같음.
+	 *
+	 * <p>보낸 것/받은 것을 따로 두 쿼리로 나누지 않고 하나로 합쳐 id 오름차순으로 잠금 — 두
+	 * 사용자가 서로에게 PENDING 제안을 보낸 채 동시에 탈퇴하면, 각자 "내가 보낸 것 먼저" 를
+	 * 따로 돌 경우 한쪽은 A→B, 다른 쪽은 B→A 순으로 잠가 교착한다. 하나의 정렬된 목록을 같이
+	 * 쓰면 둘 다 항상 같은 순서로 잠근다
+	 */
+	@Query("select o.id from PurchaseOffer o "
+			+ "where (o.buyer.id = :userId or o.seller.id = :userId) and o.status = 'PENDING' "
+			+ "order by o.id")
+	List<Long> findPendingIdsByBuyerOrSellerId(@Param("userId") Long userId);
 
 	/**
 	 * 판매 내역 대기중 탭 전용(읽기 전용). PENDING 은 24시간 만료 정책으로 묶여 있는 bound 된

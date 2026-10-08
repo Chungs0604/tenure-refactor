@@ -993,7 +993,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 `LOW_USAGE`(사용 빈도가 낮아요) · `HARD_TO_FIND_ITEM`(원하는 아이템을 찾기 어려워요) ·
 `USING_OTHER_SERVICE`(다른 서비스를 이용할 예정이에요) · `UNSATISFIED_TRADE`(거래 경험이 만족스럽지 않았어요).
 
-**즉시 익명화**한다 — `email` 은 `withdrawn_{id}@deleted.local`, `phone`·`realName` 은 마스크, `nickname` 은 `탈퇴한사용자_{id}` 로 치환하고 배송지·정산계좌·검색기록·알림을 하드 삭제한다. `user` 행과 FK 는 유지되어 `Tenure 기록 기준`의 이전 소유자 표시가 남는다(`DEC-004`).
+**즉시 익명화**한다 — `email` 은 `withdrawn_{id}@deleted.local`, `phone`·`realName` 은 마스크, `nickname` 은 `탈퇴한사용자_{id}` 로 치환하고 배송지·정산계좌·검색기록·알림·위시리스트를 하드 삭제한다. `user` 행과 FK 는 유지되어 `Tenure 기록 기준`의 이전 소유자 표시가 남는다(`DEC-004`).
 
 **요청 본문**
 

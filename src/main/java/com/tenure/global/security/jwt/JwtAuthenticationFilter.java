@@ -30,9 +30,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	private static final String PREFIX = "Bearer ";
 
 	private final JwtTokenProvider tokenProvider;
+	private final WithdrawnUserStore withdrawnUserStore;
 
-	public JwtAuthenticationFilter(JwtTokenProvider tokenProvider) {
+	public JwtAuthenticationFilter(JwtTokenProvider tokenProvider, WithdrawnUserStore withdrawnUserStore) {
 		this.tokenProvider = tokenProvider;
+		this.withdrawnUserStore = withdrawnUserStore;
 	}
 
 	@Override
@@ -43,9 +45,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 			Claims claims = tokenProvider.parseOrNull(token);
 			// refresh token 은 인증에 쓰지 않는다. tid 클레임이 있으면 refresh 다
 			if (claims != null && tokenProvider.getTokenId(claims) == null) {
-				AuthUser principal = new AuthUser(tokenProvider.getUserId(claims));
-				SecurityContextHolder.getContext().setAuthentication(
-						new UsernamePasswordAuthenticationToken(principal, null, List.of()));
+				Long userId = tokenProvider.getUserId(claims);
+				// 탈퇴 직후에도 서명·만료는 멀쩡해 토큰 자체로는 걸러지지 않는다 — 탈퇴 시점에
+				// 남겨 둔 Redis 표시로 자연 만료 전까지의 구멍을 막는다
+				if (!withdrawnUserStore.isWithdrawn(userId)) {
+					AuthUser principal = new AuthUser(userId);
+					SecurityContextHolder.getContext().setAuthentication(
+							new UsernamePasswordAuthenticationToken(principal, null, List.of()));
+				}
 			}
 		}
 		filterChain.doFilter(request, response);

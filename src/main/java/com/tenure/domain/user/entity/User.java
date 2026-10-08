@@ -34,6 +34,16 @@ import lombok.NoArgsConstructor;
 @Builder(access = AccessLevel.PRIVATE)
 public class User extends BaseEntity {
 
+	/** 탈퇴 시 email 치환 형식. id 가 들어가 유니크 제약을 계속 지킴 */
+	private static final String WITHDRAWN_EMAIL_FORMAT = "withdrawn_%d@deleted.local";
+
+	/** 탈퇴 시 nickname 치환 형식. 저장값이며, 화면 표시용 '탈퇴한 사용자'는 UserMapper 가 따로 덮어씀 */
+	private static final String WITHDRAWN_NICKNAME_FORMAT = "탈퇴한사용자_%d";
+
+	/** 탈퇴 시 phone·realName 치환용 고정 마스크 값. 화면에 노출되지 않음 */
+	private static final String WITHDRAWN_PHONE = "0000000000";
+	private static final String WITHDRAWN_REAL_NAME = "탈퇴회원";
+
 	/** PK 관례 */
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -208,6 +218,32 @@ public class User extends BaseEntity {
 
 	public boolean isRecordGrade() {
 		return grade == UserGrade.RECORD;
+	}
+
+	/**
+	 * 회원탈퇴 즉시 익명화. 행은 지우지 않음 — 거래 이력에 이전 소유자 표시가 계속 남아야 해서
+	 * FK 를 끊지 않고 개인정보만 치환함. 화면 표시용 '탈퇴한 사용자'는 UserMapper 가
+	 * isWithdrawn() 으로 따로 덮어씀
+	 */
+	public void anonymize(LocalDateTime now) {
+		// 로그인·식별에 쓰던 값을 전부 치환함 — email 은 id 가 들어가 유니크 제약이 그대로 지켜짐
+		this.email = WITHDRAWN_EMAIL_FORMAT.formatted(id);
+		this.phone = WITHDRAWN_PHONE;
+		this.realName = WITHDRAWN_REAL_NAME;
+		this.nickname = WITHDRAWN_NICKNAME_FORMAT.formatted(id);
+
+		// 프로필 노출 정보는 값 자체를 지움 — 치환이 아니라 null 이라 응답에서 바로 빠짐
+		this.profileImageKey = null;
+		this.gender = null;
+		this.heightCm = null;
+		this.weightKg = null;
+
+		// 소셜 제공자 식별자도 개인정보라 끊고 LOCAL 로 되돌림. 탈퇴 계정은 어차피 재로그인이 안 됨
+		this.provider = UserProvider.LOCAL;
+		this.providerId = null;
+
+		this.status = UserStatus.WITHDRAWN;
+		this.anonymizedAt = now;
 	}
 
 }

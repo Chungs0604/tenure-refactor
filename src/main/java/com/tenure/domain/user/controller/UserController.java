@@ -2,6 +2,7 @@ package com.tenure.domain.user.controller;
 
 import com.tenure.domain.user.dto.request.UserCreateRequest;
 import com.tenure.domain.user.dto.request.UserUpdateRequest;
+import com.tenure.domain.user.dto.request.UserWithdrawRequest;
 import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.AvailabilityResponse;
 import com.tenure.domain.user.dto.response.MyProfileResponse;
@@ -14,6 +15,7 @@ import com.tenure.global.security.AuthUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -97,5 +99,16 @@ public class UserController implements UserApi {
 	) {
 		UserProfileResponse response = userService.getUserProfile(authUser.id(), userId);
 		return ResponseEntity.ok(BaseResponse.success(response));
+	}
+
+	// 회원탈퇴
+	@Override
+	@DeleteMapping("/me")
+	public ResponseEntity<BaseResponse<Void>> withdraw(
+			@AuthenticationPrincipal AuthUser authUser,
+			@RequestBody UserWithdrawRequest request
+	) {
+		userService.withdraw(authUser.id(), request);
+		return ResponseEntity.ok(BaseResponse.success());
 	}
 }

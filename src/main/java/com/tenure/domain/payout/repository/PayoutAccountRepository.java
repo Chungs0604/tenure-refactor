@@ -28,4 +28,9 @@ public interface PayoutAccountRepository extends JpaRepository<PayoutAccount, Lo
 	@Query("update PayoutAccount p set p.isDefault = false "
 			+ "where p.user.id = :userId and p.isDefault = true")
 	int releaseDefault(@Param("userId") Long userId);
+
+	/** 회원탈퇴 시 하드 삭제. 정산 스냅샷(settlement)이 있어 참조가 끊기지 않음 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("delete from PayoutAccount p where p.user.id = :userId")
+	void deleteAllByUserId(@Param("userId") Long userId);
 }

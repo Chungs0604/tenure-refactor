@@ -40,4 +40,12 @@ public class RecentViewStore {
 		// 오래된 쪽(score 낮은 쪽)을 잘라낸다. 음수 순위라 건수가 상한 이하면 아무것도 지우지 않는다
 		redis.opsForZSet().removeRange(key, 0, -(MAX_SIZE + 1));
 	}
+
+	/** 회원탈퇴 시 이 사용자의 열람 이력을 전부 지움. 대상 유형마다 키가 갈려 있어 하나씩 지움 */
+	public void deleteAll(Long userId) {
+		// 유형별로 키가 따로 있어 한 번에 지우는 명령이 없음 — 유형 수만큼 반복함
+		for (RecentViewTargetType targetType : RecentViewTargetType.values()) {
+			redis.delete(KEY.formatted(userId, targetType));
+		}
+	}
 }

@@ -48,18 +48,22 @@ OOTD 게시 ──(태그)──▶ 아이템 실착 이력 축적 ──▶ 판
 
 ## 4. 구현 현황
 
-**확인 기준: 컨트롤러 존재 여부, 2026-10-07 재확인.** 이 섹션은 기능이 추가될 때마다 바로 낡는다 —
+**확인 기준: 컨트롤러 존재 여부, 2026-10-08 재확인.** 이 섹션은 기능이 추가될 때마다 바로 낡는다 —
 도메인을 새로 시작하기 전에 `find src/main/java/com/tenure/domain -iname "*Controller.java"`로 먼저
-재확인할 것.
+재확인할 것. **예외: `payment`는 설계상 단독 컨트롤러를 두지 않고 `offer`/`order` 플로우에 내장되므로
+이 기준에 걸리지 않는다 — 구현 여부는 `PaymentService`(승인·확정·해제·환불) 존재로 판단한다.**
 
 - **완료**: `auth` · `user` · `address` · `payout` · `category` · `post` · `item` · `listing` ·
-  `offer` · `order` · `chat` · `notification`
-- **미착수(엔티티만 존재)**: `payment`(단독 컨트롤러 없음 — `offer`/`order` 플로우에 내장될 예정) ·
-  `follow` · `search` · `report` · `wishlist` · `block` · `settlement`
+  `offer` · `order` · `payment`(offer/order 플로우에 내장) · `chat` · `notification`
+- **미착수(엔티티만 존재)**: `follow` · `search` · `report` · `wishlist` · `block` · `settlement`
 
 `notification` 은 발행(`notify`/`notifyAll`)·조회·읽음 처리·수신 설정까지 전부 구현됐다.
 `listing` 이 가격 변경·판매 완료·판매 중 재전환 때 관심 등록자에게 발행하는 훅도 함께 들어갔다.
 `follow` 알림은 `follow` 도메인 자체가 미구현이라 같이 빠졌다 — `follow` 구현 시 채운다.
+
+회원탈퇴(`API-016`)도 구현 완료다(2026-10-08, `feat/user-withdrawal`). 즉시 익명화 +
+대기 중 제안 정리(`OfferService.cancelAndRejectPendingForWithdrawal`) + 연관 데이터(배송지·정산계좌·
+검색기록·알림·알림설정) 하드 삭제로 끝난다. 처리 규칙 전체는 `erd.md` §8 DEC-004 참고.
 
 다음 착수 후보와 선결 사항은 `docs/design-audit.md` 끝의 🚦 절을 먼저 확인한다 — `listing` 때도
 `DEC-005` 같은 선결 결정이 있었다.
@@ -76,9 +80,6 @@ OOTD 게시 ──(태그)──▶ 아이템 실착 이력 축적 ──▶ 판
 - **공지사항 · 문의하기** — 관리자 기능이 범위 밖이라 쓸 주체·답할 주체가 없다. 정적 페이지로 처리
 - **탈퇴 후 재가입 시 제안 기회 초기화 방지** — 막으려면 탈퇴자 식별 정보를 보관해야 해 즉시 익명화
   원칙과 충돌한다. 알고 넘어간다
-- **회원탈퇴(`API-016`) 구현**은 `offer`·`payment`·`notification` 도메인 완료 후로 미뤘다. `offer`·
-  `notification` 은 완료됐고 `payment` 만 남았다. 탈퇴를 막지 않고 대기 중 제안만 정리하는
-  방향으로 확정(처리 규칙은 해당 메모리 참고)
 - **미결**: 소셜 로그인(구글·네이버) 설계 반영 여부, 인증번호 재전송 정책(쿨다운·일일 한도),
   카테고리별 사이즈 체계 매핑 — `erd.md` §8 Q6·Q7, `design-audit.md` Q-1·Q-2
 

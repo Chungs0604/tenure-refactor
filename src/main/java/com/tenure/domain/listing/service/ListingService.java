@@ -36,10 +36,8 @@ import com.tenure.global.exception.CustomException;
 import com.tenure.global.logging.Loggable;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -67,10 +65,6 @@ import com.tenure.domain.item.service.ItemFormApplier;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class ListingService {
-
-	/** 끝난 거래. 이 둘만 아니면 진행 중으로 본다 */
-	private static final Set<OrderStatus> FINISHED_ORDER_STATUSES =
-			EnumSet.of(OrderStatus.SETTLED, OrderStatus.CANCELED);
 
 	/** 대표 OOTD 개수. 화면 문구가 '대표 OOTD (1개 이상)' 과 '최대 5개' 다 */
 	private static final int FEATURED_MIN = 1;
@@ -213,7 +207,7 @@ public class ListingService {
 		Item item = findOwnedItemForUpdate(userId, itemId);
 
 		// 거래가 진행중이면 상태 변경 불가. 수락 전 PENDING 제안은 거래가 아직 없어 여기 안 걸림
-		if (tradeOrderRepository.existsInProgress(itemId, FINISHED_ORDER_STATUSES)) {
+		if (tradeOrderRepository.existsInProgress(itemId, OrderStatus.FINISHED)) {
 			log.info("진행 중인 거래가 있어 상태를 바꿀 수 없다 itemId={}", itemId);
 			throw new CustomException(ListingErrorCode.LISTING_409_IN_TRADE);
 		}
@@ -233,6 +227,36 @@ public class ListingService {
 		}
 
 		return listingMapper.toSaleStatusResponse(item);
+	}
+
+	/**
+	 * 회원탈퇴 시 판매중 아이템 정리. changeSaleStatus 와 같은 일(아이템 잠금 → 등록 닫기
+	 * → 대기 제안 정리 → 미판매 전환)을 여러 아이템에 반복함. 탈퇴 트랜잭션은 본인 확인이
+	 * 끝난 상태라 소유자 체크는 안 함.
+	 *
+	 * 진행중 거래 체크도 안 함 — ON_SALE 이면서 거래가 진행중인 경우는 없음(수락 시 거래
+	 * 생성과 SOLD 전환이 같이 일어남). id 만 가볍게 읽고 건마다 재잠금해 확인하므로, 그 사이
+	 * 다른 제안이 먼저 수락돼 SOLD 로 바뀐 아이템은 건너뜀
+	 */
+	@Transactional
+	@Loggable("탈퇴에 따른 판매중 아이템 정리")
+	public void closeOnSaleItemsForWithdrawal(Long userId) {
+		LocalDateTime now = LocalDateTime.now();
+
+		for (Long itemId : itemRepository.findOnSaleItemIdsByCurrentOwner(userId)) {
+			itemRepository.findActiveForUpdate(itemId).ifPresent(item -> {
+				if (item.getSaleStatus() != SaleStatus.ON_SALE) {
+					return;
+				}
+
+				itemListingRepository.findOpenByItemId(itemId)
+						.ifPresent(listing -> listing.close(now));
+
+				offerService.cancelPendingForDelist(itemId);
+
+				item.changeSaleStatus(SaleStatus.NOT_FOR_SALE);
+			});
+		}
 	}
 
 	/**

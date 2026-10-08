@@ -23,4 +23,9 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 			@Param("category") NotificationCategory category,
 			@Param("now") LocalDateTime now
 	);
+
+	/** 회원탈퇴 시 하드 삭제 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("delete from Notification n where n.user.id = :userId")
+	void deleteAllByUserId(@Param("userId") Long userId);
 }

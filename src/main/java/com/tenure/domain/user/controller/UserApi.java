@@ -2,6 +2,7 @@ package com.tenure.domain.user.controller;
 
 import com.tenure.domain.user.dto.request.UserCreateRequest;
 import com.tenure.domain.user.dto.request.UserUpdateRequest;
+import com.tenure.domain.user.dto.request.UserWithdrawRequest;
 import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.AvailabilityResponse;
 import com.tenure.domain.user.dto.response.MyProfileResponse;
@@ -100,6 +101,17 @@ public interface UserApi {
 	ResponseEntity<BaseResponse<UserProfileResponse>> getUserProfile(
 			@Parameter(hidden = true) AuthUser authUser,
 			@Parameter(description = "조회할 사용자 id", example = "1") Long userId);
+
+	@Operation(summary = "회원탈퇴",
+			description = "사유 수집 + 즉시 익명화. 탈퇴를 막지 않고 대기 중 제안을 정리한 뒤 "
+					+ "배송지·정산계좌·검색기록·알림을 하드 삭제한다. 진행 중인 거래가 있으면 막는다.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "탈퇴 성공"),
+			@ApiResponse(responseCode = "409", description = "USER_409_WITHDRAWN · USER_409_ACTIVE_TRADE")
+	})
+	ResponseEntity<BaseResponse<Void>> withdraw(
+			@Parameter(hidden = true) AuthUser authUser,
+			@Valid UserWithdrawRequest request);
 }
 
 

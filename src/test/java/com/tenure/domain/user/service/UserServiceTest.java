@@ -8,10 +8,18 @@ import com.tenure.domain.auth.service.AuthService;
 import com.tenure.domain.block.repository.UserBlockRepository;
 import com.tenure.domain.follow.repository.FollowRepository;
 import com.tenure.domain.item.repository.ItemRepository;
+import com.tenure.domain.listing.service.ListingService;
+import com.tenure.domain.notification.repository.NotificationRepository;
+import com.tenure.domain.notification.repository.NotificationSettingRepository;
+import com.tenure.domain.offer.service.OfferService;
+import com.tenure.domain.order.repository.TradeOrderRepository;
+import com.tenure.domain.payout.repository.PayoutAccountRepository;
 import com.tenure.domain.search.enums.RecentViewTargetType;
+import com.tenure.domain.search.repository.SearchHistoryRepository;
 import com.tenure.domain.search.store.RecentViewStore;
 import com.tenure.domain.user.dto.request.UserCreateRequest;
 import com.tenure.domain.user.dto.request.UserUpdateRequest;
+import com.tenure.domain.user.dto.request.UserWithdrawRequest;
 import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.AvailabilityResponse;
 import com.tenure.domain.user.dto.response.MyProfileResponse;
@@ -20,18 +28,22 @@ import com.tenure.domain.user.dto.response.UserProfileResponse;
 import com.tenure.domain.user.dto.response.UserUpdateResponse;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.user.entity.UserAgreement;
+import com.tenure.domain.user.entity.UserWithdrawal;
 import com.tenure.domain.user.enums.AgreementType;
 import com.tenure.domain.user.enums.Gender;
 import com.tenure.domain.user.enums.UserGrade;
 import com.tenure.domain.user.enums.UserStatus;
+import com.tenure.domain.user.enums.WithdrawalReason;
 import com.tenure.domain.user.exception.UserErrorCode;
 import com.tenure.domain.user.mapper.UserMapper;
 import com.tenure.domain.user.repository.UserAgreementRepository;
 import com.tenure.domain.user.repository.UserRepository;
+import com.tenure.domain.user.repository.UserWithdrawalRepository;
 import com.tenure.domain.wishlist.repository.WishlistRepository;
 import com.tenure.global.exception.CustomException;
 import com.tenure.global.exception.ErrorCode;
 import com.tenure.global.security.jwt.JwtTokenProvider;
+import com.tenure.global.security.jwt.WithdrawnUserStore;
 import com.tenure.global.security.refresh.RefreshTokenStore;
 import com.tenure.global.storage.FileStorage;
 import java.time.Duration;
@@ -47,6 +59,7 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
@@ -57,8 +70,10 @@ import org.springframework.test.util.ReflectionTestUtils;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -78,15 +93,24 @@ class UserServiceTest {
 
 	@Mock private UserRepository userRepository;
 	@Mock private UserAgreementRepository userAgreementRepository;
+	@Mock private UserWithdrawalRepository userWithdrawalRepository;
 	@Mock private ShippingAddressRepository shippingAddressRepository;
 	@Mock private ItemRepository itemRepository;
 	@Mock private WishlistRepository wishlistRepository;
 	@Mock private FollowRepository followRepository;
 	@Mock private UserBlockRepository userBlockRepository;
+	@Mock private TradeOrderRepository tradeOrderRepository;
+	@Mock private PayoutAccountRepository payoutAccountRepository;
+	@Mock private SearchHistoryRepository searchHistoryRepository;
+	@Mock private NotificationRepository notificationRepository;
+	@Mock private NotificationSettingRepository notificationSettingRepository;
+	@Mock private OfferService offerService;
+	@Mock private ListingService listingService;
 	@Mock private AuthService authService;
 	@Mock private PasswordEncoder passwordEncoder;
 	@Mock private JwtTokenProvider jwtTokenProvider;
 	@Mock private RefreshTokenStore refreshTokenStore;
+	@Mock private WithdrawnUserStore withdrawnUserStore;
 	@Mock private RecentViewStore recentViewStore;
 	@Mock private FileStorage fileStorage;
 
@@ -98,6 +122,7 @@ class UserServiceTest {
 	@Captor private ArgumentCaptor<User> userCaptor;
 	@Captor private ArgumentCaptor<UserAgreement> agreementCaptor;
 	@Captor private ArgumentCaptor<ShippingAddress> addressCaptor;
+	@Captor private ArgumentCaptor<UserWithdrawal> withdrawalCaptor;
 
 	@Nested
 	@DisplayName("중복 확인")
@@ -571,6 +596,186 @@ class UserServiceTest {
 			given(itemRepository.countOwnedItem(USER_ID)).willReturn(16);
 			given(fileStorage.toUrl(IMAGE_KEY)).willReturn(IMAGE_URL);
 		}
+	}
+
+	@Nested
+	@DisplayName("회원탈퇴")
+	class Withdraw {
+
+		@Test
+		@DisplayName("정상 요청이면 즉시 익명화하고 탈퇴 사유를 기록한다")
+		void withdraw_validRequest_anonymizesUser() {
+			User user = profileUser();
+			givenWithdrawable(user);
+
+			userService.withdraw(USER_ID, withdrawRequest(WithdrawalReason.LOW_USAGE));
+
+			assertThat(user.isWithdrawn()).isTrue();
+			assertThat(user.getEmail()).isEqualTo("withdrawn_" + USER_ID + "@deleted.local");
+			assertThat(user.getNickname()).isEqualTo("탈퇴한사용자_" + USER_ID);
+			assertThat(user.getProfileImageKey()).isNull();
+			assertThat(user.getGender()).isNull();
+			assertThat(user.getHeightCm()).isNull();
+			assertThat(user.getWeightKg()).isNull();
+			assertThat(user.getProviderId()).isNull();
+
+			verify(userWithdrawalRepository).save(withdrawalCaptor.capture());
+			assertThat(withdrawalCaptor.getValue().getReason()).isEqualTo(WithdrawalReason.LOW_USAGE);
+			assertThat(withdrawalCaptor.getValue().getUser()).isSameAs(user);
+		}
+
+		@Test
+		@DisplayName("보낸 대기 제안 정리와 연관 데이터 하드 삭제를 함께 한다")
+		void withdraw_validRequest_cleansUpRelatedData() {
+			User user = profileUser();
+			givenWithdrawable(user);
+
+			userService.withdraw(USER_ID, withdrawRequest(WithdrawalReason.LOW_USAGE));
+
+			verify(listingService).closeOnSaleItemsForWithdrawal(USER_ID);
+			verify(offerService).cancelAndRejectPendingForWithdrawal(USER_ID);
+			verify(shippingAddressRepository).deleteAllByUserId(USER_ID);
+			verify(payoutAccountRepository).deleteAllByUserId(USER_ID);
+			verify(searchHistoryRepository).deleteAllByUserId(USER_ID);
+			verify(notificationRepository).deleteAllByUserId(USER_ID);
+			verify(notificationSettingRepository).deleteAllByUserId(USER_ID);
+			verify(wishlistRepository).deleteAllByUserId(USER_ID);
+			verify(recentViewStore).deleteAll(USER_ID);
+			verify(refreshTokenStore).revokeAll(USER_ID);
+		}
+
+		@Test
+		@DisplayName("access token 도 탈퇴 시점에 Redis 에 표시해 자연 만료 전까지 막는다")
+		void withdraw_validRequest_marksAccessTokenWithdrawn() {
+			User user = profileUser();
+			givenWithdrawable(user);
+			Duration accessTtl = Duration.ofMinutes(30);
+			given(jwtTokenProvider.accessTokenTtl()).willReturn(accessTtl);
+
+			userService.withdraw(USER_ID, withdrawRequest(WithdrawalReason.LOW_USAGE));
+
+			verify(withdrawnUserStore).markWithdrawn(USER_ID, accessTtl);
+		}
+
+		@Test
+		@DisplayName("판매중 아이템 정리 → 제안 정리 → User 잠금 순서를 지킨다(item → offer → user 전역 잠금 순서)")
+		void withdraw_validRequest_followsItemThenOfferThenUserLockOrder() {
+			User user = profileUser();
+			givenWithdrawable(user);
+
+			userService.withdraw(USER_ID, withdrawRequest(WithdrawalReason.LOW_USAGE));
+
+			InOrder order = inOrder(listingService, offerService, userRepository);
+			order.verify(listingService).closeOnSaleItemsForWithdrawal(USER_ID);
+			order.verify(offerService).cancelAndRejectPendingForWithdrawal(USER_ID);
+			order.verify(userRepository).findByIdForUpdate(USER_ID);
+		}
+
+		@Test
+		@DisplayName("이미 탈퇴한 계정이면 USER_409_WITHDRAWN 이고 탈퇴 사유를 남기지 않는다")
+		void withdraw_alreadyWithdrawn_throwsConflict() {
+			User user = profileUser();
+			ReflectionTestUtils.setField(user, "status", UserStatus.WITHDRAWN);
+			given(tradeOrderRepository.existsInProgressByUser(eq(USER_ID), any())).willReturn(false);
+			given(offerService.cancelAndRejectPendingForWithdrawal(USER_ID)).willReturn(false);
+			given(userRepository.findByIdForUpdate(USER_ID)).willReturn(Optional.of(user));
+
+			assertThatThrownBy(() -> userService.withdraw(USER_ID, withdrawRequest(WithdrawalReason.LOW_USAGE)))
+					.isInstanceOf(CustomException.class)
+					.extracting(UserServiceTest::errorCodeOf)
+					.isEqualTo(UserErrorCode.USER_409_WITHDRAWN);
+
+			verifyNoInteractions(userWithdrawalRepository, withdrawnUserStore);
+		}
+
+		@Test
+		@DisplayName("진행 중인 거래가 있으면 USER_409_ACTIVE_TRADE 이고 아무것도 정리하지 않는다")
+		void withdraw_activeTrade_throwsConflict() {
+			given(tradeOrderRepository.existsInProgressByUser(eq(USER_ID), any())).willReturn(true);
+
+			assertThatThrownBy(() -> userService.withdraw(USER_ID, withdrawRequest(WithdrawalReason.LOW_USAGE)))
+					.isInstanceOf(CustomException.class)
+					.extracting(UserServiceTest::errorCodeOf)
+					.isEqualTo(UserErrorCode.USER_409_ACTIVE_TRADE);
+
+			verifyNoInteractions(listingService, offerService, userRepository, userWithdrawalRepository, withdrawnUserStore);
+		}
+
+		@Test
+		@DisplayName("제안 정리 도중 상대가 먼저 수락해 거래가 생겼으면 USER_409_ACTIVE_TRADE 이고 익명화하지 않는다")
+		void withdraw_concurrentTradeDuringCleanup_throwsConflict() {
+			given(tradeOrderRepository.existsInProgressByUser(eq(USER_ID), any())).willReturn(false);
+			given(offerService.cancelAndRejectPendingForWithdrawal(USER_ID)).willReturn(true);
+
+			assertThatThrownBy(() -> userService.withdraw(USER_ID, withdrawRequest(WithdrawalReason.LOW_USAGE)))
+					.isInstanceOf(CustomException.class)
+					.extracting(UserServiceTest::errorCodeOf)
+					.isEqualTo(UserErrorCode.USER_409_ACTIVE_TRADE);
+
+			// 판매중 아이템 정리는 제안 정리보다 먼저라 이미 끝난 상태임
+			verify(listingService).closeOnSaleItemsForWithdrawal(USER_ID);
+			verifyNoInteractions(userRepository, userWithdrawalRepository, shippingAddressRepository,
+					refreshTokenStore, withdrawnUserStore);
+		}
+
+		@ParameterizedTest(name = "{0} 사유로도 정상 처리된다")
+		@EnumSource(WithdrawalReason.class)
+		@DisplayName("탈퇴 사유 4종 모두 보낸 그대로 기록한다")
+		void withdraw_everyReason_recordsGivenReason(WithdrawalReason reason) {
+			User user = profileUser();
+			givenWithdrawable(user);
+
+			userService.withdraw(USER_ID, withdrawRequest(reason));
+
+			verify(userWithdrawalRepository).save(withdrawalCaptor.capture());
+			assertThat(withdrawalCaptor.getValue().getReason()).isEqualTo(reason);
+		}
+
+		@Test
+		@DisplayName("존재하지 않는 사용자면 USER_404 이고 탈퇴 사유를 남기지 않는다")
+		void withdraw_unknownUser_throwsNotFound() {
+			given(tradeOrderRepository.existsInProgressByUser(eq(USER_ID), any())).willReturn(false);
+			given(offerService.cancelAndRejectPendingForWithdrawal(USER_ID)).willReturn(false);
+			given(userRepository.findByIdForUpdate(USER_ID)).willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> userService.withdraw(USER_ID, withdrawRequest(WithdrawalReason.LOW_USAGE)))
+					.isInstanceOf(CustomException.class)
+					.extracting(UserServiceTest::errorCodeOf)
+					.isEqualTo(UserErrorCode.USER_404);
+
+			verifyNoInteractions(userWithdrawalRepository, withdrawnUserStore);
+		}
+
+		@Test
+		@DisplayName("진행 중인 거래 때문에 막혔다가 거래가 끝난 뒤 재시도하면 성공한다")
+		void withdraw_retryAfterActiveTradeCleared_succeeds() {
+			given(tradeOrderRepository.existsInProgressByUser(eq(USER_ID), any())).willReturn(true);
+
+			assertThatThrownBy(() -> userService.withdraw(USER_ID, withdrawRequest(WithdrawalReason.LOW_USAGE)))
+					.isInstanceOf(CustomException.class)
+					.extracting(UserServiceTest::errorCodeOf)
+					.isEqualTo(UserErrorCode.USER_409_ACTIVE_TRADE);
+
+			// 거래가 끝나 재시도 시점엔 더 이상 활성 거래가 없는 상황을 다시 세팅한다
+			User user = profileUser();
+			givenWithdrawable(user);
+
+			userService.withdraw(USER_ID, withdrawRequest(WithdrawalReason.LOW_USAGE));
+
+			assertThat(user.isWithdrawn()).isTrue();
+		}
+
+		private void givenWithdrawable(User user) {
+			given(tradeOrderRepository.existsInProgressByUser(eq(USER_ID), any())).willReturn(false);
+			given(offerService.cancelAndRejectPendingForWithdrawal(USER_ID)).willReturn(false);
+			given(userRepository.findByIdForUpdate(USER_ID)).willReturn(Optional.of(user));
+		}
+	}
+
+	private static UserWithdrawRequest withdrawRequest(WithdrawalReason reason) {
+		return UserWithdrawRequest.builder()
+				.reason(reason)
+				.build();
 	}
 
 	/** 조회용 고정 사용자. 카운터 컬럼은 가입 시 0 이라 화면 예시 값으로 채워 둔다. */
