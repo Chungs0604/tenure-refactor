@@ -1,5 +1,9 @@
 package com.tenure.domain.order.enums;
 
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.Set;
+
 /**
  * 거래 상세 '거래 진행 단계' 설명 문구에서 순서 확정 + 타임라인 체크 5단계(25.05.26 결제완료 → 25.05.28 상품발송 → 25.06.01 배송완료 → 25.06.02 구매…
  */
@@ -20,5 +24,9 @@ public enum OrderStatus {
 	SETTLED,
 	/** 거래 취소 */
 	CANCELED;
+
+	/** 끝난 거래. 이 둘만 아니면 진행 중으로 봄 — 중간에 상태가 늘어도 자동으로 포함됨 */
+	public static final Set<OrderStatus> FINISHED =
+			Collections.unmodifiableSet(EnumSet.of(SETTLED, CANCELED));
 
 }

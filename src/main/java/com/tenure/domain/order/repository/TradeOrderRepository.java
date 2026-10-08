@@ -43,6 +43,18 @@ public interface TradeOrderRepository extends JpaRepository<TradeOrder, Long>, T
 			@Param("finishedStatuses") Collection<OrderStatus> finishedStatuses
 	);
 
+	/**
+	 * 아직 끝나지 않은 거래가 있는지 — 사용자 기준(구매자·판매자 어느 쪽이든). 회원탈퇴를 막는 판정에 씀.
+	 * existsInProgress 와 같은 이유로 종료 상태만 제외함
+	 */
+	@Query("select count(o) > 0 from TradeOrder o " +
+			"where (o.buyer.id = :userId or o.seller.id = :userId) " +
+			"and o.status not in :finishedStatuses")
+	boolean existsInProgressByUser(
+			@Param("userId") Long userId,
+			@Param("finishedStatuses") Collection<OrderStatus> finishedStatuses
+	);
+
 	/** 자동 구매 확정 배치 대상 id 목록. id 만 돌려주는 이유는 PurchaseOfferRepository 와 같다 */
 	@Query("select o.id from TradeOrder o where o.status = 'DELIVERED' and o.autoConfirmAt <= :now")
 	List<Long> findAutoConfirmableIds(@Param("now") LocalDateTime now);

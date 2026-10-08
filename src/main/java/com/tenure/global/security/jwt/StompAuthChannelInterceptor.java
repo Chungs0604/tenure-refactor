@@ -26,6 +26,7 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
 	private static final String PREFIX = "Bearer ";
 
 	private final JwtTokenProvider tokenProvider;
+	private final WithdrawnUserStore withdrawnUserStore;
 
 	@Override
 	public Message<?> preSend(Message<?> message, MessageChannel channel) {
@@ -57,7 +58,14 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
 			throw new MessagingException("인증되지 않은 연결입니다.");
 		}
 
-		return new StompPrincipal(tokenProvider.getUserId(claims));
+		Long userId = tokenProvider.getUserId(claims);
+
+		// JwtAuthenticationFilter 와 동일 기준 — 탈퇴 직후에도 서명·만료만으론 안 걸러진다
+		if (withdrawnUserStore.isWithdrawn(userId)) {
+			throw new MessagingException("인증되지 않은 연결입니다.");
+		}
+
+		return new StompPrincipal(userId);
 	}
 
 	private String resolveToken(StompHeaderAccessor accessor) {

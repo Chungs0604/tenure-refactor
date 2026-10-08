@@ -447,6 +447,57 @@ public class OfferService {
 		}
 	}
 
+	/**
+	 * 회원탈퇴 시 남은 대기 제안 정리. 보낸 것·받은 것 가리지 않고 시스템 취소(WITHDRAWN)로
+	 * 남겨 결제를 해제하고 상대에게 알림을 보냄.
+	 *
+	 * 받은 것도 reject() 대신 cancel() 을 씀 — reject() 로 끝내면 아무 잘못 없는 구매자가
+	 * 그 아이템에 영구히 재제안하지 못하게 된다(유니크 인덱스가 REJECTED 는 면제해주지 않음).
+	 *
+	 * 반환값은 정리 도중 상대가 먼저 수락해 거래가 생긴 제안이 있었는지 — 있었으면
+	 * UserService.withdraw() 가 탈퇴를 막아야 하는 신호임
+	 */
+	@Transactional
+	@Loggable("탈퇴에 따른 제안 정리")
+	public boolean cancelAndRejectPendingForWithdrawal(Long userId) {
+		LocalDateTime now = LocalDateTime.now();
+		boolean concurrentTradeFound = false;
+
+		// 보낸 것·받은 것을 id 오름차순으로 합쳐 훑음 — 서로 PENDING 제안을 주고받은 두
+		// 사용자가 동시에 탈퇴해도 항상 같은 순서로 잠그기 위함. id 만 가볍게 읽고 건마다
+		// findForUpdate 로 재확인함 — 그 사이 상대가 수락했으면 ACCEPTED 로 정확히 보임
+		for (Long offerId : purchaseOfferRepository.findPendingIdsByBuyerOrSellerId(userId)) {
+			PurchaseOffer offer = findForUpdate(offerId);
+
+			if (offer.isPending()) {
+				offer.cancel(OfferCancelReason.WITHDRAWN, now);
+				// 임시로 잡아 둔 결제 승인을 풀어 상대가 확정하지 못하게 함
+				paymentService.release(offer.getId(), now);
+
+				if (offer.isBuyer(userId)) {
+					// 받는 쪽이던 판매자에게 제안이 사라졌음을 알림
+					notificationService.notify(
+							offer.getSeller(), NotificationSettingType.REQUEST_AUTO_CANCEL, NotificationCategory.TRADE_STATUS,
+							offer.getItem().getName(), "상대가 탈퇴해 받은 제안이 취소됐어요.",
+							offer.getItem().getCoverImageKey(), NotificationTargetType.OFFER, offer.getId());
+				} else {
+					// 보낸 쪽이던 구매자에게 취소됐음을 알림
+					notificationService.notify(
+							offer.getBuyer(), NotificationSettingType.REQUEST_AUTO_CANCEL, NotificationCategory.TRADE_STATUS,
+							offer.getItem().getName(), "상대가 탈퇴해 보낸 제안이 취소됐어요.",
+							offer.getItem().getCoverImageKey(), NotificationTargetType.OFFER, offer.getId());
+				}
+			} else if (offer.getStatus() == OfferStatus.ACCEPTED) {
+				// 정리 도중 상대가 먼저 수락해 거래가 생김 — 탈퇴를 이대로 진행하면 안 됨
+				log.info("탈퇴 정리 중 먼저 수락된 제안을 발견함 offerId={}", offerId);
+				concurrentTradeFound = true;
+			}
+			// REJECTED·CANCELED·EXPIRED 는 거래가 생기지 않은 상태라 그냥 넘어감
+		}
+
+		return concurrentTradeFound;
+	}
+
 	/** 24시간 무응답 자동 만료. 스케줄러가 호출함 */
 	@Transactional
 	@Loggable("구매 제안 자동 만료")
@@ -501,6 +552,8 @@ public class OfferService {
 
 	/** 잠금 재조회 후 아직 PENDING 일 때만 돌려줌 — 그 사이 다른 응답이 먼저 끝났으면 빈 값임 */
 	private Optional<PurchaseOffer> relockIfStillPending(Long offerId) {
+
+		//findForUpdate로 가지고 온 offer는 비관적 락이 걸린 상태
 		PurchaseOffer offer = findForUpdate(offerId);
 		return offer.isPending() ? Optional.of(offer) : Optional.empty();
 	}
@@ -642,6 +695,7 @@ public class OfferService {
 				});
 	}
 
+	// 조회 offer에 X-Lock(쓰기 잠금)을 검 (비관적 락)
 	private PurchaseOffer findForUpdate(Long offerId) {
 		return purchaseOfferRepository.findByIdForUpdate(offerId)
 				.orElseThrow(() -> {

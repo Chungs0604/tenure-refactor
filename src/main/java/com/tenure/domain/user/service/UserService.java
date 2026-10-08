@@ -7,10 +7,19 @@ import com.tenure.domain.auth.service.AuthService;
 import com.tenure.domain.block.repository.UserBlockRepository;
 import com.tenure.domain.follow.repository.FollowRepository;
 import com.tenure.domain.item.repository.ItemRepository;
+import com.tenure.domain.listing.service.ListingService;
+import com.tenure.domain.notification.repository.NotificationRepository;
+import com.tenure.domain.notification.repository.NotificationSettingRepository;
+import com.tenure.domain.offer.service.OfferService;
+import com.tenure.domain.order.enums.OrderStatus;
+import com.tenure.domain.order.repository.TradeOrderRepository;
+import com.tenure.domain.payout.repository.PayoutAccountRepository;
 import com.tenure.domain.search.enums.RecentViewTargetType;
+import com.tenure.domain.search.repository.SearchHistoryRepository;
 import com.tenure.domain.search.store.RecentViewStore;
 import com.tenure.domain.user.dto.request.UserCreateRequest;
 import com.tenure.domain.user.dto.request.UserUpdateRequest;
+import com.tenure.domain.user.dto.request.UserWithdrawRequest;
 import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.AvailabilityResponse;
 import com.tenure.domain.user.dto.response.MyProfileResponse;
@@ -19,17 +28,21 @@ import com.tenure.domain.user.dto.response.UserProfileResponse;
 import com.tenure.domain.user.dto.response.UserUpdateResponse;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.user.entity.UserAgreement;
+import com.tenure.domain.user.entity.UserWithdrawal;
 import com.tenure.domain.user.enums.AgreementType;
 import com.tenure.domain.user.exception.UserErrorCode;
 import com.tenure.domain.user.mapper.UserMapper;
 import com.tenure.domain.user.repository.UserAgreementRepository;
 import com.tenure.domain.user.repository.UserRepository;
+import com.tenure.domain.user.repository.UserWithdrawalRepository;
 import com.tenure.domain.wishlist.repository.WishlistRepository;
 import com.tenure.global.exception.CustomException;
 import com.tenure.global.logging.Loggable;
 import com.tenure.global.security.jwt.JwtTokenProvider;
+import com.tenure.global.security.jwt.WithdrawnUserStore;
 import com.tenure.global.security.refresh.RefreshTokenStore;
 import com.tenure.global.storage.FileStorage;
+import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -57,15 +70,24 @@ public class UserService {
 
 	private final UserRepository userRepository;
 	private final UserAgreementRepository userAgreementRepository;
+	private final UserWithdrawalRepository userWithdrawalRepository;
 	private final ShippingAddressRepository shippingAddressRepository;
 	private final ItemRepository itemRepository;
 	private final WishlistRepository wishlistRepository;
 	private final FollowRepository followRepository;
 	private final UserBlockRepository userBlockRepository;
+	private final TradeOrderRepository tradeOrderRepository;
+	private final PayoutAccountRepository payoutAccountRepository;
+	private final SearchHistoryRepository searchHistoryRepository;
+	private final NotificationRepository notificationRepository;
+	private final NotificationSettingRepository notificationSettingRepository;
+	private final OfferService offerService;
+	private final ListingService listingService;
 	private final AuthService authService;
 	private final PasswordEncoder passwordEncoder;
 	private final JwtTokenProvider jwtTokenProvider;
 	private final RefreshTokenStore refreshTokenStore;
+	private final WithdrawnUserStore withdrawnUserStore;
 	private final RecentViewStore recentViewStore;
 	private final FileStorage fileStorage;
 	private final UserMapper userMapper;
@@ -239,6 +261,77 @@ public class UserService {
 				!self && followRepository.existsFollow(viewerId, userId),
 				!self && userBlockRepository.existsBlock(viewerId, userId)
 		);
+	}
+
+	/**
+	 * 회원탈퇴 (사유 수집 + 즉시 익명화). 탈퇴를 막지 않음 — 대기 중 제안을 정리하고 연관 데이터를
+	 * 하드 삭제한 뒤 계정을 익명화함. 진행 중 거래가 있으면 막음
+	 */
+	@Transactional
+	@Loggable("회원탈퇴")
+	public void withdraw(Long userId, UserWithdrawRequest request) {
+		LocalDateTime now = LocalDateTime.now();
+
+		// 구매자·판매자 어느 쪽이든 아직 끝나지 않은 거래가 있으면 탈퇴 불가
+		if (tradeOrderRepository.existsInProgressByUser(userId, OrderStatus.FINISHED)) {
+			log.info("진행 중인 거래가 있어 탈퇴할 수 없음 userId={}", userId);
+			throw new CustomException(UserErrorCode.USER_409_ACTIVE_TRADE);
+		}
+
+		// 내가 소유한 판매중 아이템은 미판매로 내리고 등록·대기 제안을 정리함.
+		// item → offer → user 잠금 순서를 지켜야 해서 아래 두 단계보다 먼저 옴
+		listingService.closeOnSaleItemsForWithdrawal(userId);
+
+		// 내가 보낸·받은 대기 제안을 정리함(결제 해제 + 상대 알림). User 를 잠그기 전에
+		// 와야 함 — 수락 쪽은 offer 를 잠근 채로 구매자 User 행에 알림을 남겨 묵시적으로
+		// 잠그는데, 순서가 뒤바뀌면 서로 기다리다 교착한다
+		//
+		// 정리 도중 상대가 먼저 수락해버린 제안이 있으면 true 가 돌아옴 — 그럼 탈퇴를 막아야 함
+		if (offerService.cancelAndRejectPendingForWithdrawal(userId)) {
+			log.info("제안 정리 중 먼저 생긴 거래가 있어 탈퇴할 수 없음 userId={}", userId);
+			throw new CustomException(UserErrorCode.USER_409_ACTIVE_TRADE);
+		}
+
+		// User 행을 여기서 처음 읽고 동시에 잠금 — 동시 중복 탈퇴 요청이 뒤처진 쪽을 여기서
+		// 막음. 먼저 평범하게 읽어 두면 영속성 컨텍스트가 그 값을 그대로 돌려줘 잠근 보람이
+		// 없으니, 이 트랜잭션에서 User 를 읽는 유일한 지점이어야 함
+		User user = userRepository.findByIdForUpdate(userId)
+				.orElseThrow(() -> {
+					log.warn("존재하지 않는 사용자입니다. userId={}", userId);
+					return new CustomException(UserErrorCode.USER_404);
+				});
+
+		// 이미 탈퇴한 계정인지 확인
+		if (user.isWithdrawn()) {
+			log.info("이미 탈퇴한 계정이 다시 탈퇴를 시도함 userId={}", userId);
+			throw new CustomException(UserErrorCode.USER_409_WITHDRAWN);
+		}
+
+		// 탈퇴 사유를 남김
+		userWithdrawalRepository.save(UserWithdrawal.of(user, request.getReason(), now));
+
+		// 행은 지우지 않고 개인정보만 치환함 — 이전 소유자 표시가 거래 기록에 남아야 함.
+		// 아래 하드 삭제 호출들보다 먼저 와야 함 — @Modifying(clearAutomatically=true) 라
+		// 실행 직후 영속성 컨텍스트를 통째로 비움
+		user.anonymize(now);
+
+		// 개인정보에 해당하는 연관 데이터를 하드 삭제함. 거래 스냅샷(주문에 복사된 배송지 등)은
+		// 이미 따로 떠 있어 원본을 지워도 거래 기록이 끊기지 않음
+		shippingAddressRepository.deleteAllByUserId(userId);
+		payoutAccountRepository.deleteAllByUserId(userId);
+		searchHistoryRepository.deleteAllByUserId(userId);
+		notificationRepository.deleteAllByUserId(userId);
+		notificationSettingRepository.deleteAllByUserId(userId);
+		wishlistRepository.deleteAllByUserId(userId);
+
+		// Redis 에 남은 최근 열람 이력도 함께 지움
+		recentViewStore.deleteAll(userId);
+
+		// 남은 refresh token 을 전부 끊음
+		refreshTokenStore.revokeAll(userId);
+
+		// access token 은 자연 만료 전까지 계속 유효하므로, Redis 에 탈퇴 표시를 남겨 막음
+		withdrawnUserStore.markWithdrawn(userId, jwtTokenProvider.accessTokenTtl());
 	}
 
 	private User findUser(Long userId) {

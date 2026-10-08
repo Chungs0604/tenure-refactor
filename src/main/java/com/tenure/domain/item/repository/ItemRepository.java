@@ -24,6 +24,18 @@ public interface ItemRepository extends JpaRepository<Item, Long>, ItemRepositor
 			+ "            where o.item.id = i.id and o.owner.id = :ownerId and o.endDate is null)")
 	int countOwnedItem(@Param("ownerId") Long ownerId);
 
+	/**
+	 * 탈퇴 시 정리 대상(현재 소유한 판매중 아이템) id 목록. id 만 가볍게 읽고 건마다 잠금
+	 * 재조회로 다시 확인한다 — order by 는 여러 건을 동시에 잠그는 다른 경로와 잠금 순서를
+	 * 맞추기 위함임(findActiveForUpdate 참고)
+	 */
+	@Query("select i.id from Item i "
+			+ "where i.deletedAt is null and i.saleStatus = 'ON_SALE' "
+			+ "and exists (select 1 from ItemOwnership o "
+			+ "            where o.item.id = i.id and o.owner.id = :ownerId and o.endDate is null) "
+			+ "order by i.id")
+	List<Long> findOnSaleItemIdsByCurrentOwner(@Param("ownerId") Long ownerId);
+
 	/** 태그 대상 아이템. 삭제된 아이템에는 새 태그를 붙일 수 없다. */
 	@Query("select i from Item i " +
 			"where i.id = :itemId and i.deletedAt is null")

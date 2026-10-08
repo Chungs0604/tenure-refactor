@@ -2,6 +2,7 @@ package com.tenure.global.security;
 
 import com.tenure.global.security.jwt.JwtAuthenticationFilter;
 import com.tenure.global.security.jwt.JwtTokenProvider;
+import com.tenure.global.security.jwt.WithdrawnUserStore;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -50,6 +51,7 @@ public class SecurityConfig {
 	};
 
 	private final JwtTokenProvider jwtTokenProvider;
+	private final WithdrawnUserStore withdrawnUserStore;
 	private final JsonAuthEntryPoint jsonAuthEntryPoint;
 
 	@Bean
@@ -70,7 +72,7 @@ public class SecurityConfig {
 				.exceptionHandling(handling -> handling
 						.authenticationEntryPoint(jsonAuthEntryPoint)
 						.accessDeniedHandler(jsonAuthEntryPoint))
-				.addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider),
+				.addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider, withdrawnUserStore),
 						UsernamePasswordAuthenticationFilter.class)
 				.build();
 	}

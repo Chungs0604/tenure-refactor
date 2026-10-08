@@ -53,4 +53,13 @@ public class UserWithdrawal {
 	@Column(name = "withdrawn_at", nullable = false)
 	private LocalDateTime withdrawnAt;
 
+	/** 탈퇴 사유 기록. user 는 익명화되기 전(호출 시점)의 행을 그대로 받음 */
+	public static UserWithdrawal of(User user, WithdrawalReason reason, LocalDateTime now) {
+		return UserWithdrawal.builder()
+				.user(user)
+				.reason(reason)
+				.withdrawnAt(now)
+				.build();
+	}
+
 }

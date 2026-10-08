@@ -89,7 +89,6 @@ public class OrderService {
 
 	private static final Set<OrderStatus> IN_PROGRESS_STATUSES = EnumSet.of(
 			OrderStatus.PAYMENT_COMPLETED, OrderStatus.SHIPPED, OrderStatus.DELIVERED, OrderStatus.PURCHASE_CONFIRMED);
-	private static final Set<OrderStatus> DONE_STATUSES = EnumSet.of(OrderStatus.SETTLED, OrderStatus.CANCELED);
 
 	private final TradeOrderRepository tradeOrderRepository;
 	private final OrderShipmentRepository orderShipmentRepository;
@@ -358,7 +357,7 @@ public class OrderService {
 				yield CursorSlice.of(groups, size, this::cursorOfGroup).map(this::toSalesRow);
 			}
 			case IN_PROGRESS -> fetchSalesOrders(sellerId, IN_PROGRESS_STATUSES, cursor, size);
-			case DONE -> fetchSalesOrders(sellerId, DONE_STATUSES, cursor, size);
+			case DONE -> fetchSalesOrders(sellerId, OrderStatus.FINISHED, cursor, size);
 			case ALL -> mergeSalesAll(sellerId, cursor, size);
 		};
 	}
@@ -374,7 +373,7 @@ public class OrderService {
 						.map(this::toPurchaseRow);
 			}
 			case IN_PROGRESS -> fetchPurchaseOrders(buyerId, IN_PROGRESS_STATUSES, cursor, size);
-			case DONE -> fetchPurchaseOrders(buyerId, DONE_STATUSES, cursor, size);
+			case DONE -> fetchPurchaseOrders(buyerId, OrderStatus.FINISHED, cursor, size);
 			case ALL -> mergePurchasesAll(buyerId, cursor, size);
 		};
 	}

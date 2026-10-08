@@ -5,6 +5,7 @@ import com.tenure.domain.wishlist.entity.Wishlist;
 import java.util.Collection;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -34,4 +35,9 @@ public interface WishlistRepository extends JpaRepository<Wishlist, Long> {
 	/** 가격 변동·거래 상태 알림 발행 대상. 벨을 꺼둔 사람은 받지 않는다 */
 	@Query("select w.user from Wishlist w where w.item.id = :itemId and w.alarmEnabled = true")
 	List<User> findAlarmEnabledUsersByItemId(@Param("itemId") Long itemId);
+
+	/** 회원탈퇴 시 하드 삭제. 안 지우면 탈퇴 후에도 담아 둔 아이템의 가격·판매 상태 알림이 계속 생김 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("delete from Wishlist w where w.user.id = :userId")
+	void deleteAllByUserId(@Param("userId") Long userId);
 }
