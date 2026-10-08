@@ -7,7 +7,9 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.tenure.domain.category.entity.Category;
 import com.tenure.domain.category.enums.MeasurementScheme;
@@ -433,6 +435,94 @@ class ListingServiceTest {
 					.isInstanceOf(CustomException.class)
 					.extracting(ListingServiceTest::errorCodeOf)
 					.isEqualTo(ListingErrorCode.LISTING_409_IN_TRADE);
+		}
+	}
+
+	@Nested
+	@DisplayName("탈퇴에 따른 판매중 아이템 정리")
+	class CloseOnSaleItemsForWithdrawal {
+
+		@Test
+		@DisplayName("판매중 아이템을 미판매로 내리고 열린 등록을 닫고 대기 제안을 정리한다")
+		void closes_onSaleItem_andItsListingAndPendingOffers() {
+			Item item = item();
+			item.changeSaleStatus(SaleStatus.ON_SALE);
+			ItemListing listing = listing(item, seller(UserGrade.RECORD));
+
+			given(itemRepository.findOnSaleItemIdsByCurrentOwner(USER_ID)).willReturn(List.of(ITEM_ID));
+			given(itemRepository.findActiveForUpdate(ITEM_ID)).willReturn(Optional.of(item));
+			given(itemListingRepository.findOpenByItemId(ITEM_ID)).willReturn(Optional.of(listing));
+
+			listingService.closeOnSaleItemsForWithdrawal(USER_ID);
+
+			assertThat(item.getSaleStatus()).isEqualTo(SaleStatus.NOT_FOR_SALE);
+			assertThat(listing.getClosedAt()).isNotNull();
+			verify(offerService).cancelPendingForDelist(ITEM_ID);
+		}
+
+		@Test
+		@DisplayName("판매 등록이 없는 아이템도 미판매로 바꾼다 — 상태는 아이템이 갖는다")
+		void closes_itemWithoutListing_stillWorks() {
+			Item item = item();
+			item.changeSaleStatus(SaleStatus.ON_SALE);
+
+			given(itemRepository.findOnSaleItemIdsByCurrentOwner(USER_ID)).willReturn(List.of(ITEM_ID));
+			given(itemRepository.findActiveForUpdate(ITEM_ID)).willReturn(Optional.of(item));
+			given(itemListingRepository.findOpenByItemId(ITEM_ID)).willReturn(Optional.empty());
+
+			listingService.closeOnSaleItemsForWithdrawal(USER_ID);
+
+			assertThat(item.getSaleStatus()).isEqualTo(SaleStatus.NOT_FOR_SALE);
+			verify(offerService).cancelPendingForDelist(ITEM_ID);
+		}
+
+		@Test
+		@DisplayName("판매중 아이템이 여러 건이면 전부 정리한다")
+		void closes_multipleOnSaleItems_allOfThem() {
+			Long itemId2 = 101L;
+			Item item1 = item();
+			item1.changeSaleStatus(SaleStatus.ON_SALE);
+			Item item2 = item();
+			ReflectionTestUtils.setField(item2, "id", itemId2);
+			item2.changeSaleStatus(SaleStatus.ON_SALE);
+
+			given(itemRepository.findOnSaleItemIdsByCurrentOwner(USER_ID)).willReturn(List.of(ITEM_ID, itemId2));
+			given(itemRepository.findActiveForUpdate(ITEM_ID)).willReturn(Optional.of(item1));
+			given(itemRepository.findActiveForUpdate(itemId2)).willReturn(Optional.of(item2));
+			given(itemListingRepository.findOpenByItemId(any())).willReturn(Optional.empty());
+
+			listingService.closeOnSaleItemsForWithdrawal(USER_ID);
+
+			assertThat(item1.getSaleStatus()).isEqualTo(SaleStatus.NOT_FOR_SALE);
+			assertThat(item2.getSaleStatus()).isEqualTo(SaleStatus.NOT_FOR_SALE);
+			verify(offerService).cancelPendingForDelist(ITEM_ID);
+			verify(offerService).cancelPendingForDelist(itemId2);
+		}
+
+		@Test
+		@DisplayName("재잠금 사이 다른 제안이 먼저 수락돼 판매완료로 바뀐 아이템은 건드리지 않는다")
+		void skips_itemAlreadySoldBetweenFetchAndLock() {
+			Item item = item();
+			item.changeSaleStatus(SaleStatus.SOLD);
+
+			given(itemRepository.findOnSaleItemIdsByCurrentOwner(USER_ID)).willReturn(List.of(ITEM_ID));
+			given(itemRepository.findActiveForUpdate(ITEM_ID)).willReturn(Optional.of(item));
+
+			listingService.closeOnSaleItemsForWithdrawal(USER_ID);
+
+			assertThat(item.getSaleStatus()).isEqualTo(SaleStatus.SOLD);
+			verifyNoInteractions(itemListingRepository, offerService);
+		}
+
+		@Test
+		@DisplayName("판매중 아이템이 없으면 아무것도 하지 않는다")
+		void doesNothing_whenNoOnSaleItems() {
+			given(itemRepository.findOnSaleItemIdsByCurrentOwner(USER_ID)).willReturn(List.of());
+
+			listingService.closeOnSaleItemsForWithdrawal(USER_ID);
+
+			verify(itemRepository, never()).findActiveForUpdate(any());
+			verifyNoInteractions(itemListingRepository, offerService);
 		}
 	}
 
