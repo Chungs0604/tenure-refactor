@@ -1744,7 +1744,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `profile_image_key`, `gender`, `height_cm`, `weight_kg` | NULL |
 | `provider_id` | NULL. 소셜 제공자의 식별자도 개인정보다. `provider` 는 `LOCAL` 로 되돌린다 |
 | `nickname` | 저장값 `탈퇴한사용자_{id}`, 화면 표시 `탈퇴한 사용자` |
-| 연관 삭제 | `shipping_address` `payout_account` `search_history` `notification` `notification_setting` 하드 삭제. Redis 의 `recent-view:{userId}:*` 키도 함께 지운다 |
+| 연관 삭제 | `shipping_address` `payout_account` `search_history` `notification` `notification_setting` `wishlist` 하드 삭제. Redis 의 `recent-view:{userId}:*` 키도 함께 지운다 |
 
 컬럼 제약을 풀지 않고 값 치환만으로 파기가 성립한다. 시점은 DEC-004 로 확정했다 — 탈퇴 즉시 파기한다.
 
@@ -1840,6 +1840,17 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 > 결정: **탈퇴 즉시 익명화 + 즉시 재가입 허용**
 
 email 은 withdrawn_{id}@deleted.local 로, phone·real_name 은 마스크로 치환하고 nickname 은 탈퇴한사용자_{id} 로 바꾼다. user 행과 FK 는 유지되어 Tenure 기록 기준의 이전 소유자 표시가 남는다. 거래 기록은 order_shipment·settlement 의 스냅샷으로 보존된다
+
+익명화·하드 삭제와 별개로 두 가지를 함께 정리한다.
+
+- **access token 차단**: access token 은 서명·만료만으로 유효성을 판단해(무상태) 탈퇴해도 자연
+  만료 전까지 계속 쓸 수 있다. refresh token 에 적용한 기준(DEC-010)을 그대로 확장해, 탈퇴
+  시점에 Redis 에 `withdrawn:{userId}` 를 access token 최대 수명만큼 남겨 두고
+  JwtAuthenticationFilter·StompAuthChannelInterceptor 양쪽에서 함께 확인한다. 막지 않으면
+  탈퇴 직후에도 같은 토큰으로 프로필 수정 등을 호출해 방금 익명화·하드 삭제한 값을 되돌릴 수 있다
+- **판매중 아이템 정리**: 탈퇴자가 소유한 판매중(ON_SALE) 아이템은 전부 미판매(NOT_FOR_SALE)
+  로 내리고 열린 등록·대기 제안을 함께 정리한다. 안 그러면 탈퇴 후에도 재로그인할 수 없는
+  계정의 아이템이 계속 제안을 받다가 24시간 뒤에야 자동 만료된다
 
 **DEC-005 — 설정의 기본 배송비 기능**
 
