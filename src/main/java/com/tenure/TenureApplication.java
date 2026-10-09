@@ -1,5 +1,6 @@
 package com.tenure;
 
+import java.util.TimeZone;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration;
@@ -14,6 +15,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 public class TenureApplication {
 
 	public static void main(String[] args) {
+		// order·스케줄러는 Asia/Seoul 을 명시 고정하는데 나머지 도메인·JPA auditing 은
+		// JVM 기본 시간대를 쓴다. 서버가 UTC 로 뜨면 한 거래의 타임라인에 두 시계가 섞인다 —
+		// 기본 시간대 자체를 고정해 전부 같은 시계를 쓰게 한다.
+		TimeZone.setDefault(TimeZone.getTimeZone("Asia/Seoul"));
 		SpringApplication.run(TenureApplication.class, args);
 	}
 
