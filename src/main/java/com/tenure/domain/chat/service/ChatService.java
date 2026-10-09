@@ -62,9 +62,12 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -97,6 +100,15 @@ public class ChatService {
 	private final ChatWebSocketService chatWebSocketService;
 	private final ChatRoomPresenceRegistry presenceRegistry;
 
+	/*
+	 * this.attemptOpen(...) 으로 직접 부르면 AOP 프록시를 안 거쳐서 @Transactional(REQUIRES_NEW) 가
+	 * 전혀 안 걸림(self-invocation 이 프록시를 건너뜀) — 그래서 자기 자신을 프록시로 다시 주입받아
+	 * 그걸 거쳐 호출함. @Lazy 는 생성 시점의 순환 참조를 피하기 위함
+	 */
+	@Autowired
+	@Lazy
+	private ChatService self;
+
 	// 채팅방 목록 조회
 	@Loggable("채팅방 목록 조회")
 	public CursorSlice<ChatRoomSummaryResponse> list(Long viewerId, ChatRoomTab tab, String keyword, Cursor cursor, int size) {
@@ -119,9 +131,25 @@ public class ChatService {
 	}
 
 	// 채팅방 개설. 이미 있으면 기존 방을 그대로 돌려줌(멱등)
-	@Transactional
 	@Loggable("채팅방 개설")
 	public ChatRoomOpenResponse open(Long userId, Long itemId) {
+		try {
+			return self.attemptOpen(userId, itemId);
+		} catch (DataIntegrityViolationException e) {
+			/*
+			 * 유니크 제약을 한 번 위반하면 그 트랜잭션은 Hibernate 가 rollback-only 로 못 박아서,
+			 * 안에서 잡고 이어서 써도(재조회 후 멤버 보장 등) 커밋 시점에 TransactionSystemException
+			 * 이 남 — 그래서 실패한 시도는 그대로 롤백시키고, 완전히 새 트랜잭션으로 한 번 더
+			 * 시도함(그때는 경쟁자가 이미 커밋해놔서 조회로 찾아짐)
+			 */
+			log.info("동시 요청으로 같은 채팅방·멤버가 먼저 생성됨 itemId={} userId={}", itemId, userId);
+			return self.attemptOpen(userId, itemId);
+		}
+	}
+
+	// open() 의 실제 시도. REQUIRES_NEW 라 open() 에 걸린 트랜잭션(없음)과 무관하게 매 호출이 독립 트랜잭션임
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public ChatRoomOpenResponse attemptOpen(Long userId, Long itemId) {
 
 		// 대상 아이템·요청자를 조회하고 개설 시각을 한 번만 고정해 하위 호출에 그대로 넘김
 		Item item = findActiveItem(itemId);
@@ -380,21 +408,13 @@ public class ChatService {
 
 	/*
 	 * 조회 → 없으면 생성. 조회와 생성 사이에 동시 요청이 끼면(더블탭·재시도) 둘 다 빈 조회를
-	 * 보고 둘 다 저장을 시도해 uk_chat_room 을 위반할 수 있음 — 저장 실패를 잡고 그새 다른
-	 * 요청이 만든 방을 다시 찾아 돌려줌(OfferService.create 와 같은 패턴).
+	 * 보고 둘 다 저장을 시도해 uk_chat_room 을 위반할 수 있음 — 여기서는 잡지 않고 그대로 던짐.
+	 * 지금 걸린 트랜잭션은 이미 rollback-only 로 못 박혀서 잡고 이어 써도 커밋 시점에 터지므로,
+	 * 재시도는 완전히 새 트랜잭션에서 하도록 attemptOpen() 을 부른 open() 쪽에 맡김.
 	 */
 	private ChatRoom findOrOpenRoom(Long itemId, User buyer, User seller, Supplier<ChatRoom> factory) {
 		return chatRoomRepository.findByItemIdAndBuyerIdAndSellerId(itemId, buyer.getId(), seller.getId())
-				.orElseGet(() -> {
-					try {
-						return chatRoomRepository.save(factory.get());
-					} catch (DataIntegrityViolationException e) {
-						log.info("동시 요청으로 같은 채팅방이 먼저 열림 itemId={} buyerId={} sellerId={}",
-								itemId, buyer.getId(), seller.getId());
-						return chatRoomRepository.findByItemIdAndBuyerIdAndSellerId(itemId, buyer.getId(), seller.getId())
-								.orElseThrow(() -> e);
-					}
-				});
+				.orElseGet(() -> chatRoomRepository.save(factory.get()));
 	}
 
 	/*
@@ -406,17 +426,10 @@ public class ChatService {
 		ensureMember(room, seller);
 	}
 
+	// 유니크 제약 위반 시 여기서 잡지 않는 이유는 findOrOpenRoom 의 주석과 같음 — 재시도는 open() 이 새 트랜잭션으로 함
 	private void ensureMember(ChatRoom room, User user) {
 		ChatRoomMember member = chatRoomMemberRepository.findByChatRoomIdAndUserId(room.getId(), user.getId())
-				.orElseGet(() -> {
-					try {
-						return chatRoomMemberRepository.save(ChatRoomMember.join(room, user));
-					} catch (DataIntegrityViolationException e) {
-						log.info("동시 요청으로 멤버가 먼저 생성됨 roomId={} userId={}", room.getId(), user.getId());
-						return chatRoomMemberRepository.findByChatRoomIdAndUserId(room.getId(), user.getId())
-								.orElseThrow(() -> e);
-					}
-				});
+				.orElseGet(() -> chatRoomMemberRepository.save(ChatRoomMember.join(room, user)));
 		member.rejoin();
 	}
 

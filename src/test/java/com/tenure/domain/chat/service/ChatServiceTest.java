@@ -73,6 +73,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -121,6 +122,12 @@ class ChatServiceTest {
 	@Spy private ChatMapper chatMapper = new ChatMapperImpl();
 
 	@InjectMocks private ChatService chatService;
+
+	// self 는 @Lazy 로 주입되는 자기 참조 프록시임 — 단위 테스트엔 실제 AOP 프록시가 없으니 자기 자신을 그대로 연결함
+	@BeforeEach
+	void wireSelfReference() {
+		ReflectionTestUtils.setField(chatService, "self", chatService);
+	}
 
 	@Nested
 	@DisplayName("채팅방 개설")
