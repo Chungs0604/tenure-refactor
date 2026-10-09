@@ -80,8 +80,9 @@ public class OrderService {
 	/** 구매 확정일 + 2영업일이 정산 예정일 */
 	private static final int SETTLEMENT_BUSINESS_DAYS = 2;
 
-	private static final Set<OrderStatus> IN_PROGRESS_STATUSES = EnumSet.of(
-			OrderStatus.PAYMENT_COMPLETED, OrderStatus.SHIPPED, OrderStatus.DELIVERED, OrderStatus.PURCHASE_CONFIRMED);
+	/** 끝난 거래가 아니면 진행 중으로 봄 — OrderStatus.FINISHED 가 늘어도 자동으로 반영됨 */
+	private static final Set<OrderStatus> IN_PROGRESS_STATUSES =
+			EnumSet.complementOf(EnumSet.copyOf(OrderStatus.FINISHED));
 
 	private final TradeOrderRepository tradeOrderRepository;
 	private final OrderShipmentRepository orderShipmentRepository;
@@ -141,7 +142,7 @@ public class OrderService {
 	/** 택배사 목록. 값이 늘어도 앱 배포와 무관하게 내려가야 해서 API 로 둔다 */
 	public List<CourierResponse> getCouriers() {
 		return Arrays.stream(CourierCode.values())
-				.map(code -> orderMapper.toCourierResponse(code, courierLabel(code)))
+				.map(code -> orderMapper.toCourierResponse(code, code.getCourierName()))
 				.toList();
 	}
 
@@ -357,7 +358,7 @@ public class OrderService {
 	}
 
 	private String profileImageUrl(User user) {
-		return user.getProfileImageKey() == null ? null : fileStorage.toUrl(user.getProfileImageKey());
+		return fileStorage.toUrlOrNull(user.getProfileImageKey());
 	}
 
 	/** 잘못된 값이면 null — 호출부가 ORDER_400_TRACKING 하나로 묶어 던진다 */
@@ -384,15 +385,6 @@ public class OrderService {
 			log.warn("정산 계좌의 은행 코드를 해석할 수 없음 bankCode={}", raw);
 			return null;
 		}
-	}
-
-	private String courierLabel(CourierCode code) {
-		return switch (code) {
-			case CJ_LOGISTICS -> "CJ대한통운";
-			case KOREA_POST -> "우체국택배";
-			case GS_POSTBOX -> "GS Postbox";
-			case CU_CONVENIENCE -> "CU 편의점택배";
-		};
 	}
 
 	// ── 판매 내역 ────────────────────────────────────────────────────

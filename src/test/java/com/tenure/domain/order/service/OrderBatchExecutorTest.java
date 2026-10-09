@@ -36,7 +36,6 @@ import com.tenure.global.exception.ErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -94,7 +93,7 @@ class OrderBatchExecutorTest {
 
 			given(tradeOrderRepository.findByIdForUpdate(ORDER_ID)).willReturn(Optional.of(order));
 			given(itemOwnershipRepository.findCurrent(ITEM_ID)).willReturn(Optional.of(current));
-			given(payoutAccountRepository.findAllOf(SELLER_ID)).willReturn(List.of(account));
+			given(payoutAccountRepository.findPrimaryOf(SELLER_ID)).willReturn(Optional.of(account));
 
 			LocalDateTime now = LocalDateTime.now();
 			LocalDate confirmedDate = executor.confirmForBuyer(ORDER_ID, BUYER_ID, now);
@@ -163,7 +162,7 @@ class OrderBatchExecutorTest {
 
 			given(tradeOrderRepository.findByIdForUpdate(ORDER_ID)).willReturn(Optional.of(order));
 			given(itemOwnershipRepository.findCurrent(ITEM_ID)).willReturn(Optional.of(current));
-			given(payoutAccountRepository.findAllOf(SELLER_ID)).willReturn(List.of());
+			given(payoutAccountRepository.findPrimaryOf(SELLER_ID)).willReturn(Optional.empty());
 
 			assertThatThrownBy(() -> executor.confirmForBuyer(ORDER_ID, BUYER_ID, LocalDateTime.now()))
 					.isInstanceOf(CustomException.class)
@@ -212,7 +211,7 @@ class OrderBatchExecutorTest {
 
 			given(tradeOrderRepository.findByIdForUpdate(ORDER_ID)).willReturn(Optional.of(order));
 			given(itemOwnershipRepository.findCurrent(ITEM_ID)).willReturn(Optional.of(current));
-			given(payoutAccountRepository.findAllOf(SELLER_ID)).willReturn(List.of(account));
+			given(payoutAccountRepository.findPrimaryOf(SELLER_ID)).willReturn(Optional.of(account));
 
 			executor.confirmIfDue(ORDER_ID, now);
 

@@ -128,8 +128,7 @@ public class OrderBatchExecutor {
 					log.error("소유 구간 없이 거래가 진행됨 itemId={}", item.getId());
 					return new CustomException(ItemErrorCode.ITEM_404);
 				});
-		PayoutAccount account = payoutAccountRepository.findAllOf(order.getSeller().getId()).stream()
-				.findFirst()
+		PayoutAccount account = payoutAccountRepository.findPrimaryOf(order.getSeller().getId())
 				.orElseThrow(() -> {
 					log.info("정산 계좌 없이 구매 확정이 진행됨 orderId={} sellerId={}", order.getId(), order.getSeller().getId());
 					return new CustomException(PayoutErrorCode.PAYOUT_400_REQUIRED);
