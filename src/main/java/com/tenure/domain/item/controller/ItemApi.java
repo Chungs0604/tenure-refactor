@@ -21,7 +21,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Pattern;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -48,8 +48,8 @@ public interface ItemApi {
 	})
 	ResponseEntity<BaseResponse<CursorResponse<ItemSummaryResponse>>> getMyItems(
 			@Parameter(hidden = true) AuthUser authUser,
-			@Parameter(description = "브랜드명·아이템명 부분 일치. 2자 이상", example = "Levis")
-			@Size(min = 2) String keyword,
+			@Parameter(description = "브랜드명·아이템명 부분 일치. 비우면 전체, 2자 이상이면 그 값으로 검색", example = "Levis")
+			@Pattern(regexp = "^$|.{2,}", message = "검색어는 2자 이상이어야 합니다.") String keyword,
 			@Parameter(description = "직전 응답의 nextCursor. 첫 페이지는 비운다") String cursor,
 			@Parameter(description = "가져올 개수. 기본 20, 최대 100", example = "20")
 			@Min(1) @Max(100) int size);
@@ -159,7 +159,8 @@ public interface ItemApi {
 	})
 	ResponseEntity<BaseResponse<CursorResponse<TaggableItemResponse>>> getTaggableItems(
 			@Parameter(hidden = true) AuthUser authUser,
-			@Parameter(description = "브랜드명·아이템명 부분 일치") String keyword,
+			@Parameter(description = "브랜드명·아이템명 부분 일치. 비우면 전체, 2자 이상이면 그 값으로 검색")
+			@Pattern(regexp = "^$|.{2,}", message = "검색어는 2자 이상이어야 합니다.") String keyword,
 			@Parameter(description = "직전 응답의 nextCursor. 첫 페이지는 비운다") String cursor,
 			@Parameter(description = "가져올 개수. 기본 20, 최대 100", example = "20")
 			@Min(1) @Max(100) int size);

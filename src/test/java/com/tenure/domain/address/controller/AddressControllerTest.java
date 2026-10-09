@@ -204,13 +204,31 @@ class AddressControllerTest extends ControllerSliceTestSupport {
 					.willReturn(ShippingAddressIdResponse.builder().id(ADDRESS_ID).build());
 
 			// @Size 만 걸려 있고 @NotBlank 는 없다 — 빈 값은 '안 적었다'는 뜻이라 막지 않는다
+			// deliveryRequestType 도 같이 비워야 함 — DIRECT 인데 deliveryRequest 가 비면 그 자체로 400 임
 			mvc.perform(post(ADDRESSES_URL)
 							.with(authentication(principalOf(USER_ID)))
 							.contentType(MediaType.APPLICATION_JSON)
 							.content(json(createRequest(builder -> builder
 									.addressDetail("")
+									.deliveryRequestType(null)
 									.deliveryRequest("")))))
 					.andExpect(status().isOk());
+		}
+
+		@Test
+		@DisplayName("DIRECT 인데 직접 입력한 요청사항이 비면 400 이다")
+		void create_directWithoutDeliveryRequest_returnsBadRequest() throws Exception {
+			expectBadRequest(createRequest(builder -> builder
+					.deliveryRequestType(DeliveryRequestType.DIRECT)
+					.deliveryRequest(null)));
+		}
+
+		@Test
+		@DisplayName("DIRECT 인데 직접 입력한 요청사항이 공백뿐이면 400 이다")
+		void create_directWithBlankDeliveryRequest_returnsBadRequest() throws Exception {
+			expectBadRequest(createRequest(builder -> builder
+					.deliveryRequestType(DeliveryRequestType.DIRECT)
+					.deliveryRequest("   ")));
 		}
 
 		@Test
@@ -313,6 +331,32 @@ class AddressControllerTest extends ControllerSliceTestSupport {
 							.content(json(updateRequest())))
 					.andExpect(status().isForbidden())
 					.andExpect(jsonPath("$.code").value("ADDRESS_403"));
+		}
+
+		@Test
+		@DisplayName("DIRECT 인데 직접 입력한 요청사항이 비면 400 이다")
+		void update_directWithoutDeliveryRequest_returnsBadRequest() throws Exception {
+			expectBadRequest(updateRequest(builder -> builder
+					.deliveryRequestType(DeliveryRequestType.DIRECT)
+					.deliveryRequest(null)));
+		}
+
+		@Test
+		@DisplayName("DIRECT 인데 직접 입력한 요청사항이 공백뿐이면 400 이다")
+		void update_directWithBlankDeliveryRequest_returnsBadRequest() throws Exception {
+			expectBadRequest(updateRequest(builder -> builder
+					.deliveryRequestType(DeliveryRequestType.DIRECT)
+					.deliveryRequest("   ")));
+		}
+
+		private void expectBadRequest(ShippingAddressUpdateRequest request) throws Exception {
+			mvc.perform(put(ADDRESSES_URL + "/" + ADDRESS_ID)
+							.with(authentication(principalOf(USER_ID)))
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(json(request)))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.success").value(false))
+					.andExpect(jsonPath("$.code").value("COMMON_400"));
 		}
 	}
 
@@ -428,5 +472,21 @@ class AddressControllerTest extends ControllerSliceTestSupport {
 				.address("서울특별시 강남구 테헤란로 1")
 				.addressDetail("3층")
 				.build();
+	}
+
+	/** 유효한 요청을 만들고, 검사하려는 필드 하나만 덮어쓴다. */
+	private static ShippingAddressUpdateRequest updateRequest(
+			Consumer<ShippingAddressUpdateRequest.ShippingAddressUpdateRequestBuilder> override
+	) {
+		ShippingAddressUpdateRequest.ShippingAddressUpdateRequestBuilder builder =
+				ShippingAddressUpdateRequest.builder()
+						.recipientName("김유진")
+						.phone("010-9999-8888")
+						.zipcode("06158")
+						.address("서울특별시 강남구 테헤란로 1")
+						.addressDetail("3층");
+
+		override.accept(builder);
+		return builder.build();
 	}
 }

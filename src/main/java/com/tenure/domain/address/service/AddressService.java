@@ -16,6 +16,8 @@ import com.tenure.global.logging.Loggable;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,8 +27,10 @@ import org.springframework.transaction.annotation.Transactional;
  * 이력을 쌓지 않는다 — 거래는 제안 전송 시점에 배송지 값을 order_shipment 로 복사하므로
  * 주소록을 고치거나 지워도 과거 거래는 그대로다
  *
- * 기본 배송지는 사용자당 1건이다. 해제 → 지정 순서는 여기서 지키고,
- * 동시 요청까지는 uk_shipping_address_default 가 막는다.
+ * 기본 배송지는 사용자당 1건이다. 해제 → 지정 순서는 여기서 지키고, 동시 요청은
+ * uk_shipping_address_default 가 막는다 — create()/changeDefault() 가 그 제약 위반(과
+ * releaseDefault 의 벌크 UPDATE 끼리 겹쳐 나는 락 대기 실패)을
+ * ADDRESS_409_DEFAULT_CONFLICT 로 번역해 올린다.
  *
  * 예외를 던지기 전에 판단 근거를 남긴다 — ErrorCode 자체는 ServiceLoggingAspect 가 찍는다.
  */
@@ -74,11 +78,16 @@ public class AddressService {
 				asDefault
 		);
 
-		ShippingAddress saveAddress = shippingAddressRepository.save(address);
-
-		return ShippingAddressIdResponse.builder()
-				.id(saveAddress.getId())
-				.build();
+		try {
+			ShippingAddress saveAddress = shippingAddressRepository.save(address);
+			shippingAddressRepository.flush();
+			return ShippingAddressIdResponse.builder()
+					.id(saveAddress.getId())
+					.build();
+		} catch (DataIntegrityViolationException | CannotAcquireLockException e) {
+			log.warn("기본 배송지 지정이 동시 요청과 겹쳤습니다. userId={}", userId, e);
+			throw new CustomException(AddressErrorCode.ADDRESS_409_DEFAULT_CONFLICT);
+		}
 	}
 
 	/** 배송지 수정. 보낸 값으로 전체를 교체한다. */
@@ -134,8 +143,18 @@ public class AddressService {
 			return;
 		}
 
-		shippingAddressRepository.releaseDefault(userId);
-		address.changeDefault(true);
+		// releaseDefault 는 벌크 UPDATE, changeDefault(true)는 더티 체킹이라 flush 가
+		// 트랜잭션 끝까지 미뤄진다 — 동시 요청이 겹치면 벌크 UPDATE 끼리 락 대기에 걸리거나
+		// (CannotAcquireLockException) uk_shipping_address_default 위반(DataIntegrityViolationException)이
+		// 나는데, 커밋 시점에 터지면 여기서 못 잡으니 강제로 flush 해 그 자리에서 잡는다
+		try {
+			shippingAddressRepository.releaseDefault(userId);
+			address.changeDefault(true);
+			shippingAddressRepository.flush();
+		} catch (DataIntegrityViolationException | CannotAcquireLockException e) {
+			log.warn("기본 배송지 지정이 동시 요청과 겹쳤습니다. userId={} addressId={}", userId, addressId, e);
+			throw new CustomException(AddressErrorCode.ADDRESS_409_DEFAULT_CONFLICT);
+		}
 	}
 
 	/** 남의 주소록을 건드리지 못하게 막는다. */

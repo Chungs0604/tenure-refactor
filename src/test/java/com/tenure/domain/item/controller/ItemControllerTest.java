@@ -188,6 +188,31 @@ class ItemControllerTest extends ControllerSliceTestSupport {
 				.andExpect(status().isBadRequest());
 	}
 
+	@Test
+	@DisplayName("검색어를 비우면 전체를 내려준다 — 검색창을 지우는 요청도 정상 동작이다")
+	void getMyItems_emptyKeyword_returnsOk() throws Exception {
+		given(itemQueryService.getMyItems(anyLong(), any(), any(), anyInt())).willReturn(slice(List.of()));
+
+		mvc.perform(get(ITEMS_URL).param("keyword", "").with(authentication(principalOf(USER_ID))))
+				.andExpect(status().isOk());
+	}
+
+	@Test
+	@DisplayName("검색어가 1자면 400 이다")
+	void getMyItems_oneCharKeyword_returnsBadRequest() throws Exception {
+		mvc.perform(get(ITEMS_URL).param("keyword", "가").with(authentication(principalOf(USER_ID))))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	@DisplayName("검색어가 2자 이상이면 통과한다")
+	void getMyItems_twoCharKeyword_returnsOk() throws Exception {
+		given(itemQueryService.getMyItems(anyLong(), any(), any(), anyInt())).willReturn(slice(List.of()));
+
+		mvc.perform(get(ITEMS_URL).param("keyword", "리바이스").with(authentication(principalOf(USER_ID))))
+				.andExpect(status().isOk());
+	}
+
 	private static UsernamePasswordAuthenticationToken principalOf(Long userId) {
 		return new UsernamePasswordAuthenticationToken(new AuthUser(userId), null, List.of());
 	}
