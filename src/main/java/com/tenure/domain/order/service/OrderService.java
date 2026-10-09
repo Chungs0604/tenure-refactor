@@ -1,10 +1,6 @@
 package com.tenure.domain.order.service;
 
-import com.tenure.domain.item.entity.Item;
-import com.tenure.domain.item.entity.ItemOwnership;
 import com.tenure.domain.item.enums.SaleStatus;
-import com.tenure.domain.item.exception.ItemErrorCode;
-import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.notification.enums.NotificationCategory;
 import com.tenure.domain.notification.enums.NotificationSettingType;
 import com.tenure.domain.notification.enums.NotificationTargetType;
@@ -40,9 +36,6 @@ import com.tenure.domain.order.repository.TradeOrderRepository;
 import com.tenure.domain.payment.entity.Payment;
 import com.tenure.domain.payment.repository.PaymentRepository;
 import com.tenure.domain.payment.service.PaymentService;
-import com.tenure.domain.payout.entity.PayoutAccount;
-import com.tenure.domain.payout.exception.PayoutErrorCode;
-import com.tenure.domain.payout.repository.PayoutAccountRepository;
 import com.tenure.domain.settlement.entity.Settlement;
 import com.tenure.domain.settlement.repository.SettlementRepository;
 import com.tenure.domain.payout.enums.BankCode;
@@ -87,8 +80,9 @@ public class OrderService {
 	/** 구매 확정일 + 2영업일이 정산 예정일 */
 	private static final int SETTLEMENT_BUSINESS_DAYS = 2;
 
-	private static final Set<OrderStatus> IN_PROGRESS_STATUSES = EnumSet.of(
-			OrderStatus.PAYMENT_COMPLETED, OrderStatus.SHIPPED, OrderStatus.DELIVERED, OrderStatus.PURCHASE_CONFIRMED);
+	/** 끝난 거래가 아니면 진행 중으로 봄 — OrderStatus.FINISHED 가 늘어도 자동으로 반영됨 */
+	private static final Set<OrderStatus> IN_PROGRESS_STATUSES =
+			EnumSet.complementOf(EnumSet.copyOf(OrderStatus.FINISHED));
 
 	private final TradeOrderRepository tradeOrderRepository;
 	private final OrderShipmentRepository orderShipmentRepository;
@@ -97,13 +91,12 @@ public class OrderService {
 	private final PurchaseOfferRepository purchaseOfferRepository;
 	private final PaymentRepository paymentRepository;
 	private final PaymentService paymentService;
-	private final PayoutAccountRepository payoutAccountRepository;
-	private final ItemOwnershipRepository itemOwnershipRepository;
 	private final NotificationService notificationService;
 	private final FileStorage fileStorage;
 	private final OrderMapper orderMapper;
 	private final TrackingUrlResolver trackingUrlResolver;
 	private final BusinessDayCalculator businessDayCalculator;
+	private final OrderBatchExecutor orderBatchExecutor;
 
 	/** 거래 상세. settlement 은 SELLER 시점에만 채움 */
 	@Loggable("거래 상세 조회")
@@ -149,7 +142,7 @@ public class OrderService {
 	/** 택배사 목록. 값이 늘어도 앱 배포와 무관하게 내려가야 해서 API 로 둔다 */
 	public List<CourierResponse> getCouriers() {
 		return Arrays.stream(CourierCode.values())
-				.map(code -> orderMapper.toCourierResponse(code, courierLabel(code)))
+				.map(code -> orderMapper.toCourierResponse(code, code.getCourierName()))
 				.toList();
 	}
 
@@ -228,44 +221,30 @@ public class OrderService {
 	}
 
 	/** 구매 확정(구매자) → 소유권 승계 + 정산 생성 */
-	@Transactional
 	@Loggable("구매 확정")
 	public ConfirmResponse confirm(Long buyerId, Long orderId) {
 		LocalDateTime now = LocalDateTime.now(ZONE_SEOUL);
-		TradeOrder order = findForUpdate(orderId);
-
-		if (!order.isBuyer(buyerId)) {
-			log.info("본인 거래가 아닌데 구매확정을 처리하려 함 orderId={} userId={}", orderId, buyerId);
-			throw new CustomException(OrderErrorCode.ORDER_403);
-		}
-		if (order.getStatus() != OrderStatus.DELIVERED) {
-			log.info("배송완료 전인데 구매확정을 처리하려 함 orderId={} status={}", orderId, order.getStatus());
-			throw new CustomException(OrderErrorCode.ORDER_409_STATUS);
-		}
-
-		LocalDate scheduledAt = doConfirm(order, order.getBuyer(), now);
-		return orderMapper.toConfirmResponse(order.getStatus(), scheduledAt);
+		LocalDate confirmedDate = orderBatchExecutor.confirmForBuyer(orderId, buyerId, now);
+		// 정산 예정일은 응답 표시용일 뿐이라 상태 변경 커밋 뒤에 계산함 — confirmForBuyer 가
+		// 이미 자기 트랜잭션을 커밋하고 반환한 상태라 아래 호출은 그 바깥에서 돈다
+		LocalDate scheduledAt = businessDayCalculator.plusBusinessDays(confirmedDate, SETTLEMENT_BUSINESS_DAYS);
+		return orderMapper.toConfirmResponse(OrderStatus.PURCHASE_CONFIRMED, scheduledAt);
 	}
 
 	/** 배송 완료 +72h 지난 거래를 자동 확정. 스케줄러가 호출함 */
-	@Transactional
+	@Transactional(readOnly = true)
 	@Loggable("자동 구매 확정 배치")
 	public void autoConfirmDue(LocalDateTime now) {
 		for (Long orderId : tradeOrderRepository.findAutoConfirmableIds(now)) {
-			tradeOrderRepository.findByIdForUpdate(orderId)
-					.filter(order -> order.getStatus() == OrderStatus.DELIVERED
-							&& !order.getAutoConfirmAt().isAfter(now))
-					.ifPresent(order -> {
-						try {
-							// changedBy=null → 시스템 확정. 판매자가 그 사이 정산 계좌를 지운 경우
-							// 등 이 건만 실패해도, 전체가 한 트랜잭션이라 예외가 메서드 밖으로
-							// 새어나가면 이미 처리된 다른 주문까지 롤백된다 — 그래서 모든 예외를
-							// 여기서 잡아 이 건만 건너뛰고 배치는 계속한다
-							doConfirm(order, null, now);
-						} catch (Exception e) {
-							log.warn("자동 구매 확정 중 오류로 건너뜀 orderId={}", orderId, e);
-						}
-					});
+			try {
+				// 건별로 독립된 트랜잭션(orderBatchExecutor.confirmIfDue)에 넘긴다 — 판매자가
+				// 그 사이 정산 계좌를 지운 경우 등 이 건만 실패해도 그 트랜잭션만 롤백되고
+				// 이미 처리한 다른 주문의 커밋에는 영향이 없다. 자세한 이유는
+				// OrderBatchExecutor.confirmIfDue 주석 참고
+				orderBatchExecutor.confirmIfDue(orderId, now);
+			} catch (Exception e) {
+				log.warn("자동 구매 확정 중 오류로 건너뜀 orderId={}", orderId, e);
+			}
 		}
 	}
 
@@ -305,47 +284,26 @@ public class OrderService {
 	}
 
 	/** 정산 예정일이 지난 건을 정산 완료로 넘긴다. 스케줄러가 호출함 */
-	@Transactional
+	@Transactional(readOnly = true)
 	@Loggable("정산 배치")
 	public void settleDue(LocalDateTime now) {
 		LocalDate today = now.toLocalDate();
 		for (Settlement settlement : settlementRepository.findAllBySettledAtIsNull()) {
+			// 영업일 계산(공휴일 조회, 캐시 미스면 외부 HTTP)을 트랜잭션·행 잠금 밖에서 먼저
+			// 끝낸다 — 건마다 반복되는 이 호출이 느려져도 쓰기 트랜잭션을 길게 물고 있지 않음
+			LocalDate scheduledAt = businessDayCalculator.plusBusinessDays(
+					settlement.getOrder().getConfirmedAt().toLocalDate(), SETTLEMENT_BUSINESS_DAYS);
+			if (scheduledAt.isAfter(today)) {
+				continue;
+			}
 			try {
-				settleOne(settlement, now, today);
+				// 건별로 독립된 트랜잭션(orderBatchExecutor.settleIfDue)에 넘긴다 — 이유는
+				// autoConfirmDue 와 같다. OrderBatchExecutor.settleIfDue 주석 참고
+				orderBatchExecutor.settleIfDue(settlement.getId(), settlement.getOrder().getId(), now);
 			} catch (Exception e) {
-				// 전체가 한 트랜잭션이라 예외가 여기를 빠져나가면 이미 처리된 다른 판매자의
-				// 정산까지 전부 롤백된다 — 이 건만 건너뛰고 배치는 계속한다
 				log.warn("정산 처리 중 오류로 건너뜀 settlementId={}", settlement.getId(), e);
 			}
 		}
-	}
-
-	private void settleOne(Settlement settlement, LocalDateTime now, LocalDate today) {
-		if (settlement.getSettledAt() != null) {
-			return;
-		}
-
-		// 영업일 계산(공휴일 조회, 캐시 미스면 외부 HTTP)을 행 잠금보다 먼저 끝낸다 — 외부
-		// 호출이 늦어져도 아직 아무 행도 잠그지 않은 상태라 다른 거래를 막지 않는다
-		LocalDate scheduledAt = businessDayCalculator.plusBusinessDays(
-				settlement.getOrder().getConfirmedAt().toLocalDate(), SETTLEMENT_BUSINESS_DAYS);
-		if (scheduledAt.isAfter(today)) {
-			return;
-		}
-
-		TradeOrder order = tradeOrderRepository.findByIdForUpdate(settlement.getOrder().getId()).orElse(null);
-		if (order == null || order.getStatus() != OrderStatus.PURCHASE_CONFIRMED) {
-			return;
-		}
-
-		settlement.settle(now);
-		order.settle();
-		orderStatusHistoryRepository.save(OrderStatusHistory.of(order, OrderStatus.SETTLED, null, now));
-
-		notificationService.notify(
-				order.getSeller(), NotificationSettingType.TRADE_STATUS, NotificationCategory.TRADE_STATUS,
-				order.getItem().getName(), "정산이 완료됐어요.",
-				order.getItem().getCoverImageKey(), NotificationTargetType.ORDER, order.getId());
 	}
 
 	/** 판매 내역 4탭. PENDING 은 아이템 단위로 묶고, 전체 탭은 그 묶음과 거래를 시간순으로 섞는다 */
@@ -400,7 +358,7 @@ public class OrderService {
 	}
 
 	private String profileImageUrl(User user) {
-		return user.getProfileImageKey() == null ? null : fileStorage.toUrl(user.getProfileImageKey());
+		return fileStorage.toUrlOrNull(user.getProfileImageKey());
 	}
 
 	/** 잘못된 값이면 null — 호출부가 ORDER_400_TRACKING 하나로 묶어 던진다 */
@@ -427,59 +385,6 @@ public class OrderService {
 			log.warn("정산 계좌의 은행 코드를 해석할 수 없음 bankCode={}", raw);
 			return null;
 		}
-	}
-
-	private String courierLabel(CourierCode code) {
-		return switch (code) {
-			case CJ_LOGISTICS -> "CJ대한통운";
-			case KOREA_POST -> "우체국택배";
-			case GS_POSTBOX -> "GS Postbox";
-			case CU_CONVENIENCE -> "CU 편의점택배";
-		};
-	}
-
-	// ── 구매 확정 공통 로직 ───────────────────────────────────────────
-
-	/**
-	 * changedBy 가 null 이면 시스템(자동 확정). 소유권 승계 + 정산 생성까지 한 번에 함.
-	 *
-	 * 실패할 수 있는 조회(소유 구간·정산 계좌)를 전부 먼저 끝내고, 그 뒤에만 상태를 바꾼다 —
-	 * autoConfirmDue 는 이 메서드를 private 으로 직접 호출해 같은 트랜잭션을 쓰므로, 상태를
-	 * 바꾼 뒤에 던지면 그 일부만 커밋되고 복구할 길이 없는 반쪽짜리 거래가 남는다
-	 */
-	private LocalDate doConfirm(TradeOrder order, User changedBy, LocalDateTime now) {
-		Item item = order.getItem();
-		ItemOwnership current = itemOwnershipRepository.findCurrent(item.getId())
-				.orElseThrow(() -> {
-					log.error("소유 구간 없이 거래가 진행됨 itemId={}", item.getId());
-					return new CustomException(ItemErrorCode.ITEM_404);
-				});
-		PayoutAccount account = payoutAccountRepository.findAllOf(order.getSeller().getId()).stream()
-				.findFirst()
-				.orElseThrow(() -> {
-					log.info("정산 계좌 없이 구매 확정이 진행됨 orderId={} sellerId={}", order.getId(), order.getSeller().getId());
-					return new CustomException(PayoutErrorCode.PAYOUT_400_REQUIRED);
-				});
-
-		// 여기부터는 실패하지 않는다 — 전부 상태를 바꾸는 쪽임
-		order.confirmPurchase(now);
-		orderStatusHistoryRepository.save(OrderStatusHistory.of(order, OrderStatus.PURCHASE_CONFIRMED, changedBy, now));
-
-		LocalDate confirmedDate = now.toLocalDate();
-		current.close(confirmedDate);
-		itemOwnershipRepository.save(ItemOwnership.openFromTrade(item, order.getBuyer(), confirmedDate, order));
-		item.changeSaleStatus(SaleStatus.SOLD);
-
-		settlementRepository.save(Settlement.of(
-				order, order.getSeller(), account.getBankCode().name(), account.getAccountNumber(),
-				account.getAccountHolder(), order.getPayoutAmount()));
-
-		notificationService.notify(
-				order.getSeller(), NotificationSettingType.TRADE_STATUS, NotificationCategory.TRADE_STATUS,
-				order.getItem().getName(), "구매가 확정됐어요.",
-				order.getItem().getCoverImageKey(), NotificationTargetType.ORDER, order.getId());
-
-		return businessDayCalculator.plusBusinessDays(confirmedDate, SETTLEMENT_BUSINESS_DAYS);
 	}
 
 	// ── 판매 내역 ────────────────────────────────────────────────────

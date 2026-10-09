@@ -132,7 +132,13 @@ public class OfferService {
 	public OfferCreateResponse create(Long buyerId, Long itemId, OfferCreateRequest request) {
 		LocalDateTime now = LocalDateTime.now();
 
-		Item item = findActiveItem(itemId);
+		// accept() 와 같은 순서(item → offer)로 아이템을 먼저 잠가, 동시에 들어온 다른 제안
+		// 경로와 SOLD 판정이 커밋된 값 기준으로 직렬화되게 함
+		Item item = itemRepository.findActiveForUpdate(itemId)
+				.orElseThrow(() -> {
+					log.info("없거나 삭제된 아이템임 itemId={}", itemId);
+					return new CustomException(ItemErrorCode.ITEM_404);
+				});
 
 		// 판매 완료된 상품엔 제안을 보낼 수 없음
 		if (item.getSaleStatus() == SaleStatus.SOLD) {
@@ -172,8 +178,7 @@ public class OfferService {
 		}
 
 		// 차단 관계면 양방향 중 하나만 있어도 막음
-		if (userBlockRepository.existsBlock(buyer.getId(), seller.getId())
-				|| userBlockRepository.existsBlock(seller.getId(), buyer.getId())) {
+		if (userBlockRepository.existsMutualBlock(buyer.getId(), seller.getId())) {
 			log.info("차단 관계인 상대에게 제안을 시도함 buyerId={} sellerId={}", buyer.getId(), seller.getId());
 			throw new CustomException(OfferErrorCode.OFFER_403_BLOCKED);
 		}
@@ -211,6 +216,11 @@ public class OfferService {
 					)
 			);
 		} catch (DataIntegrityViolationException e) {
+			// uk_purchase_offer_limit 은 PURCHASE_OFFER 행만 걸림(V20 함수형 인덱스) — TRADE_INTENT
+			// 에서 난 제약 위반을 같은 뜻으로 오역하지 않도록 유형으로 좁힘
+			if (basis.offerType() != OfferType.PURCHASE_OFFER) {
+				throw e;
+			}
 			log.info("동시 요청으로 1회 제한 유니크 제약에 걸림 itemId={} buyerId={}", itemId, buyerId);
 			throw new CustomException(OfferErrorCode.OFFER_409_ALREADY_USED);
 		}
@@ -639,8 +649,7 @@ public class OfferService {
 
 	/** 정산 계좌가 없으면 표시할 것이 없음 — 판매자가 아직 계좌를 등록 안 한 경우일 수 있음 */
 	private String payoutAccountDisplay(Long sellerId) {
-		return payoutAccountRepository.findAllOf(sellerId).stream()
-				.findFirst()
+		return payoutAccountRepository.findPrimaryOf(sellerId)
 				.map(this::formatAccount)
 				.orElse(null);
 	}

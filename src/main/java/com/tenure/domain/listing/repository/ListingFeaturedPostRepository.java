@@ -1,7 +1,6 @@
 package com.tenure.domain.listing.repository;
 
 import com.tenure.domain.listing.entity.ListingFeaturedPost;
-import com.tenure.domain.item.enums.SaleStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -21,10 +20,8 @@ public interface ListingFeaturedPostRepository extends JpaRepository<ListingFeat
 	 */
 	@Query("select count(f) > 0 from ListingFeaturedPost f "
 			+ "where f.post.id = :postId and f.listing.closedAt is null "
-			+ "and f.listing.item.saleStatus = :saleStatus")
-	boolean existsByPostIdAndSaleStatus(
-			@Param("postId") Long postId, @Param("saleStatus") SaleStatus saleStatus
-	);
+			+ "and f.listing.item.saleStatus = com.tenure.domain.item.enums.SaleStatus.ON_SALE")
+	boolean existsOnSaleByPostId(@Param("postId") Long postId);
 
 	/**
 	 * 판매 등록의 대표 OOTD. 선택 순서대로 그린다.

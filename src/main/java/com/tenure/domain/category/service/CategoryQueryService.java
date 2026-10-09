@@ -63,7 +63,7 @@ public class CategoryQueryService {
 
 		List<CategoryResponse> tree = new ArrayList<>();
 		for (Category root : roots) {
-			List<Category> children = childrenByParent.getOrDefault(root.getId(), List.of());
+			List<Category> children = childrenByParent.getOrDefault(root.getId(), new ArrayList<>());
 			children.sort(Comparator.comparing(Category::getSortOrder));
 
 			List<CategoryResponse> childResponses = children.stream()

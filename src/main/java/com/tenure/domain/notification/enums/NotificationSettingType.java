@@ -37,6 +37,7 @@ public enum NotificationSettingType {
 	/** 가입 시 기본값 */
 	private final boolean defaultEnabled;
 
+	@Getter
 	public enum Group {
 		REQUIRED("필수"),
 		ACTIVITY("활동 알림"),
@@ -46,10 +47,6 @@ public enum NotificationSettingType {
 
 		Group(String label) {
 			this.label = label;
-		}
-
-		public String getLabel() {
-			return label;
 		}
 	}
 }

@@ -50,7 +50,7 @@ public interface PostMapper {
 			boolean following, boolean liked, boolean saved
 	);
 
-	@Mapping(target = "nickname", expression = "java(displayNickname(author))")
+	@Mapping(target = "nickname", expression = "java(com.tenure.domain.user.mapper.UserMapper.displayNickname(author))")
 	@Mapping(target = "profileImageUrl", source = "profileImageUrl")
 	PostAuthorResponse toAuthorResponse(User author, String profileImageUrl);
 
@@ -103,10 +103,5 @@ public interface PostMapper {
 		return (listing == null || listing.getPrice() == null)
 				? null
 				: String.valueOf(listing.getPrice());
-	}
-
-	/** 탈퇴 계정은 저장된 닉네임 대신 고정 문구를 보여준다 — 표기를 UserMapper 와 맞춘다. */
-	default String displayNickname(User author) {
-		return author.isWithdrawn() ? UserMapper.WITHDRAWN_NICKNAME : author.getNickname();
 	}
 }

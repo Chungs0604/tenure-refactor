@@ -9,7 +9,6 @@ import com.tenure.domain.item.exception.ItemErrorCode;
 import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.item.repository.ItemWearRecordRepository;
-import com.tenure.domain.item.enums.SaleStatus;
 import com.tenure.domain.listing.repository.ListingFeaturedPostRepository;
 import com.tenure.domain.post.dto.request.PostCreateRequest;
 import com.tenure.domain.post.dto.request.PostCreateRequest.PostImageRequest;
@@ -191,9 +190,10 @@ class PostServiceTest {
 			givenSavedPost(author);
 
 			Item item = item(otherUser());
-			given(itemRepository.findActive(ITEM_ID)).willReturn(Optional.of(item));
-			given(itemOwnershipRepository.findCurrent(ITEM_ID))
-					.willReturn(Optional.of(ownership(item, otherUser())));
+			ReflectionTestUtils.setField(item, "id", ITEM_ID);
+			given(itemRepository.findAllByIds(any())).willReturn(List.of(item));
+			given(itemOwnershipRepository.findCurrentByItemIds(any()))
+					.willReturn(List.of(ownership(item, otherUser())));
 
 			assertThatThrownBy(() -> postService.create(USER_ID, createRequest()))
 					.isInstanceOf(CustomException.class)
@@ -206,7 +206,7 @@ class PostServiceTest {
 		void create_tagsDeletedItem_throwsItemNotFound() {
 			User author = givenAuthor();
 			givenSavedPost(author);
-			given(itemRepository.findActive(ITEM_ID)).willReturn(Optional.empty());
+			given(itemRepository.findAllByIds(any())).willReturn(List.of());
 
 			assertThatThrownBy(() -> postService.create(USER_ID, createRequest()))
 					.isInstanceOf(CustomException.class)
@@ -289,9 +289,9 @@ class PostServiceTest {
 
 			Item newItem = item(author);
 			ReflectionTestUtils.setField(newItem, "id", OTHER_ITEM_ID);
-			given(itemRepository.findActive(OTHER_ITEM_ID)).willReturn(Optional.of(newItem));
-			given(itemOwnershipRepository.findCurrent(OTHER_ITEM_ID))
-					.willReturn(Optional.of(ownership(newItem, author)));
+			given(itemRepository.findAllByIds(any())).willReturn(List.of(newItem));
+			given(itemOwnershipRepository.findCurrentByItemIds(any()))
+					.willReturn(List.of(ownership(newItem, author)));
 
 			ItemWearRecord oldRecord = ItemWearRecord.certify(
 					oldItem, ownership(oldItem, author), post, post.getWornDate());
@@ -329,6 +329,39 @@ class PostServiceTest {
 		}
 
 		@Test
+		@DisplayName("같은 아이템을 두 사진에 태그했다가 한쪽만 지워도 다른 사진에 남아있으면 인증을 유지한다")
+		void updateTags_itemStillTaggedOnOtherImage_keepsRecord() {
+			User author = givenAuthor();
+			Post post = givenExistingPost(author);
+			Item item = item(author);
+			ReflectionTestUtils.setField(item, "id", ITEM_ID);
+
+			PostImage image1 = PostImage.of(post, "post/2026/09/a.jpg", 0, true);
+			ReflectionTestUtils.setField(image1, "id", 500L);
+			PostImage image2 = PostImage.of(post, "post/2026/09/b.jpg", 1, false);
+			ReflectionTestUtils.setField(image2, "id", 501L);
+
+			PostItemTag tagOnImage1 = PostItemTag.of(image1, item, new BigDecimal("0.4200"), new BigDecimal("0.6100"));
+			ReflectionTestUtils.setField(tagOnImage1, "id", TAG_ID);
+			PostItemTag tagOnImage2 = PostItemTag.of(image2, item, new BigDecimal("0.3000"), new BigDecimal("0.5000"));
+			ReflectionTestUtils.setField(tagOnImage2, "id", TAG_ID + 1);
+			given(postItemTagRepository.findAllByPostId(POST_ID))
+					.willReturn(List.of(tagOnImage1, tagOnImage2));
+
+			// 지우는 태그 말고 다른 사진(tagOnImage2)에 같은 아이템이 아직 남아있다
+			given(postItemTagRepository.countByPostIdAndItemId(POST_ID, ITEM_ID)).willReturn(1L);
+
+			ItemWearRecord record = ItemWearRecord.certify(
+					item, ownership(item, author), post, post.getWornDate());
+
+			postService.updateTags(USER_ID, POST_ID, updateRequest(null));
+
+			verify(postItemTagRepository).delete(tagOnImage1);
+			assertThat(record.isVoided()).isFalse();
+			verify(itemWearRecordRepository, times(0)).findByPostIdAndItemId(POST_ID, ITEM_ID);
+		}
+
+		@Test
 		@DisplayName("이미 무효화된 인증이 있으면 새로 넣지 않고 되살린다 — 유니크 제약에 걸린다")
 		void updateTags_voidedRecordExists_restoresInsteadOfInsert() {
 			User author = givenAuthor();
@@ -339,9 +372,9 @@ class PostServiceTest {
 
 			Item newItem = item(author);
 			ReflectionTestUtils.setField(newItem, "id", OTHER_ITEM_ID);
-			given(itemRepository.findActive(OTHER_ITEM_ID)).willReturn(Optional.of(newItem));
-			given(itemOwnershipRepository.findCurrent(OTHER_ITEM_ID))
-					.willReturn(Optional.of(ownership(newItem, author)));
+			given(itemRepository.findAllByIds(any())).willReturn(List.of(newItem));
+			given(itemOwnershipRepository.findCurrentByItemIds(any()))
+					.willReturn(List.of(ownership(newItem, author)));
 
 			ItemWearRecord voided = ItemWearRecord.certify(
 					newItem, ownership(newItem, author), post, post.getWornDate());
@@ -368,9 +401,9 @@ class PostServiceTest {
 
 			Item newItem = item(author);
 			ReflectionTestUtils.setField(newItem, "id", OTHER_ITEM_ID);
-			given(itemRepository.findActive(OTHER_ITEM_ID)).willReturn(Optional.of(newItem));
-			given(itemOwnershipRepository.findCurrent(OTHER_ITEM_ID))
-					.willReturn(Optional.of(ownership(newItem, author)));
+			given(itemRepository.findAllByIds(any())).willReturn(List.of(newItem));
+			given(itemOwnershipRepository.findCurrentByItemIds(any()))
+					.willReturn(List.of(ownership(newItem, author)));
 
 			ItemOwnership closed = ownership(oldItem, author);
 			closed.close(LocalDate.now().minusDays(1));
@@ -465,7 +498,7 @@ class PostServiceTest {
 			User author = givenAuthor();
 			Post post = givenExistingPost(author);
 			given(listingFeaturedPostRepository
-					.existsByPostIdAndSaleStatus(POST_ID, SaleStatus.ON_SALE)).willReturn(true);
+					.existsOnSaleByPostId(POST_ID)).willReturn(true);
 
 			assertThatThrownBy(() -> postService.delete(USER_ID, POST_ID))
 					.isInstanceOf(CustomException.class)
@@ -611,8 +644,8 @@ class PostServiceTest {
 		Item item = item(owner);
 		ReflectionTestUtils.setField(item, "id", ITEM_ID);
 		ItemOwnership ownership = ownership(item, owner);
-		given(itemRepository.findActive(ITEM_ID)).willReturn(Optional.of(item));
-		given(itemOwnershipRepository.findCurrent(ITEM_ID)).willReturn(Optional.of(ownership));
+		given(itemRepository.findAllByIds(any())).willReturn(List.of(item));
+		given(itemOwnershipRepository.findCurrentByItemIds(any())).willReturn(List.of(ownership));
 		given(itemWearRecordRepository.save(any(ItemWearRecord.class)))
 				.willAnswer(invocation -> invocation.getArgument(0));
 		return ownership;

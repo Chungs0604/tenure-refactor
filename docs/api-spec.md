@@ -357,6 +357,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | `ADDRESS_404` | 404 | 배송지를 찾을 수 없습니다. | API-022~024 |
 | `ADDRESS_403` | 403 | 본인의 배송지가 아닙니다. | API-022~024 |
 | `ADDRESS_409_LAST_DEFAULT` | 409 | 기본 배송지는 삭제할 수 없습니다. | API-023 |
+| `ADDRESS_409_DEFAULT_CONFLICT` | 409 | 기본 배송지 지정 요청이 동시에 들어와 처리하지 못했습니다. 다시 시도해 주세요. | API-021, API-024 |
 
 ### PayoutErrorCode
 
@@ -366,6 +367,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | `PAYOUT_403` | 403 | 본인의 정산 계좌가 아닙니다. | API-032, API-033, API-034 |
 | `PAYOUT_409_PENDING_SETTLEMENT` | 409 | 정산 대기 중인 거래가 있어 삭제할 수 없습니다. | API-033 |
 | `PAYOUT_409_LAST_DEFAULT` | 409 | 기본 정산 계좌는 삭제할 수 없습니다. | API-033 |
+| `PAYOUT_409_DEFAULT_CONFLICT` | 409 | 동시 요청으로 기본 계좌 지정에 실패했습니다. | API-031, API-034 |
 | `PAYOUT_400_REQUIRED` | 400 | 정산 계좌를 먼저 등록해주세요. | API-111, API-144 |
 
 ### FollowErrorCode
@@ -465,6 +467,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 |---|:--:|---|---|
 | `PAYMENT_402` | 402 | 결제 승인에 실패했습니다. | API-141 |
 | `PAYMENT_409_CAPTURE` | 409 | 결제 확정에 실패했습니다. | API-144 |
+| `PAYMENT_409_RELEASE` | 409 | 결제 승인 해제에 실패했습니다. | API-143, API-145 |
 | `PAYMENT_409_REFUND` | 409 | 환불 처리에 실패했습니다. | API-166 |
 
 ### OrderErrorCode
@@ -496,6 +499,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | `NOTIFICATION_404` | 404 | 알림을 찾을 수 없습니다. | API-191 |
 | `NOTIFICATION_403` | 403 | 본인의 알림이 아닙니다. | API-191 |
 | `NOTIFICATION_400_REQUIRED` | 400 | 필수 알림은 끌 수 없습니다. | API-041 |
+| `NOTIFICATION_409_SETTING_CONFLICT` | 409 | 동시 요청으로 알림 설정 변경에 실패했습니다. | API-041 |
 
 ### MediaErrorCode
 
@@ -1114,7 +1118,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 배송지 추가. 인증 **필요**. 관련 화면 SCR-006, SCR-002.
 
-요청 `ShippingAddressCreateRequest` — `recipientName` `phone` `zipcode` `address` `addressDetail?` `deliveryRequestType?` `deliveryRequest?` `isDefault?`. 첫 배송지는 자동으로 기본이 된다. 회원가입(API-012)에서도 같은 스키마를 재사용한다.
+요청 `ShippingAddressCreateRequest` — `recipientName` `phone` `zipcode` `address` `addressDetail?` `deliveryRequestType?` `deliveryRequest?` `isDefault?`. 가입 시 받는 첫 배송지만 이 값과 무관하게 기본이 된다(회원가입 API-012 처리) — 이 API 로 추가하는 배송지는 `isDefault` 를 그대로 따른다.
 
 **요청 본문**
 
@@ -1126,8 +1130,8 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 | `address` | String | O | — | 도로명주소 |
 | `addressDetail` | String |  | — | — |
 | `deliveryRequestType` | DeliveryRequestType |  | 4종 중 하나 | `AT_DOOR`(문 앞에 놓아주세요) · `SECURITY_OFFICE`(경비실에 맡겨주세요) · `PARCEL_BOX`(택배함에 넣어주세요) · `DIRECT`(직접 입력) |
-| `deliveryRequest` | String |  | 50자 이내 | `DIRECT` 일 때만 보낸다. 화면에 '최대 50자까지 입력 가능' |
-| `isDefault` | Boolean |  | 첫 배송지는 자동 true | — |
+| `deliveryRequest` | String |  | 50자 이내, DIRECT 면 필수 | `DIRECT` 일 때만 보낸다. 화면에 '최대 50자까지 입력 가능' |
+| `isDefault` | Boolean |  | — | 보낸 값을 그대로 따른다(가입 시 첫 배송지만 예외) |
 
 **응답** (`data`)
 
@@ -1146,7 +1150,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 }
 ```
 
-에러 — COMMON_400
+에러 — COMMON_400, ADDRESS_409_DEFAULT_CONFLICT
 
 #### API-022 · `PUT /api/v1/shipping-addresses/{addressId}`
 
@@ -1164,7 +1168,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 | `address` | String | O | — | 도로명주소 |
 | `addressDetail` | String |  | — | — |
 | `deliveryRequestType` | DeliveryRequestType |  | 4종 중 하나 | `AT_DOOR`(문 앞에 놓아주세요) · `SECURITY_OFFICE`(경비실에 맡겨주세요) · `PARCEL_BOX`(택배함에 넣어주세요) · `DIRECT`(직접 입력) |
-| `deliveryRequest` | String |  | 50자 이내 | `DIRECT` 일 때만 보낸다. 화면에 '최대 50자까지 입력 가능' |
+| `deliveryRequest` | String |  | 50자 이내, DIRECT 면 필수 | `DIRECT` 일 때만 보낸다. 화면에 '최대 50자까지 입력 가능' |
 
 **응답** (`data`)
 
@@ -1183,7 +1187,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 }
 ```
 
-에러 — ADDRESS_404, ADDRESS_403
+에러 — COMMON_400, ADDRESS_404, ADDRESS_403
 
 #### API-023 · `DELETE /api/v1/shipping-addresses/{addressId}`
 
@@ -1217,7 +1221,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 **응답** `data` 는 `null` 이다.
 
-에러 — ADDRESS_404, ADDRESS_403
+에러 — ADDRESS_404, ADDRESS_403, ADDRESS_409_DEFAULT_CONFLICT
 
 ### 정산 계좌
 
@@ -1297,7 +1301,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 }
 ```
 
-에러 — COMMON_400
+에러 — COMMON_400, PAYOUT_409_DEFAULT_CONFLICT
 
 #### API-032 · `PUT /api/v1/payout-accounts/{accountId}`
 
@@ -1372,7 +1376,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 **응답** `data` 는 `null` 이다.
 
-에러 — PAYOUT_404, PAYOUT_403
+에러 — PAYOUT_404, PAYOUT_403, PAYOUT_409_DEFAULT_CONFLICT
 
 #### API-035 · `GET /api/v1/payout-accounts/banks`
 
@@ -1481,7 +1485,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 **응답** `data` 는 `null` 이다.
 
-에러 — COMMON_400, NOTIFICATION_400_REQUIRED
+에러 — COMMON_400, NOTIFICATION_400_REQUIRED, NOTIFICATION_409_SETTING_CONFLICT
 
 ### 소셜
 
@@ -3648,7 +3652,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 
 **응답** `data` 는 `null` 이다.
 
-에러 — OFFER_403, OFFER_409_NOT_PENDING, OFFER_410_EXPIRED
+에러 — OFFER_403, OFFER_409_NOT_PENDING, OFFER_410_EXPIRED, PAYMENT_409_RELEASE
 
 #### API-144 · `POST /api/v1/offers/{offerId}/accept`
 
@@ -3701,7 +3705,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 
 **응답** `data` 는 `null` 이다.
 
-에러 — OFFER_403, OFFER_409_NOT_PENDING
+에러 — OFFER_403, OFFER_409_NOT_PENDING, PAYMENT_409_RELEASE
 
 ### 거래
 

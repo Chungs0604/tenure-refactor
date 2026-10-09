@@ -75,4 +75,10 @@ public class Category {
 	@Column(name = "sort_order", nullable = false)
 	private Integer sortOrder;
 
+	/** 세부 카테고리는 세트를 갖지 않아 부모에서 읽는다. */
+	public MeasurementScheme resolveMeasurementScheme() {
+		MeasurementScheme scheme = parent.getMeasurementScheme();
+		return scheme == null ? MeasurementScheme.NONE : scheme;
+	}
+
 }

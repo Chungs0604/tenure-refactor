@@ -243,8 +243,7 @@ public class PostQueryService {
 			throw new CustomException(UserErrorCode.USER_404);
 		}
 
-		if (userBlockRepository.existsBlock(viewerId, targetUserId)
-				|| userBlockRepository.existsBlock(targetUserId, viewerId)) {
+		if (userBlockRepository.existsMutualBlock(viewerId, targetUserId)) {
 			return CursorSlice.empty();
 		}
 

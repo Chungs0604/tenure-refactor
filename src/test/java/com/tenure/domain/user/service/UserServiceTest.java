@@ -64,6 +64,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -250,6 +251,8 @@ class UserServiceTest {
 		@Test
 		@DisplayName("인증 토큰이 유효하지 않으면 계정을 만들지 않는다")
 		void signUp_invalidVerificationToken_createsNothing() {
+			given(userRepository.existsByEmail(EMAIL)).willReturn(false);
+			given(userRepository.existsByNickname(NICKNAME)).willReturn(false);
 			willThrow(new CustomException(AuthErrorCode.AUTH_410_VERIFICATION_TOKEN))
 					.given(authService)
 					.consumeVerificationToken(TOKEN, EMAIL, VerificationPurpose.SIGN_UP);
@@ -259,8 +262,10 @@ class UserServiceTest {
 					.extracting(UserServiceTest::errorCodeOf)
 					.isEqualTo(AuthErrorCode.AUTH_410_VERIFICATION_TOKEN);
 
-			// 토큰 소비가 가장 먼저다 — 중복 조회조차 하지 않는다
-			verifyNoInteractions(userRepository, userAgreementRepository, shippingAddressRepository);
+			// 토큰 소비는 검증을 통과한 뒤 계정 생성 직전이다 — 중복 검사는 이미 끝났지만
+			// 계정·약관·배송지는 전혀 만들어지지 않는다
+			verify(userRepository, times(0)).save(any());
+			verifyNoInteractions(userAgreementRepository, shippingAddressRepository);
 		}
 
 		@ParameterizedTest(name = "{0} 누락")
@@ -289,7 +294,7 @@ class UserServiceTest {
 		}
 
 		@Test
-		@DisplayName("이메일이 중복이면 USER_409_EMAIL 예외가 발생한다")
+		@DisplayName("이메일이 중복이면 USER_409_EMAIL 예외가 발생하고 인증 토큰은 소비되지 않는다")
 		void signUp_duplicateEmail_throwsConflict() {
 			given(userRepository.existsByEmail(EMAIL)).willReturn(true);
 
@@ -299,10 +304,12 @@ class UserServiceTest {
 					.isEqualTo(UserErrorCode.USER_409_EMAIL);
 
 			verify(userRepository, times(0)).save(any());
+			// 중복 검사가 토큰 소비보다 먼저라 재시도 시 이메일 인증을 다시 받을 필요가 없다
+			verifyNoInteractions(authService);
 		}
 
 		@Test
-		@DisplayName("닉네임이 중복이면 USER_409_NICKNAME 예외가 발생한다")
+		@DisplayName("닉네임이 중복이면 USER_409_NICKNAME 예외가 발생하고 인증 토큰은 소비되지 않는다")
 		void signUp_duplicateNickname_throwsConflict() {
 			given(userRepository.existsByEmail(EMAIL)).willReturn(false);
 			given(userRepository.existsByNickname(NICKNAME)).willReturn(true);
@@ -313,6 +320,41 @@ class UserServiceTest {
 					.isEqualTo(UserErrorCode.USER_409_NICKNAME);
 
 			verify(userRepository, times(0)).save(any());
+			verifyNoInteractions(authService);
+		}
+
+		@Test
+		@DisplayName("동시 가입으로 이메일 유니크 제약에 걸리면 USER_409_EMAIL 로 번역한다")
+		void signUp_concurrentDuplicateEmail_throwsConflict() {
+			given(userRepository.existsByEmail(EMAIL)).willReturn(false);
+			given(userRepository.existsByNickname(NICKNAME)).willReturn(false);
+			given(passwordEncoder.encode(RAW_PASSWORD)).willReturn(HASHED_PASSWORD);
+			willThrow(new DataIntegrityViolationException(
+					"could not execute statement",
+					new RuntimeException("Duplicate entry 'gildong@naver.com' for key 'uk_user_email'")))
+					.given(userRepository).save(any(User.class));
+
+			assertThatThrownBy(() -> userService.signUp(request()))
+					.isInstanceOf(CustomException.class)
+					.extracting(UserServiceTest::errorCodeOf)
+					.isEqualTo(UserErrorCode.USER_409_EMAIL);
+		}
+
+		@Test
+		@DisplayName("동시 가입으로 닉네임 유니크 제약에 걸리면 USER_409_NICKNAME 로 번역한다")
+		void signUp_concurrentDuplicateNickname_throwsConflict() {
+			given(userRepository.existsByEmail(EMAIL)).willReturn(false);
+			given(userRepository.existsByNickname(NICKNAME)).willReturn(false);
+			given(passwordEncoder.encode(RAW_PASSWORD)).willReturn(HASHED_PASSWORD);
+			willThrow(new DataIntegrityViolationException(
+					"could not execute statement",
+					new RuntimeException("Duplicate entry 'Sujun' for key 'uk_user_nickname'")))
+					.given(userRepository).save(any(User.class));
+
+			assertThatThrownBy(() -> userService.signUp(request()))
+					.isInstanceOf(CustomException.class)
+					.extracting(UserServiceTest::errorCodeOf)
+					.isEqualTo(UserErrorCode.USER_409_NICKNAME);
 		}
 
 		private void givenSignUpSucceeds() {
@@ -483,6 +525,22 @@ class UserServiceTest {
 					.isEqualTo(UserErrorCode.USER_409_NICKNAME);
 
 			assertThat(user.getNickname()).isEqualTo(NICKNAME);
+		}
+
+		@Test
+		@DisplayName("동시 변경으로 닉네임 유니크 제약에 걸리면 USER_409_NICKNAME 로 번역한다")
+		void updateProfile_concurrentDuplicateNickname_throwsConflict() {
+			User user = profileUser();
+			given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+			// 선검사는 통과했지만 동시 요청이 먼저 그 닉네임으로 커밋해 flush 시점에 걸림
+			given(userRepository.existsOtherNickname("Yujin", USER_ID)).willReturn(false);
+			willThrow(new DataIntegrityViolationException("uk_user_nickname"))
+					.given(userRepository).flush();
+
+			assertThatThrownBy(() -> userService.updateProfile(USER_ID, updateRequest("Yujin", IMAGE_KEY)))
+					.isInstanceOf(CustomException.class)
+					.extracting(UserServiceTest::errorCodeOf)
+					.isEqualTo(UserErrorCode.USER_409_NICKNAME);
 		}
 
 		@Test

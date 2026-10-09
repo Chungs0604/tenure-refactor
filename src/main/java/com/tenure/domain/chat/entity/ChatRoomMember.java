@@ -68,6 +68,9 @@ public class ChatRoomMember {
 	 * 읽음 처리. 단조 증가만 허용함 — 요청이 뒤섞여 도착해도 읽음 위치가 뒤로 밀리지 않음.
 	 * 이미 더 최신까지 읽었으면 조용히 무시함(에러로 다루지 않음 — 클라이언트 재시도·중복
 	 * 전송에서 흔한 입력임).
+	 *
+	 * 테스트 전용임. 프로덕션 경로는 동시 갱신에 따른 lost update 를 피하려고 전부
+	 * ChatRoomMemberRepository.markReadIfNewer() 를 씀 — 지우지 말고 테스트에서만 쓴다.
 	 */
 	public void markRead(ChatMessage lastReadMessage) {
 		if (this.lastReadMessage != null && lastReadMessage.getId() <= this.lastReadMessage.getId()) {

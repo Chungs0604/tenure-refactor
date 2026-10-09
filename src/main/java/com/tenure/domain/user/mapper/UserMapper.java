@@ -29,7 +29,7 @@ public interface UserMapper {
 			User user, String profileImageUrl, Integer itemCount, Integer wishCount
 	);
 
-	@Mapping(target = "nickname", expression = "java(displayNickname(user))")
+	@Mapping(target = "nickname", expression = "java(com.tenure.domain.user.mapper.UserMapper.displayNickname(user))")
 	@Mapping(target = "profileImageUrl", source = "profileImageUrl")
 	@Mapping(target = "itemCount", source = "itemCount")
 	@Mapping(target = "isFollowing", source = "following")
@@ -38,8 +38,13 @@ public interface UserMapper {
 			User user, String profileImageUrl, Integer itemCount, Boolean following, Boolean blocked
 	);
 
-	/** 탈퇴 계정은 저장된 닉네임 대신 고정 문구를 보여준다. */
-	default String displayNickname(User user) {
+	/**
+	 * 탈퇴 계정은 저장된 닉네임 대신 고정 문구를 보여준다.
+	 *
+	 * static 이라 OrderMapper·PostMapper·ChatMapper 가 각자 복제하지 않고 완전히 한정한
+	 * 이름으로 {@code expression} 에서 바로 부를 수 있다.
+	 */
+	static String displayNickname(User user) {
 		return user.isWithdrawn() ? WITHDRAWN_NICKNAME : user.getNickname();
 	}
 }

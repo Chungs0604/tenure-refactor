@@ -104,8 +104,9 @@ class AddressConcurrencyTest extends IntegrationTestSupport {
 				() -> addressService.changeDefault(owner.getId(), second.getId()));
 
 		// releaseDefault 의 벌크 UPDATE 가 현재 기본 행에 X 락을 잡아 뒤 요청이 대기한다.
-		// 이 단정이 깨지면 직렬화가 아니라 커밋 충돌이라는 뜻이고, 그때는
-		// DataIntegrityViolationException 핸들러(현재 없어 500)가 필요해진다
+		// 이 단정이 깨지면(드물게 실제 데드락이 나면) AddressService.changeDefault() 가
+		// DataIntegrityViolationException/CannotAcquireLockException 을
+		// ADDRESS_409_DEFAULT_CONFLICT 로 번역해 올린다 — 500 이 아니라 CustomException 이 된다
 		assertThat(outcome.failures())
 				.as("실패한 요청의 예외")
 				.isEmpty();

@@ -89,7 +89,7 @@ public class ItemFormApplier {
 	public void replaceMeasurements(
 			Item item, Category category, Map<MeasurementField, BigDecimal> values
 	) {
-		MeasurementScheme scheme = measurementSchemeOf(category);
+		MeasurementScheme scheme = category.resolveMeasurementScheme();
 		Map<MeasurementField, BigDecimal> given = values == null ? Map.of() : values;
 		Set<MeasurementField> sent = filledFields(given);
 
@@ -102,9 +102,9 @@ public class ItemFormApplier {
 			throw new CustomException(ItemErrorCode.ITEM_400_MEASUREMENT);
 		}
 
-		// 아이템당 한 행이라 지우고 다시 넣음
-		itemMeasurementRepository.findByItemId(item.getId())
-				.ifPresent(itemMeasurementRepository::delete);
+		// 아이템당 한 행이라 지우고 다시 넣음. 벌크 삭제로 지워야 DELETE 가 뒤의 save 보다
+		// 먼저 DB 에 닿는다 — em.remove() 는 flush 때까지 미뤄져 INSERT 가 먼저 나간다.
+		itemMeasurementRepository.deleteByItemId(item.getId());
 
 		// 한 칸도 안 채웠으면 행을 만들지 않음
 		if (sent.isEmpty()) {
@@ -131,7 +131,7 @@ public class ItemFormApplier {
 
 	/** 대분류가 바뀌어 세트 밖이 된 실측은 남겨 둘 수 없다 — 상세가 엉뚱한 칸을 그린다. */
 	private void discardMismatchedMeasurement(Item item, Category category) {
-		Set<MeasurementField> accepted = measurementSchemeOf(category).getFields();
+		Set<MeasurementField> accepted = category.resolveMeasurementScheme().getFields();
 
 		itemMeasurementRepository.findByItemId(item.getId())
 				.filter(measurement -> !accepted.containsAll(measurement.toValues().keySet()))
@@ -173,11 +173,5 @@ public class ItemFormApplier {
 				.filter(entry -> entry.getValue() != null)
 				.map(Map.Entry::getKey)
 				.collect(Collectors.toCollection(() -> EnumSet.noneOf(MeasurementField.class)));
-	}
-
-	/** 세부 카테고리는 세트를 갖지 않아 부모에서 읽는다. */
-	private MeasurementScheme measurementSchemeOf(Category leaf) {
-		MeasurementScheme scheme = leaf.getParent().getMeasurementScheme();
-		return scheme == null ? MeasurementScheme.NONE : scheme;
 	}
 }

@@ -6,17 +6,15 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.tenure.domain.address.entity.ShippingAddress;
 import com.tenure.domain.item.entity.Item;
-import com.tenure.domain.item.entity.ItemOwnership;
 import com.tenure.domain.item.enums.SaleStatus;
 import com.tenure.domain.item.enums.WearTarget;
-import com.tenure.domain.item.exception.ItemErrorCode;
-import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.notification.service.NotificationService;
 import com.tenure.domain.offer.entity.PurchaseOffer;
 import com.tenure.domain.offer.enums.OfferStatus;
@@ -47,10 +45,7 @@ import com.tenure.domain.payment.entity.Payment;
 import com.tenure.domain.payment.enums.PaymentMethod;
 import com.tenure.domain.payment.repository.PaymentRepository;
 import com.tenure.domain.payment.service.PaymentService;
-import com.tenure.domain.payout.entity.PayoutAccount;
 import com.tenure.domain.payout.enums.BankCode;
-import com.tenure.domain.payout.exception.PayoutErrorCode;
-import com.tenure.domain.payout.repository.PayoutAccountRepository;
 import com.tenure.domain.listing.enums.FeeBearer;
 import com.tenure.domain.settlement.entity.Settlement;
 import com.tenure.domain.settlement.repository.SettlementRepository;
@@ -98,11 +93,10 @@ class OrderServiceTest {
 	@Mock private PurchaseOfferRepository purchaseOfferRepository;
 	@Mock private PaymentRepository paymentRepository;
 	@Mock private PaymentService paymentService;
-	@Mock private PayoutAccountRepository payoutAccountRepository;
-	@Mock private ItemOwnershipRepository itemOwnershipRepository;
 	@Mock private NotificationService notificationService;
 	@Mock private FileStorage fileStorage;
 	@Mock private BusinessDayCalculator businessDayCalculator;
+	@Mock private OrderBatchExecutor orderBatchExecutor;
 
 	// 매핑은 검증 대상이라 mock 이 아니라 실제 생성 구현을 넣는다
 	@Spy private OrderMapper orderMapper = new OrderMapperImpl();
@@ -393,176 +387,83 @@ class OrderServiceTest {
 	@DisplayName("구매 확정")
 	class Confirm {
 
+		/**
+		 * 소유권 승계·정산 생성 같은 실제 업무 로직과 403/409/정산 계좌 없음 같은 검증은
+		 * OrderBatchExecutor.confirmForBuyer 로 옮겼다 — OrderBatchExecutorTest 참고.
+		 * 여기서는 OrderService.confirm() 이 그 결과를 받아 응답을 올바르게 조립하는지만 본다.
+		 */
 		@Test
-		@DisplayName("배송완료 거래를 확정하면 소유권을 승계하고 정산을 생성한다")
-		void confirm_delivered_transfersOwnershipAndCreatesSettlement() {
-			User buyer = user(BUYER_ID);
-			User seller = user(SELLER_ID);
-			Item item = item(seller);
-			TradeOrder order = order(buyer, seller, item, OrderStatus.PAYMENT_COMPLETED);
-			order.ship();
-			order.deliver(LocalDateTime.now().plusHours(72));
-			ItemOwnership current = ItemOwnership.openInitial(item, seller, LocalDate.of(2025, 2, 8));
-			PayoutAccount account = PayoutAccount.register(seller, BankCode.TOSS_BANK, "홍길동", "1111-1111", true);
+		@DisplayName("배치 실행기가 돌려준 확정일로 정산 예정일을 계산해 응답한다")
+		void confirm_delegatesToBatchExecutor_buildsResponse() {
+			LocalDate confirmedDate = LocalDate.of(2026, 6, 8);
 			LocalDate scheduledAt = LocalDate.of(2026, 6, 10);
-
-			given(tradeOrderRepository.findByIdForUpdate(ORDER_ID)).willReturn(Optional.of(order));
-			given(itemOwnershipRepository.findCurrent(ITEM_ID)).willReturn(Optional.of(current));
-			given(payoutAccountRepository.findAllOf(SELLER_ID)).willReturn(List.of(account));
-			given(businessDayCalculator.plusBusinessDays(any(), eq(2))).willReturn(scheduledAt);
+			given(orderBatchExecutor.confirmForBuyer(eq(ORDER_ID), eq(BUYER_ID), any())).willReturn(confirmedDate);
+			given(businessDayCalculator.plusBusinessDays(confirmedDate, 2)).willReturn(scheduledAt);
 
 			ConfirmResponse response = orderService.confirm(BUYER_ID, ORDER_ID);
 
 			assertThat(response.getStatus()).isEqualTo(OrderStatus.PURCHASE_CONFIRMED);
 			assertThat(response.getSettlementScheduledAt()).isEqualTo(scheduledAt);
-			assertThat(current.isClosed()).isTrue();
-			assertThat(item.getSaleStatus()).isEqualTo(SaleStatus.SOLD);
-			verify(itemOwnershipRepository).save(any(ItemOwnership.class));
-			verify(settlementRepository).save(any(Settlement.class));
-			verify(notificationService).notify(eq(seller), any(), any(), any(), any(), any(), any(), any());
 		}
 
 		@Test
-		@DisplayName("구매자가 아니면 ORDER_403 이다")
-		void confirm_notBuyer_forbidden() {
-			User buyer = user(BUYER_ID);
-			User seller = user(SELLER_ID);
-			TradeOrder order = order(buyer, seller, OrderStatus.PAYMENT_COMPLETED);
-			order.ship();
-			order.deliver(LocalDateTime.now().plusHours(72));
-			given(tradeOrderRepository.findByIdForUpdate(ORDER_ID)).willReturn(Optional.of(order));
+		@DisplayName("배치 실행기가 던진 예외를 그대로 전파한다")
+		void confirm_batchExecutorThrows_propagates() {
+			given(orderBatchExecutor.confirmForBuyer(eq(ORDER_ID), eq(OTHER_ID), any()))
+					.willThrow(new CustomException(OrderErrorCode.ORDER_403));
 
 			assertThatThrownBy(() -> orderService.confirm(OTHER_ID, ORDER_ID))
 					.isInstanceOf(CustomException.class)
 					.extracting(OrderServiceTest::errorCodeOf)
 					.isEqualTo(OrderErrorCode.ORDER_403);
-		}
 
-		@Test
-		@DisplayName("배송완료 전이면 ORDER_409_STATUS 다")
-		void confirm_notDelivered_conflict() {
-			User buyer = user(BUYER_ID);
-			User seller = user(SELLER_ID);
-			TradeOrder order = order(buyer, seller, OrderStatus.PAYMENT_COMPLETED);
-			given(tradeOrderRepository.findByIdForUpdate(ORDER_ID)).willReturn(Optional.of(order));
-
-			assertThatThrownBy(() -> orderService.confirm(BUYER_ID, ORDER_ID))
-					.isInstanceOf(CustomException.class)
-					.extracting(OrderServiceTest::errorCodeOf)
-					.isEqualTo(OrderErrorCode.ORDER_409_STATUS);
-		}
-
-		@Test
-		@DisplayName("정산 계좌가 없으면 PAYOUT_400_REQUIRED 다")
-		void confirm_noPayoutAccount_rejected() {
-			User buyer = user(BUYER_ID);
-			User seller = user(SELLER_ID);
-			Item item = item(seller);
-			TradeOrder order = order(buyer, seller, item, OrderStatus.PAYMENT_COMPLETED);
-			order.ship();
-			order.deliver(LocalDateTime.now().plusHours(72));
-			ItemOwnership current = ItemOwnership.openInitial(item, seller, LocalDate.of(2025, 2, 8));
-
-			given(tradeOrderRepository.findByIdForUpdate(ORDER_ID)).willReturn(Optional.of(order));
-			given(itemOwnershipRepository.findCurrent(ITEM_ID)).willReturn(Optional.of(current));
-			given(payoutAccountRepository.findAllOf(SELLER_ID)).willReturn(List.of());
-
-			assertThatThrownBy(() -> orderService.confirm(BUYER_ID, ORDER_ID))
-					.isInstanceOf(CustomException.class)
-					.extracting(OrderServiceTest::errorCodeOf)
-					.isEqualTo(PayoutErrorCode.PAYOUT_400_REQUIRED);
-
-			verify(settlementRepository, never()).save(any());
-		}
-
-		@Test
-		@DisplayName("현재 소유 구간이 없으면 ITEM_404 다 — 데이터 정합성이 깨진 상태다")
-		void confirm_noCurrentOwnership_itemNotFound() {
-			User buyer = user(BUYER_ID);
-			User seller = user(SELLER_ID);
-			Item item = item(seller);
-			TradeOrder order = order(buyer, seller, item, OrderStatus.PAYMENT_COMPLETED);
-			order.ship();
-			order.deliver(LocalDateTime.now().plusHours(72));
-
-			given(tradeOrderRepository.findByIdForUpdate(ORDER_ID)).willReturn(Optional.of(order));
-			given(itemOwnershipRepository.findCurrent(ITEM_ID)).willReturn(Optional.empty());
-
-			assertThatThrownBy(() -> orderService.confirm(BUYER_ID, ORDER_ID))
-					.isInstanceOf(CustomException.class)
-					.extracting(OrderServiceTest::errorCodeOf)
-					.isEqualTo(ItemErrorCode.ITEM_404);
+			verify(businessDayCalculator, never()).plusBusinessDays(any(), anyInt());
 		}
 	}
 
+	/**
+	 * DELIVERED 상태 재확인·소유권 승계 등 건별 업무 로직은 OrderBatchExecutor.confirmIfDue 로
+	 * 옮겼다 — OrderBatchExecutorTest 참고. 여기서는 대상 id마다 그 메서드가 독립적으로(건별
+	 * REQUIRES_NEW 트랜잭션으로) 호출되고, 한 건이 예외를 던져도 나머지는 계속 진행하는지만 본다.
+	 */
 	@Nested
 	@DisplayName("자동 구매 확정 배치")
 	class AutoConfirmDue {
 
 		@Test
-		@DisplayName("대상이 없으면 아무 일도 하지 않는다")
+		@DisplayName("대상이 없으면 배치 실행기를 호출하지 않는다")
 		void autoConfirmDue_noTargets_doesNothing() {
 			LocalDateTime now = LocalDateTime.now();
 			given(tradeOrderRepository.findAutoConfirmableIds(now)).willReturn(List.of());
 
 			orderService.autoConfirmDue(now);
 
-			verify(tradeOrderRepository, never()).findByIdForUpdate(any());
+			verify(orderBatchExecutor, never()).confirmIfDue(any(), any());
 		}
 
 		@Test
-		@DisplayName("상태가 DELIVERED 가 아니게 된 건은 건너뛴다")
-		void autoConfirmDue_statusChanged_skipped() {
+		@DisplayName("대상 id마다 배치 실행기를 호출한다")
+		void autoConfirmDue_targets_delegatesEachId() {
 			LocalDateTime now = LocalDateTime.now();
-			User buyer = user(BUYER_ID);
-			User seller = user(SELLER_ID);
-			TradeOrder order = order(buyer, seller, OrderStatus.PAYMENT_COMPLETED);
-			order.ship();
-			given(tradeOrderRepository.findAutoConfirmableIds(now)).willReturn(List.of(ORDER_ID));
-			given(tradeOrderRepository.findByIdForUpdate(ORDER_ID)).willReturn(Optional.of(order));
-
-			orderService.autoConfirmDue(now);
-
-			verify(settlementRepository, never()).save(any());
-		}
-
-		@Test
-		@DisplayName("한 건이 정산 계좌 부재로 실패해도 나머지 배치는 계속 진행한다")
-		void autoConfirmDue_oneFails_othersContinue() {
-			LocalDateTime now = LocalDateTime.now();
-
-			User sellerWithoutAccount = user(SELLER_ID);
-			Item failingItem = item(sellerWithoutAccount);
-			TradeOrder failing = order(user(BUYER_ID), sellerWithoutAccount, failingItem, OrderStatus.DELIVERED);
-			failing.deliver(now.minusHours(1)); // 배치 대상이 되려면 autoConfirmAt 이 now 이전이어야 함
-			ReflectionTestUtils.setField(failing, "id", 101L);
-
-			User sellerWithAccount = user(5L);
-			Item succeedingItem = item(sellerWithAccount);
-			ReflectionTestUtils.setField(succeedingItem, "id", 201L);
-			TradeOrder succeeding = order(user(4L), sellerWithAccount, succeedingItem, OrderStatus.DELIVERED);
-			succeeding.deliver(now.minusHours(1));
-			ReflectionTestUtils.setField(succeeding, "id", 102L);
-
 			given(tradeOrderRepository.findAutoConfirmableIds(now)).willReturn(List.of(101L, 102L));
-			given(tradeOrderRepository.findByIdForUpdate(101L)).willReturn(Optional.of(failing));
-			given(tradeOrderRepository.findByIdForUpdate(102L)).willReturn(Optional.of(succeeding));
-			given(itemOwnershipRepository.findCurrent(ITEM_ID))
-					.willReturn(Optional.of(ItemOwnership.openInitial(failingItem, sellerWithoutAccount, LocalDate.of(2025, 2, 8))));
-			given(itemOwnershipRepository.findCurrent(201L))
-					.willReturn(Optional.of(ItemOwnership.openInitial(succeedingItem, sellerWithAccount, LocalDate.of(2025, 2, 8))));
-			given(payoutAccountRepository.findAllOf(SELLER_ID)).willReturn(List.of());
-			PayoutAccount account = PayoutAccount.register(sellerWithAccount, BankCode.TOSS_BANK, "김유진", "2222-2222", true);
-			given(payoutAccountRepository.findAllOf(5L)).willReturn(List.of(account));
-			given(businessDayCalculator.plusBusinessDays(any(), eq(2))).willReturn(LocalDate.of(2026, 6, 10));
 
 			orderService.autoConfirmDue(now);
 
-			assertThat(succeeding.getStatus()).isEqualTo(OrderStatus.PURCHASE_CONFIRMED);
-			// 정산 계좌 조회를 상태 변경보다 먼저 하므로, 실패한 건은 아무 상태도 안 바뀐 채 남는다 —
-			// 반쪽짜리 PURCHASE_CONFIRMED 가 생기지 않는다
-			assertThat(failing.getStatus()).isEqualTo(OrderStatus.DELIVERED);
-			verify(settlementRepository, times(1)).save(any());
+			verify(orderBatchExecutor).confirmIfDue(101L, now);
+			verify(orderBatchExecutor).confirmIfDue(102L, now);
+		}
+
+		@Test
+		@DisplayName("한 건이 예외를 던져도 나머지 건은 계속 처리한다")
+		void autoConfirmDue_oneThrows_othersContinue() {
+			LocalDateTime now = LocalDateTime.now();
+			given(tradeOrderRepository.findAutoConfirmableIds(now)).willReturn(List.of(101L, 102L));
+			doThrow(new RuntimeException("정산 계좌 없음")).when(orderBatchExecutor).confirmIfDue(101L, now);
+
+			orderService.autoConfirmDue(now);
+
+			verify(orderBatchExecutor).confirmIfDue(101L, now);
+			verify(orderBatchExecutor).confirmIfDue(102L, now);
 		}
 	}
 
@@ -637,13 +538,18 @@ class OrderServiceTest {
 		}
 	}
 
+	/**
+	 * settlement·order 상태를 실제로 바꾸는 로직은 OrderBatchExecutor.settleIfDue 로 옮겼다 —
+	 * OrderBatchExecutorTest 참고. 여기서는 영업일 계산(행 잠금 전에 끝내야 함)에 따라
+	 * settleIfDue 호출 여부가 갈리는지, 한 건 예외가 나머지에 영향을 안 주는지만 본다.
+	 */
 	@Nested
 	@DisplayName("정산 배치")
 	class SettleDue {
 
 		@Test
-		@DisplayName("영업일이 지난 구매확정 건은 정산 완료로 넘긴다")
-		void settleDue_dueDateReached_settles() {
+		@DisplayName("영업일이 지난 건은 배치 실행기에 위임한다")
+		void settleDue_dueDateReached_delegatesToBatchExecutor() {
 			LocalDateTime now = LocalDateTime.of(2026, 6, 10, 1, 0);
 			User buyer = user(BUYER_ID);
 			User seller = user(SELLER_ID);
@@ -652,20 +558,18 @@ class OrderServiceTest {
 			order.deliver(now.minusDays(5));
 			order.confirmPurchase(now.minusDays(3));
 			Settlement settlement = Settlement.of(order, seller, BankCode.TOSS_BANK.name(), "1111-1111", "홍길동", 365000);
+			ReflectionTestUtils.setField(settlement, "id", 500L);
 
 			given(settlementRepository.findAllBySettledAtIsNull()).willReturn(List.of(settlement));
-			given(tradeOrderRepository.findByIdForUpdate(order.getId())).willReturn(Optional.of(order));
 			given(businessDayCalculator.plusBusinessDays(any(), eq(2))).willReturn(LocalDate.of(2026, 6, 9));
 
 			orderService.settleDue(now);
 
-			assertThat(settlement.getSettledAt()).isNotNull();
-			assertThat(order.getStatus()).isEqualTo(OrderStatus.SETTLED);
-			verify(notificationService).notify(eq(seller), any(), any(), any(), any(), any(), any(), any());
+			verify(orderBatchExecutor).settleIfDue(500L, ORDER_ID, now);
 		}
 
 		@Test
-		@DisplayName("영업일이 아직 안 지났으면 건너뛴다")
+		@DisplayName("영업일이 아직 안 지났으면 배치 실행기를 호출하지 않는다")
 		void settleDue_dueDateNotReached_skipped() {
 			LocalDateTime now = LocalDateTime.of(2026, 6, 10, 1, 0);
 			User buyer = user(BUYER_ID);
@@ -677,34 +581,46 @@ class OrderServiceTest {
 			Settlement settlement = Settlement.of(order, seller, BankCode.TOSS_BANK.name(), "1111-1111", "홍길동", 365000);
 
 			given(settlementRepository.findAllBySettledAtIsNull()).willReturn(List.of(settlement));
-			given(tradeOrderRepository.findByIdForUpdate(order.getId())).willReturn(Optional.of(order));
 			given(businessDayCalculator.plusBusinessDays(any(), eq(2))).willReturn(LocalDate.of(2026, 6, 11));
 
 			orderService.settleDue(now);
 
-			assertThat(settlement.getSettledAt()).isNull();
-			assertThat(order.getStatus()).isEqualTo(OrderStatus.PURCHASE_CONFIRMED);
+			verify(orderBatchExecutor, never()).settleIfDue(any(), any(), any());
 		}
 
 		@Test
-		@DisplayName("거래 상태가 이미 구매확정이 아니면 건너뛴다")
-		void settleDue_orderStatusChanged_skipped() {
+		@DisplayName("한 건이 예외를 던져도 나머지 건은 계속 처리한다")
+		void settleDue_oneThrows_othersContinue() {
 			LocalDateTime now = LocalDateTime.of(2026, 6, 10, 1, 0);
 			User buyer = user(BUYER_ID);
 			User seller = user(SELLER_ID);
-			// settlement 는 doConfirm() 이후에만 생기므로 confirmedAt 이 없는 상태는 실제로 도달하지
-			// 않는다 — SETTLED 로 끝까지 전이시켜 '이미 처리된 거래' 를 현실적으로 재현한다
-			TradeOrder order = order(buyer, seller, OrderStatus.SETTLED);
-			Settlement settlement = Settlement.of(order, seller, BankCode.TOSS_BANK.name(), "1111-1111", "홍길동", 365000);
+			TradeOrder order1 = order(buyer, seller, OrderStatus.PAYMENT_COMPLETED);
+			order1.ship();
+			order1.deliver(now.minusDays(5));
+			order1.confirmPurchase(now.minusDays(3));
+			Settlement settlement1 = Settlement.of(order1, seller, BankCode.TOSS_BANK.name(), "1111-1111", "홍길동", 365000);
+			ReflectionTestUtils.setField(settlement1, "id", 501L);
 
-			given(settlementRepository.findAllBySettledAtIsNull()).willReturn(List.of(settlement));
-			given(businessDayCalculator.plusBusinessDays(any(), eq(2))).willReturn(LocalDate.of(2026, 6, 10));
-			given(tradeOrderRepository.findByIdForUpdate(order.getId())).willReturn(Optional.of(order));
+			User buyer2 = user(4L);
+			User seller2 = user(5L);
+			Item item2 = item(seller2);
+			ReflectionTestUtils.setField(item2, "id", 201L);
+			TradeOrder order2 = order(buyer2, seller2, item2, OrderStatus.PAYMENT_COMPLETED);
+			ReflectionTestUtils.setField(order2, "id", 102L);
+			order2.ship();
+			order2.deliver(now.minusDays(5));
+			order2.confirmPurchase(now.minusDays(3));
+			Settlement settlement2 = Settlement.of(order2, seller2, BankCode.TOSS_BANK.name(), "2222-2222", "김유진", 100000);
+			ReflectionTestUtils.setField(settlement2, "id", 502L);
+
+			given(settlementRepository.findAllBySettledAtIsNull()).willReturn(List.of(settlement1, settlement2));
+			given(businessDayCalculator.plusBusinessDays(any(), eq(2))).willReturn(LocalDate.of(2026, 6, 9));
+			doThrow(new RuntimeException("디비 오류")).when(orderBatchExecutor).settleIfDue(501L, ORDER_ID, now);
 
 			orderService.settleDue(now);
 
-			assertThat(settlement.getSettledAt()).isNull();
-			verify(notificationService, never()).notify(any(), any(), any(), any(), any(), any(), any(), any());
+			verify(orderBatchExecutor).settleIfDue(501L, ORDER_ID, now);
+			verify(orderBatchExecutor).settleIfDue(502L, 102L, now);
 		}
 	}
 

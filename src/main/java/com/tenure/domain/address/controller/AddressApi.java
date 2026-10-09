@@ -30,8 +30,8 @@ public interface AddressApi {
 			@Parameter(hidden = true) AuthUser authUser);
 
 	@Operation(summary = "배송지 추가",
-			description = "첫 배송지는 isDefault 와 무관하게 기본이 된다. "
-					+ "기본으로 추가하면 기존 기본 배송지가 내려간다.")
+			description = "가입 시 받는 첫 배송지만 isDefault 와 무관하게 기본이 된다(회원가입 API 가 처리). "
+					+ "이 API 로 추가하는 배송지는 isDefault 를 그대로 따르며, 기본으로 추가하면 기존 기본 배송지가 내려간다.")
 	@ApiResponse(responseCode = "200", description = "추가 성공")
 	ResponseEntity<BaseResponse<ShippingAddressIdResponse>> create(
 			@Parameter(hidden = true) AuthUser authUser,

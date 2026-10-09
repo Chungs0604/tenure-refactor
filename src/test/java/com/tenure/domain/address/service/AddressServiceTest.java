@@ -131,6 +131,37 @@ class AddressServiceTest {
 			verify(shippingAddressRepository, times(0)).save(any());
 		}
 
+		@Test
+		@DisplayName("동시 요청으로 uk_shipping_address_default 가 깨지면 ADDRESS_409_DEFAULT_CONFLICT 로 번역한다")
+		void create_concurrentUniqueViolation_throwsConflict() {
+			givenUserExists();
+			given(shippingAddressRepository.save(any(ShippingAddress.class)))
+					.willAnswer(invocation -> invocation.getArgument(0));
+			org.mockito.BDDMockito.willThrow(
+					new org.springframework.dao.DataIntegrityViolationException("uk_shipping_address_default"))
+					.given(shippingAddressRepository).flush();
+
+			assertThatThrownBy(() -> addressService.create(USER_ID, createRequest(true)))
+					.isInstanceOf(CustomException.class)
+					.extracting(AddressServiceTest::errorCodeOf)
+					.isEqualTo(AddressErrorCode.ADDRESS_409_DEFAULT_CONFLICT);
+		}
+
+		@Test
+		@DisplayName("동시 요청으로 releaseDefault 끼리 데드락이 나도 ADDRESS_409_DEFAULT_CONFLICT 로 번역한다")
+		void create_concurrentDeadlock_throwsConflict() {
+			givenUserExists();
+			given(shippingAddressRepository.save(any(ShippingAddress.class)))
+					.willAnswer(invocation -> invocation.getArgument(0));
+			org.mockito.BDDMockito.willThrow(new org.springframework.dao.CannotAcquireLockException("deadlock"))
+					.given(shippingAddressRepository).flush();
+
+			assertThatThrownBy(() -> addressService.create(USER_ID, createRequest(true)))
+					.isInstanceOf(CustomException.class)
+					.extracting(AddressServiceTest::errorCodeOf)
+					.isEqualTo(AddressErrorCode.ADDRESS_409_DEFAULT_CONFLICT);
+		}
+
 		private void givenSaveAssignsId() {
 			given(shippingAddressRepository.save(any(ShippingAddress.class))).willAnswer(invocation -> {
 				ShippingAddress saved = invocation.getArgument(0);
@@ -340,6 +371,35 @@ class AddressServiceTest {
 					.isEqualTo(AddressErrorCode.ADDRESS_403);
 
 			verifyNoInteractions(addressMapper);
+		}
+
+		@Test
+		@DisplayName("동시 요청으로 uk_shipping_address_default 가 깨지면 ADDRESS_409_DEFAULT_CONFLICT 로 번역한다")
+		void changeDefault_concurrentUniqueViolation_throwsConflict() {
+			ShippingAddress target = address(false);
+			given(shippingAddressRepository.findById(ADDRESS_ID)).willReturn(Optional.of(target));
+			org.mockito.BDDMockito.willThrow(
+					new org.springframework.dao.DataIntegrityViolationException("uk_shipping_address_default"))
+					.given(shippingAddressRepository).flush();
+
+			assertThatThrownBy(() -> addressService.changeDefault(USER_ID, ADDRESS_ID))
+					.isInstanceOf(CustomException.class)
+					.extracting(AddressServiceTest::errorCodeOf)
+					.isEqualTo(AddressErrorCode.ADDRESS_409_DEFAULT_CONFLICT);
+		}
+
+		@Test
+		@DisplayName("동시 요청으로 releaseDefault 끼리 데드락이 나도 ADDRESS_409_DEFAULT_CONFLICT 로 번역한다")
+		void changeDefault_concurrentDeadlock_throwsConflict() {
+			ShippingAddress target = address(false);
+			given(shippingAddressRepository.findById(ADDRESS_ID)).willReturn(Optional.of(target));
+			org.mockito.BDDMockito.willThrow(new org.springframework.dao.CannotAcquireLockException("deadlock"))
+					.given(shippingAddressRepository).flush();
+
+			assertThatThrownBy(() -> addressService.changeDefault(USER_ID, ADDRESS_ID))
+					.isInstanceOf(CustomException.class)
+					.extracting(AddressServiceTest::errorCodeOf)
+					.isEqualTo(AddressErrorCode.ADDRESS_409_DEFAULT_CONFLICT);
 		}
 	}
 

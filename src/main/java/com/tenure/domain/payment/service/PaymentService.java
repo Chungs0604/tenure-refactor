@@ -43,7 +43,7 @@ public class PaymentService {
 	@Loggable("결제 확정")
 	public Payment capture(Long offerId, LocalDateTime now) {
 		// 잠금 재조회 — 같은 결제를 동시에 해제하려는 경합이 있으면 여기서 먼저 걸림
-		Payment payment = findByOfferIdForUpdate(offerId);
+		Payment payment = findByOfferIdForUpdate(offerId, PaymentErrorCode.PAYMENT_409_CAPTURE);
 		if (payment.getStatus() != PaymentStatus.AUTHORIZED) {
 			log.info("승인 상태가 아닌 결제를 확정하려 함 offerId={} status={}", offerId, payment.getStatus());
 			throw new CustomException(PaymentErrorCode.PAYMENT_409_CAPTURE);
@@ -60,14 +60,14 @@ public class PaymentService {
 	@Transactional
 	@Loggable("결제 승인 해제")
 	public void release(Long offerId, LocalDateTime now) {
-		Payment payment = findByOfferIdForUpdate(offerId);
+		Payment payment = findByOfferIdForUpdate(offerId, PaymentErrorCode.PAYMENT_409_RELEASE);
 		// 이미 해제됐으면 멱등하게 끝냄 — 호출부가 중복 호출을 걸러내지 않아도 됨
 		if (payment.getStatus() == PaymentStatus.RELEASED) {
 			return;
 		}
 		if (payment.getStatus() != PaymentStatus.AUTHORIZED) {
 			log.info("승인 상태가 아닌 결제를 해제하려 함 offerId={} status={}", offerId, payment.getStatus());
-			throw new CustomException(PaymentErrorCode.PAYMENT_409_CAPTURE);
+			throw new CustomException(PaymentErrorCode.PAYMENT_409_RELEASE);
 		}
 		payment.release(now);
 	}
@@ -81,7 +81,7 @@ public class PaymentService {
 	@Transactional
 	@Loggable("결제 환불")
 	public void refund(Long offerId, LocalDateTime now) {
-		Payment payment = findByOfferIdForUpdate(offerId);
+		Payment payment = findByOfferIdForUpdate(offerId, PaymentErrorCode.PAYMENT_409_REFUND);
 		if (payment.getStatus() != PaymentStatus.CAPTURED) {
 			log.info("확정 상태가 아닌 결제를 환불하려 함 offerId={} status={}", offerId, payment.getStatus());
 			throw new CustomException(PaymentErrorCode.PAYMENT_409_REFUND);
@@ -89,11 +89,12 @@ public class PaymentService {
 		payment.refund(now);
 	}
 
-	private Payment findByOfferIdForUpdate(Long offerId) {
+	/** 호출자(확정·해제·환불)마다 성격이 다른 409 를 쓰므로, 못 찾았을 때 던질 코드를 받는다. */
+	private Payment findByOfferIdForUpdate(Long offerId, PaymentErrorCode notFoundCode) {
 		return paymentRepository.findByOfferIdForUpdate(offerId)
 				.orElseThrow(() -> {
 					log.info("제안에 연결된 결제가 없음 offerId={}", offerId);
-					return new CustomException(PaymentErrorCode.PAYMENT_409_CAPTURE);
+					return new CustomException(notFoundCode);
 				});
 	}
 }

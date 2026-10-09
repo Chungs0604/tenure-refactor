@@ -30,12 +30,15 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -180,6 +183,38 @@ class PayoutServiceTest {
 					.isEqualTo(UserErrorCode.USER_404);
 
 			verify(payoutAccountRepository, times(0)).save(any());
+		}
+
+		@Test
+		@DisplayName("동시에 첫 계좌를 등록해 uk_payout_account_default 가 깨지면 PAYOUT_409_DEFAULT_CONFLICT 로 번역한다")
+		void create_concurrentFirstAccount_throwsConflict() {
+			givenUserExists();
+			given(payoutAccountRepository.existsByUserId(USER_ID)).willReturn(false);
+			given(payoutAccountRepository.save(any(PayoutAccount.class)))
+					.willAnswer(invocation -> invocation.getArgument(0));
+			willThrow(new DataIntegrityViolationException("uk_payout_account_default"))
+					.given(payoutAccountRepository).flush();
+
+			assertThatThrownBy(() -> payoutService.create(USER_ID, createRequest()))
+					.isInstanceOf(CustomException.class)
+					.extracting(PayoutServiceTest::errorCodeOf)
+					.isEqualTo(PayoutErrorCode.PAYOUT_409_DEFAULT_CONFLICT);
+		}
+
+		@Test
+		@DisplayName("동시에 첫 계좌를 등록해 데드락이 나도 PAYOUT_409_DEFAULT_CONFLICT 로 번역한다")
+		void create_concurrentFirstAccountDeadlock_throwsConflict() {
+			givenUserExists();
+			given(payoutAccountRepository.existsByUserId(USER_ID)).willReturn(false);
+			given(payoutAccountRepository.save(any(PayoutAccount.class)))
+					.willAnswer(invocation -> invocation.getArgument(0));
+			willThrow(new CannotAcquireLockException("deadlock"))
+					.given(payoutAccountRepository).flush();
+
+			assertThatThrownBy(() -> payoutService.create(USER_ID, createRequest()))
+					.isInstanceOf(CustomException.class)
+					.extracting(PayoutServiceTest::errorCodeOf)
+					.isEqualTo(PayoutErrorCode.PAYOUT_409_DEFAULT_CONFLICT);
 		}
 
 		private void givenSaveAssignsId() {
@@ -358,6 +393,34 @@ class PayoutServiceTest {
 					.isEqualTo(PayoutErrorCode.PAYOUT_403);
 
 			verifyNoInteractions(payoutMapper);
+		}
+
+		@Test
+		@DisplayName("동시 요청으로 uk_payout_account_default 가 깨지면 PAYOUT_409_DEFAULT_CONFLICT 로 번역한다")
+		void changeDefault_concurrentUniqueViolation_throwsConflict() {
+			PayoutAccount target = account(false);
+			given(payoutAccountRepository.findById(ACCOUNT_ID)).willReturn(Optional.of(target));
+			willThrow(new DataIntegrityViolationException("uk_payout_account_default"))
+					.given(payoutAccountRepository).flush();
+
+			assertThatThrownBy(() -> payoutService.changeDefault(USER_ID, ACCOUNT_ID))
+					.isInstanceOf(CustomException.class)
+					.extracting(PayoutServiceTest::errorCodeOf)
+					.isEqualTo(PayoutErrorCode.PAYOUT_409_DEFAULT_CONFLICT);
+		}
+
+		@Test
+		@DisplayName("동시 요청으로 releaseDefault 끼리 데드락이 나도 PAYOUT_409_DEFAULT_CONFLICT 로 번역한다")
+		void changeDefault_concurrentDeadlock_throwsConflict() {
+			PayoutAccount target = account(false);
+			given(payoutAccountRepository.findById(ACCOUNT_ID)).willReturn(Optional.of(target));
+			willThrow(new CannotAcquireLockException("deadlock"))
+					.given(payoutAccountRepository).flush();
+
+			assertThatThrownBy(() -> payoutService.changeDefault(USER_ID, ACCOUNT_ID))
+					.isInstanceOf(CustomException.class)
+					.extracting(PayoutServiceTest::errorCodeOf)
+					.isEqualTo(PayoutErrorCode.PAYOUT_409_DEFAULT_CONFLICT);
 		}
 	}
 

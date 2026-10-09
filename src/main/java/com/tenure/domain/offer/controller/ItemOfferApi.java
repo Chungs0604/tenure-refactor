@@ -12,6 +12,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 
@@ -38,7 +40,7 @@ public interface ItemOfferApi {
 	ResponseEntity<BaseResponse<OfferPreviewResponse>> preview(
 			@Parameter(hidden = true) AuthUser authUser,
 			@Parameter(description = "아이템 id") Long itemId,
-			@Parameter(description = "제안 금액. 미판매일 때만 보냄") Integer offerPrice);
+			@Parameter(description = "제안 금액. 미판매일 때만 보냄") @Min(1) @Max(100_000_000) Integer offerPrice);
 
 	@Operation(summary = "구매 제안 / 거래 의사 전송",
 			description = "같은 트랜잭션에서 결제 승인을 임시로 확보하고 24시간 만료를 걺. 미판매 "

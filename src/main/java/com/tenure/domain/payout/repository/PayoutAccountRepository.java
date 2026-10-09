@@ -2,6 +2,7 @@ package com.tenure.domain.payout.repository;
 
 import com.tenure.domain.payout.entity.PayoutAccount;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -13,6 +14,10 @@ public interface PayoutAccountRepository extends JpaRepository<PayoutAccount, Lo
 	@Query("select p from PayoutAccount p where p.user.id = :userId "
 			+ "order by p.isDefault desc, p.createdAt desc")
 	List<PayoutAccount> findAllOf(@Param("userId") Long userId);
+
+	/** 기본 정산계좌 하나. 상세 화면 표시처럼 전체 목록이 필요 없을 때 씀. */
+	@Query("select p from PayoutAccount p where p.user.id = :userId and p.isDefault = true")
+	Optional<PayoutAccount> findPrimaryOf(@Param("userId") Long userId);
 
 	/** 첫 계좌인지 판정한다. 첫 계좌는 고를 여지가 없어 기본이 된다. */
 	boolean existsByUserId(Long userId);

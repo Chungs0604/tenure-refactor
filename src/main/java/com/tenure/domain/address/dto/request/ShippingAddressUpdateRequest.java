@@ -2,6 +2,7 @@ package com.tenure.domain.address.dto.request;
 
 import com.tenure.domain.address.enums.DeliveryRequestType;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.AccessLevel;
@@ -53,4 +54,11 @@ public class ShippingAddressUpdateRequest {
 			example = "배송 전에 미리 연락 바랍니다.")
 	@Size(max = 50)
 	private String deliveryRequest;
+
+	/** DIRECT 를 고르면 직접 입력한 요청사항이 반드시 있어야 한다 — CreateRequest 와 같은 규칙. */
+	@AssertTrue(message = "배송 요청사항 유형이 DIRECT 이면 직접 입력한 요청사항을 보내야 합니다.")
+	public boolean isDeliveryRequestFilledWhenDirect() {
+		return deliveryRequestType != DeliveryRequestType.DIRECT
+				|| (deliveryRequest != null && !deliveryRequest.isBlank());
+	}
 }

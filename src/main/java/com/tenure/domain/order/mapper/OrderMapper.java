@@ -48,7 +48,7 @@ public interface OrderMapper {
 	@Mapping(target = "coverImageUrl", source = "coverImageUrl")
 	OrderItemSummaryResponse toItemSummaryResponse(Item item, String coverImageUrl);
 
-	@Mapping(target = "nickname", expression = "java(displayNickname(user))")
+	@Mapping(target = "nickname", expression = "java(com.tenure.domain.user.mapper.UserMapper.displayNickname(user))")
 	@Mapping(target = "profileImageUrl", source = "profileImageUrl")
 	OrderPartySummaryResponse toPartySummaryResponse(User user, String profileImageUrl);
 
@@ -197,9 +197,4 @@ public interface OrderMapper {
 	OrderPurchaseRowResponse toPurchaseRowFromOrder(
 			TradeOrder order, String totalPaymentAmount, OrderPartySummaryResponse counterpart, OrderItemSummaryResponse item
 	);
-
-	/** 탈퇴 사용자는 닉네임을 가리고 표시한다. PostMapper·ItemQueryService 와 같은 규칙 */
-	default String displayNickname(User user) {
-		return user.isWithdrawn() ? UserMapper.WITHDRAWN_NICKNAME : user.getNickname();
-	}
 }

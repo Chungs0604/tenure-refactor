@@ -286,7 +286,7 @@ public class ListingService {
 	 *
 	 * 본인 게시물만 걸 수 있다 — 남의 OOTD 로 내 상품을 증명할 수 없다.
 	 */
-	private List<Post> replaceFeaturedPosts(ItemListing listing, Long userId, List<Long> postIds) {
+	private void replaceFeaturedPosts(ItemListing listing, Long userId, List<Long> postIds) {
 		// 중복을 걷어낸 뒤 개수를 셈
 		List<Long> distinct = postIds.stream().distinct().toList();
 
@@ -322,16 +322,14 @@ public class ListingService {
 			rows.add(ListingFeaturedPost.of(listing, ordered.get(i), i));
 		}
 		listingFeaturedPostRepository.saveAll(rows);
-
-		return ordered;
 	}
 
 	/** 기본 사용자는 배송비를 보낼 수 없다. 화면에서도 '0원' 으로 잠겨 있다 */
 	private Integer resolveShippingFee(User seller, ListingCreateRequest request) {
+		validateFeeFieldsForBasicGrade(seller, request);
 
 		// 기본 사용자는 화면에서 입력란이 잠겨 있음
 		if (seller.getGrade().isBasic()) {
-			requireNotSet(request.getShippingFee(), request.getFeeBearer(), seller);
 			return 0;
 		}
 		return request.getShippingFee() == null ? 0 : request.getShippingFee();
@@ -339,17 +337,21 @@ public class ListingService {
 
 	/** 기본 사용자는 수수료 부담이 판매자 고정이다 */
 	private FeeBearer resolveFeeBearer(User seller, ListingCreateRequest request) {
+		validateFeeFieldsForBasicGrade(seller, request);
 
 		// 기본 사용자는 칩이 판매자 부담으로 고정됨
 		if (seller.getGrade().isBasic()) {
-			requireNotSet(request.getShippingFee(), request.getFeeBearer(), seller);
 			return FeeBearer.SELLER;
 		}
 		return request.getFeeBearer() == null ? FeeBearer.SELLER : request.getFeeBearer();
 	}
 
-	private void requireNotSet(Integer shippingFee, FeeBearer feeBearer, User seller) {
-		if (shippingFee != null || feeBearer != null) {
+	/** 기본 사용자는 배송비·수수료 부담을 보낼 수 없다 — 화면 자체가 잠겨 있다 */
+	private void validateFeeFieldsForBasicGrade(User seller, ListingCreateRequest request) {
+		if (!seller.getGrade().isBasic()) {
+			return;
+		}
+		if (request.getShippingFee() != null || request.getFeeBearer() != null) {
 			log.info("기본 사용자가 수수료 부담·배송비를 지정하려 했다 userId={}", seller.getId());
 			throw new CustomException(ListingErrorCode.LISTING_403_FEE_BEARER);
 		}

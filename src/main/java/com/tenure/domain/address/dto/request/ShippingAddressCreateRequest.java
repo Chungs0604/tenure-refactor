@@ -2,6 +2,7 @@ package com.tenure.domain.address.dto.request;
 
 import com.tenure.domain.address.enums.DeliveryRequestType;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.AccessLevel;
@@ -54,7 +55,14 @@ public class ShippingAddressCreateRequest {
 	@Size(max = 50)
 	private String deliveryRequest;
 
-	/** 첫 배송지는 고를 여지가 없어 이 값과 무관하게 기본이 된다. */
-	@Schema(description = "기본 배송지로 설정할지. 첫 배송지는 자동으로 기본이다")
+	/** 회원가입 시 받는 첫 배송지만 이 값과 무관하게 기본이 된다(UserService.signUp) — 이 API 로 추가하는 배송지는 이 값을 그대로 따른다. */
+	@Schema(description = "기본 배송지로 설정할지")
 	private Boolean isDefault;
+
+	/** DIRECT 를 고르면 직접 입력한 요청사항이 반드시 있어야 한다. */
+	@AssertTrue(message = "배송 요청사항 유형이 DIRECT 이면 직접 입력한 요청사항을 보내야 합니다.")
+	public boolean isDeliveryRequestFilledWhenDirect() {
+		return deliveryRequestType != DeliveryRequestType.DIRECT
+				|| (deliveryRequest != null && !deliveryRequest.isBlank());
+	}
 }

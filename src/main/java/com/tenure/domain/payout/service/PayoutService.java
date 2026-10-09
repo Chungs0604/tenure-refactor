@@ -20,6 +20,8 @@ import java.util.Arrays;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,7 +32,9 @@ import org.springframework.transaction.annotation.Transactional;
  * 계좌를 고치거나 지워도 이미 확정된 정산의 입금처는 그대로다.
  *
  * 기본 계좌는 사용자당 최대 1건이다. 배송지와 달리 0건이 정상이라 첫 계좌를 등록하는 순간
- * 기본으로 올린다. 해제 → 지정 순서는 여기서 지키고, 동시 요청까지는 uk_payout_account_default 가 막는다.
+ * 기본으로 올린다. 해제 → 지정 순서는 여기서 지키고, 동시 요청으로 uk_payout_account_default 가
+ * 깨지거나 락 대기가 실패하면 create()·changeDefault() 둘 다 PAYOUT_409_DEFAULT_CONFLICT 로
+ * 번역해 올린다.
  *
  * 예외를 던지기 전에 판단 근거를 남긴다 — ErrorCode 자체는 ServiceLoggingAspect 가 찍는다.
  */
@@ -79,11 +83,19 @@ public class PayoutService {
 				asDefault
 		);
 
-		PayoutAccount savedAccount = payoutAccountRepository.save(account);
-
-		return PayoutAccountIdResponse.builder()
-				.id(savedAccount.getId())
-				.build();
+		// existsByUserId 와 save 사이에 동시 등록이 끼면 둘 다 "첫 계좌"로 보고 둘 다
+		// asDefault=true 로 저장을 시도해 uk_payout_account_default 에 걸린다 — changeDefault()
+		// 와 같은 이유로 여기서도 flush 해 그 자리에서 잡는다
+		try {
+			PayoutAccount savedAccount = payoutAccountRepository.save(account);
+			payoutAccountRepository.flush();
+			return PayoutAccountIdResponse.builder()
+					.id(savedAccount.getId())
+					.build();
+		} catch (DataIntegrityViolationException | CannotAcquireLockException e) {
+			log.warn("정산 계좌 등록이 동시 요청과 겹쳤습니다. userId={}", userId, e);
+			throw new CustomException(PayoutErrorCode.PAYOUT_409_DEFAULT_CONFLICT);
+		}
 	}
 
 	/** 정산 계좌 수정. 보낸 값으로 전체를 교체한다. */
@@ -143,8 +155,18 @@ public class PayoutService {
 			return;
 		}
 
-		payoutAccountRepository.releaseDefault(userId);
-		account.changeDefault(true);
+		// releaseDefault() 의 벌크 UPDATE끼리 서로 기다리다 데드락이 날 수 있고(같은 패턴을 쓰는
+		// AddressConcurrencyTest 로 실제 확인됨), changeDefault(true) 는 더티 체킹이라 flush
+		// 전까진 대기해 uk_payout_account_default 위반이 커밋 시점에야 샐 수 있음 — 둘 다
+		// 여기서 강제로 flush 해 그 자리에서 잡음
+		try {
+			payoutAccountRepository.releaseDefault(userId);
+			account.changeDefault(true);
+			payoutAccountRepository.flush();
+		} catch (DataIntegrityViolationException | CannotAcquireLockException e) {
+			log.info("동시 요청으로 기본 계좌 지정에 충돌이 생김 userId={} accountId={}", userId, accountId);
+			throw new CustomException(PayoutErrorCode.PAYOUT_409_DEFAULT_CONFLICT);
+		}
 	}
 
 	/** 남의 계좌를 건드리지 못하게 막는다. */

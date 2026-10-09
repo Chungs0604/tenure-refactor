@@ -452,7 +452,7 @@ class PostQueryServiceTest {
 		@DisplayName("차단 관계면 빈 목록이다 — 404 로 돌려주면 차단 사실이 드러난다")
 		void getUserPosts_blocked_returnsEmpty() {
 			given(userRepository.existsById(OTHER_USER_ID)).willReturn(true);
-			given(userBlockRepository.existsBlock(USER_ID, OTHER_USER_ID)).willReturn(true);
+			given(userBlockRepository.existsMutualBlock(USER_ID, OTHER_USER_ID)).willReturn(true);
 
 			CursorSlice<UserPostSummaryResponse> slice =
 					postQueryService.getUserPosts(USER_ID, OTHER_USER_ID, null, SIZE);
@@ -465,8 +465,7 @@ class PostQueryServiceTest {
 		@DisplayName("나를 차단한 사람의 게시물도 보이지 않는다")
 		void getUserPosts_blockedByTarget_returnsEmpty() {
 			given(userRepository.existsById(OTHER_USER_ID)).willReturn(true);
-			given(userBlockRepository.existsBlock(USER_ID, OTHER_USER_ID)).willReturn(false);
-			given(userBlockRepository.existsBlock(OTHER_USER_ID, USER_ID)).willReturn(true);
+			given(userBlockRepository.existsMutualBlock(USER_ID, OTHER_USER_ID)).willReturn(true);
 
 			assertThat(postQueryService.getUserPosts(USER_ID, OTHER_USER_ID, null, SIZE).getContent())
 					.isEmpty();

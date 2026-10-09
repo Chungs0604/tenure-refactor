@@ -8,7 +8,6 @@ import com.tenure.domain.item.exception.ItemErrorCode;
 import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.item.repository.ItemWearRecordRepository;
-import com.tenure.domain.item.enums.SaleStatus;
 import com.tenure.domain.listing.repository.ListingFeaturedPostRepository;
 import com.tenure.domain.post.dto.request.PostCreateRequest;
 import com.tenure.domain.post.dto.request.PostCreateRequest.PostImageRequest;
@@ -36,12 +35,16 @@ import com.tenure.domain.user.repository.UserRepository;
 import com.tenure.domain.user.service.UserGradeService;
 import com.tenure.global.exception.CustomException;
 import com.tenure.global.logging.Loggable;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -105,6 +108,14 @@ public class PostService {
 		List<PostImageRequest> imageRequests = request.getImages();
 		boolean coverGiven = imageRequests.stream().anyMatch(image -> Boolean.TRUE.equals(image.getIsCover()));
 
+		Set<Long> itemIds = new LinkedHashSet<>();
+		for (PostImageRequest imageRequest : imageRequests) {
+			for (PostTagRequest tagRequest : tagsOf(imageRequest)) {
+				itemIds.add(tagRequest.getItemId());
+			}
+		}
+		Map<Long, ItemOwnership> ownerships = findCurrentOwnerships(userId, itemIds);
+
 		for (int index = 0; index < imageRequests.size(); index++) {
 			PostImageRequest imageRequest = imageRequests.get(index);
 
@@ -116,7 +127,7 @@ public class PostService {
 			));
 
 			for (PostTagRequest tagRequest : tagsOf(imageRequest)) {
-				ItemOwnership ownership = findCurrentOwnership(userId, tagRequest.getItemId());
+				ItemOwnership ownership = ownerships.get(tagRequest.getItemId());
 
 				postItemTagRepository.save(PostItemTag.of(
 						image, ownership.getItem(), tagRequest.getPosX(), tagRequest.getPosY()
@@ -156,7 +167,20 @@ public class PostService {
 		Map<Long, PostItemTag> tags = new LinkedHashMap<>();
 		postItemTagRepository.findAllByPostId(postId).forEach(tag -> tags.put(tag.getId(), tag));
 
-		for (PostTagEditRequest edit : request.getTags()) {
+		List<PostTagEditRequest> edits = request.getTags();
+
+		// 아이템이 바뀌는 태그만 소유 자격이 필요하다 — 그 itemId 를 모아 한 번에 읽는다
+		Set<Long> itemIdsToOwn = new LinkedHashSet<>();
+		for (PostTagEditRequest edit : edits) {
+			PostItemTag tag = tags.get(edit.getPostItemTagId());
+			Long afterItemId = edit.getItemId();
+			if (tag != null && afterItemId != null && !afterItemId.equals(tag.getItem().getId())) {
+				itemIdsToOwn.add(afterItemId);
+			}
+		}
+		Map<Long, ItemOwnership> ownerships = findCurrentOwnerships(userId, itemIdsToOwn);
+
+		for (PostTagEditRequest edit : edits) {
 			PostItemTag tag = tags.get(edit.getPostItemTagId());
 			if (tag == null) {
 				log.warn("이 게시물의 태그가 아닙니다. postId={}, postItemTagId={}",
@@ -168,8 +192,8 @@ public class PostService {
 			Long afterItemId = edit.getItemId();
 
 			if (afterItemId == null) {
-				invalidateRecord(postId, beforeItemId, WearRecordVoidReason.TAG_DELETED);
 				postItemTagRepository.delete(tag);
+				invalidateIfNoLongerTagged(postId, beforeItemId, WearRecordVoidReason.TAG_DELETED);
 				continue;
 			}
 
@@ -177,9 +201,9 @@ public class PostService {
 				continue;
 			}
 
-			ItemOwnership ownership = findCurrentOwnership(userId, afterItemId);
-			invalidateRecord(postId, beforeItemId, WearRecordVoidReason.TAG_CHANGED);
+			ItemOwnership ownership = ownerships.get(afterItemId);
 			tag.changeItem(ownership.getItem());
+			invalidateIfNoLongerTagged(postId, beforeItemId, WearRecordVoidReason.TAG_CHANGED);
 			certifyAgain(post, ownership);
 		}
 
@@ -200,7 +224,7 @@ public class PostService {
 	public void delete(Long userId, Long postId) {
 		Post post = findOwnedPost(userId, postId);
 
-		if (listingFeaturedPostRepository.existsByPostIdAndSaleStatus(postId, SaleStatus.ON_SALE)) {
+		if (listingFeaturedPostRepository.existsOnSaleByPostId(postId)) {
 			log.warn("판매 중인 상품의 대표 OOTD 입니다. postId={}", postId);
 			throw new CustomException(PostErrorCode.POST_409_FEATURED);
 		}
@@ -321,30 +345,62 @@ public class PostService {
 	}
 
 	/**
-	 * 태그 자격 확인. 본인이 현재 보유한 아이템이어야 한다.
+	 * 태그 자격 일괄 확인. 본인이 현재 보유한 아이템이어야 한다.
+	 *
+	 * 이미지×태그 이중 루프에서 태그마다 아이템·소유 구간을 따로 조회하면 쿼리가 태그 수만큼
+	 * 는다 — 요청에 등장한 itemId 를 모아 한 번에 읽고 맵으로 캐싱해 쓴다.
 	 *
 	 * 소유 구간을 함께 돌려주는 이유는 인증이 구간별로 집계되기 때문이다 — 어느 구간에 적립하는지가
 	 * 화면의 'OOTD 인증 N회' 를 가른다.
 	 */
-	private ItemOwnership findCurrentOwnership(Long userId, Long itemId) {
-		Item item = itemRepository.findActive(itemId)
-				.orElseThrow(() -> {
-					log.warn("존재하지 않거나 삭제된 아이템입니다. itemId={}", itemId);
-					return new CustomException(ItemErrorCode.ITEM_404);
-				});
-
-		ItemOwnership ownership = itemOwnershipRepository.findCurrent(item.getId())
-				.orElseThrow(() -> {
-					log.warn("현재 소유 구간이 없는 아이템입니다. itemId={}", itemId);
-					return new CustomException(PostErrorCode.POST_400_TAG_OWNERSHIP);
-				});
-
-		if (!ownership.getOwner().getId().equals(userId)) {
-			log.warn("본인이 보유한 아이템이 아닙니다. itemId={}, userId={}", itemId, userId);
-			throw new CustomException(PostErrorCode.POST_400_TAG_OWNERSHIP);
+	private Map<Long, ItemOwnership> findCurrentOwnerships(Long userId, Collection<Long> itemIds) {
+		if (itemIds.isEmpty()) {
+			return Map.of();
 		}
 
-		return ownership;
+		Set<Long> activeItemIds = itemRepository.findAllByIds(itemIds).stream()
+				.filter(item -> item.getDeletedAt() == null)
+				.map(Item::getId)
+				.collect(Collectors.toSet());
+
+		Map<Long, ItemOwnership> ownershipsByItemId = itemOwnershipRepository
+				.findCurrentByItemIds(itemIds).stream()
+				.collect(Collectors.toMap(ownership -> ownership.getItem().getId(), Function.identity()));
+
+		Map<Long, ItemOwnership> result = new LinkedHashMap<>();
+		for (Long itemId : itemIds) {
+			if (!activeItemIds.contains(itemId)) {
+				log.warn("존재하지 않거나 삭제된 아이템입니다. itemId={}", itemId);
+				throw new CustomException(ItemErrorCode.ITEM_404);
+			}
+
+			ItemOwnership ownership = ownershipsByItemId.get(itemId);
+			if (ownership == null) {
+				log.warn("현재 소유 구간이 없는 아이템입니다. itemId={}", itemId);
+				throw new CustomException(PostErrorCode.POST_400_TAG_OWNERSHIP);
+			}
+
+			if (!ownership.getOwner().getId().equals(userId)) {
+				log.warn("본인이 보유한 아이템이 아닙니다. itemId={}, userId={}", itemId, userId);
+				throw new CustomException(PostErrorCode.POST_400_TAG_OWNERSHIP);
+			}
+
+			result.put(itemId, ownership);
+		}
+		return result;
+	}
+
+	/**
+	 * 이 게시물의 다른 사진에 같은 아이템이 아직 태그돼 있으면 인증을 건드리지 않는다.
+	 *
+	 * 같은 아이템을 두 사진에 태그해도 인증은 한 번만 쌓이는데, 그중 한 태그만 지우거나 바꿀 때
+	 * 남은 태그를 보지 않고 무조건 무효화하면 '내 옷장'의 인증 횟수가 부당하게 줄어든다.
+	 */
+	private void invalidateIfNoLongerTagged(Long postId, Long itemId, WearRecordVoidReason reason) {
+		if (postItemTagRepository.countByPostIdAndItemId(postId, itemId) > 0) {
+			return;
+		}
+		invalidateRecord(postId, itemId, reason);
 	}
 
 	/** 태그가 떨어진 아이템의 인증을 무효화한다. 종료된 구간이면 수정 자체를 막는다. */
