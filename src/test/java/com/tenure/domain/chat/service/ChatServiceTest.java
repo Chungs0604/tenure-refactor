@@ -41,6 +41,7 @@ import com.tenure.domain.item.entity.Item;
 import com.tenure.domain.item.entity.ItemOwnership;
 import com.tenure.domain.item.enums.SaleStatus;
 import com.tenure.domain.item.enums.WearTarget;
+import com.tenure.domain.item.repository.ItemLastWornDateRow;
 import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.item.repository.ItemWearRecordRepository;
@@ -69,7 +70,6 @@ import com.tenure.global.storage.FileStorage;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -144,7 +144,7 @@ class ChatServiceTest {
 			given(itemRepository.findActive(ITEM_ID)).willReturn(Optional.of(item));
 			given(userRepository.findById(BUYER_ID)).willReturn(Optional.of(buyer));
 			given(itemListingRepository.findOpenByItemId(ITEM_ID)).willReturn(Optional.of(listing));
-			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(userBlockRepository.existsMutualBlock(anyLong(), anyLong())).willReturn(false);
 			given(chatRoomRepository.findByItemIdAndBuyerIdAndSellerId(ITEM_ID, BUYER_ID, SELLER_ID))
 					.willReturn(Optional.empty());
 			given(chatRoomRepository.save(any(ChatRoom.class))).willAnswer(invocation -> {
@@ -174,7 +174,7 @@ class ChatServiceTest {
 			given(itemRepository.findActive(ITEM_ID)).willReturn(Optional.of(item));
 			given(userRepository.findById(BUYER_ID)).willReturn(Optional.of(buyer));
 			given(itemOwnershipRepository.findCurrent(ITEM_ID)).willReturn(Optional.of(ownership));
-			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(userBlockRepository.existsMutualBlock(anyLong(), anyLong())).willReturn(false);
 			given(chatRoomRepository.findByItemIdAndBuyerIdAndSellerId(ITEM_ID, BUYER_ID, SELLER_ID))
 					.willReturn(Optional.empty());
 			given(chatRoomRepository.save(any(ChatRoom.class))).willAnswer(invocation -> {
@@ -243,7 +243,7 @@ class ChatServiceTest {
 			given(itemRepository.findActive(ITEM_ID)).willReturn(Optional.of(item));
 			given(userRepository.findById(BUYER_ID)).willReturn(Optional.of(buyer));
 			given(itemListingRepository.findOpenByItemId(ITEM_ID)).willReturn(Optional.of(listing));
-			given(userBlockRepository.existsBlock(BUYER_ID, SELLER_ID)).willReturn(true);
+			given(userBlockRepository.existsMutualBlock(BUYER_ID, SELLER_ID)).willReturn(true);
 
 			assertThatThrownBy(() -> chatService.open(BUYER_ID, ITEM_ID))
 					.isInstanceOf(CustomException.class)
@@ -266,7 +266,7 @@ class ChatServiceTest {
 			given(itemRepository.findActive(ITEM_ID)).willReturn(Optional.of(item));
 			given(userRepository.findById(BUYER_ID)).willReturn(Optional.of(buyer));
 			given(itemListingRepository.findOpenByItemId(ITEM_ID)).willReturn(Optional.of(listing));
-			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(userBlockRepository.existsMutualBlock(anyLong(), anyLong())).willReturn(false);
 			given(chatRoomRepository.findByItemIdAndBuyerIdAndSellerId(ITEM_ID, BUYER_ID, SELLER_ID))
 					.willReturn(Optional.of(existingRoom));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
@@ -296,7 +296,7 @@ class ChatServiceTest {
 			given(itemRepository.findActive(ITEM_ID)).willReturn(Optional.of(item));
 			given(userRepository.findById(BUYER_ID)).willReturn(Optional.of(buyer));
 			given(itemListingRepository.findOpenByItemId(ITEM_ID)).willReturn(Optional.of(listing));
-			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(userBlockRepository.existsMutualBlock(anyLong(), anyLong())).willReturn(false);
 			given(chatRoomRepository.findByItemIdAndBuyerIdAndSellerId(ITEM_ID, BUYER_ID, SELLER_ID))
 					.willReturn(Optional.of(existingRoom));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
@@ -323,7 +323,7 @@ class ChatServiceTest {
 			given(itemRepository.findActive(ITEM_ID)).willReturn(Optional.of(item));
 			given(userRepository.findById(BUYER_ID)).willReturn(Optional.of(buyer));
 			given(itemListingRepository.findOpenByItemId(ITEM_ID)).willReturn(Optional.of(listing));
-			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(userBlockRepository.existsMutualBlock(anyLong(), anyLong())).willReturn(false);
 			given(chatRoomRepository.findByItemIdAndBuyerIdAndSellerId(ITEM_ID, BUYER_ID, SELLER_ID))
 					.willReturn(Optional.empty(), Optional.of(roomCreatedByOtherRequest));
 			given(chatRoomRepository.save(any(ChatRoom.class)))
@@ -351,7 +351,7 @@ class ChatServiceTest {
 			given(itemRepository.findActive(ITEM_ID)).willReturn(Optional.of(item));
 			given(userRepository.findById(BUYER_ID)).willReturn(Optional.of(buyer));
 			given(itemListingRepository.findOpenByItemId(ITEM_ID)).willReturn(Optional.of(listing));
-			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(userBlockRepository.existsMutualBlock(anyLong(), anyLong())).willReturn(false);
 			given(chatRoomRepository.findByItemIdAndBuyerIdAndSellerId(ITEM_ID, BUYER_ID, SELLER_ID))
 					.willReturn(Optional.of(existingRoom));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
@@ -462,7 +462,7 @@ class ChatServiceTest {
 					.willReturn(Optional.of(member(room, buyer)));
 			given(purchaseOfferRepository.findLatestByItemIdAndBuyerId(ITEM_ID, BUYER_ID)).willReturn(Optional.empty());
 			given(itemWearRecordRepository.findLastWornDates(List.of(ITEM_ID))).willReturn(List.of());
-			given(userBlockRepository.existsBlock(BUYER_ID, SELLER_ID)).willReturn(true);
+			given(userBlockRepository.existsMutualBlock(BUYER_ID, SELLER_ID)).willReturn(true);
 
 			ChatRoomHeaderResponse response = chatService.header(BUYER_ID, ROOM_ID);
 
@@ -860,7 +860,7 @@ class ChatServiceTest {
 					.willReturn(Optional.of(member(room, buyer)));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
 					.willReturn(Optional.of(member(room, seller)));
-			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(userBlockRepository.existsMutualBlock(anyLong(), anyLong())).willReturn(false);
 			given(chatMessageRepository.save(any(ChatMessage.class))).willAnswer(invocation -> {
 				ChatMessage saved = invocation.getArgument(0);
 				ReflectionTestUtils.setField(saved, "id", 1L);
@@ -898,7 +898,7 @@ class ChatServiceTest {
 			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
-			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(userBlockRepository.existsMutualBlock(anyLong(), anyLong())).willReturn(false);
 
 			ChatMessageSendRequest request = ChatMessageSendRequest.builder()
 					.messageType(ChatMessageType.TEXT).content("   ").build();
@@ -924,7 +924,7 @@ class ChatServiceTest {
 			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
-			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(userBlockRepository.existsMutualBlock(anyLong(), anyLong())).willReturn(false);
 			given(chatMessageRepository.save(any(ChatMessage.class))).willAnswer(invocation -> {
 				ChatMessage saved = invocation.getArgument(0);
 				ReflectionTestUtils.setField(saved, "id", 1L);
@@ -965,7 +965,7 @@ class ChatServiceTest {
 			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
-			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(userBlockRepository.existsMutualBlock(anyLong(), anyLong())).willReturn(false);
 
 			ChatMessageSendRequest nullKeys = ChatMessageSendRequest.builder()
 					.messageType(ChatMessageType.IMAGE).imageKeys(null).build();
@@ -997,7 +997,7 @@ class ChatServiceTest {
 			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
-			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(userBlockRepository.existsMutualBlock(anyLong(), anyLong())).willReturn(false);
 
 			ChatMessageSendRequest request = ChatMessageSendRequest.builder().build();
 
@@ -1020,7 +1020,7 @@ class ChatServiceTest {
 			given(chatRoomRepository.findDetailById(ROOM_ID)).willReturn(Optional.of(room));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, BUYER_ID))
 					.willReturn(Optional.of(member(room, buyer)));
-			given(userBlockRepository.existsBlock(BUYER_ID, SELLER_ID)).willReturn(true);
+			given(userBlockRepository.existsMutualBlock(BUYER_ID, SELLER_ID)).willReturn(true);
 
 			ChatMessageSendRequest request = ChatMessageSendRequest.builder()
 					.messageType(ChatMessageType.TEXT).content("안녕").build();
@@ -1050,7 +1050,7 @@ class ChatServiceTest {
 					.willReturn(Optional.of(member(room, buyer)));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
 					.willReturn(Optional.of(leftSeller));
-			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(userBlockRepository.existsMutualBlock(anyLong(), anyLong())).willReturn(false);
 			given(chatMessageRepository.save(any(ChatMessage.class))).willAnswer(invocation -> {
 				ChatMessage saved = invocation.getArgument(0);
 				ReflectionTestUtils.setField(saved, "id", 1L);
@@ -1085,7 +1085,7 @@ class ChatServiceTest {
 					.willReturn(Optional.of(member(room, buyer)));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
 					.willReturn(Optional.of(sellerMember));
-			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(userBlockRepository.existsMutualBlock(anyLong(), anyLong())).willReturn(false);
 			given(presenceRegistry.isViewing(ROOM_ID, SELLER_ID)).willReturn(true);
 			given(chatMessageRepository.save(any(ChatMessage.class))).willAnswer(invocation -> {
 				ChatMessage saved = invocation.getArgument(0);
@@ -1123,7 +1123,7 @@ class ChatServiceTest {
 					.willReturn(Optional.of(member(room, buyer)));
 			given(chatRoomMemberRepository.findByChatRoomIdAndUserId(ROOM_ID, SELLER_ID))
 					.willReturn(Optional.of(sellerMember));
-			given(userBlockRepository.existsBlock(anyLong(), anyLong())).willReturn(false);
+			given(userBlockRepository.existsMutualBlock(anyLong(), anyLong())).willReturn(false);
 			given(presenceRegistry.isViewing(ROOM_ID, SELLER_ID)).willReturn(false);
 			given(chatMessageRepository.save(any(ChatMessage.class))).willAnswer(invocation -> {
 				ChatMessage saved = invocation.getArgument(0);
@@ -1442,8 +1442,8 @@ class ChatServiceTest {
 
 			given(chatRoomRepository.findAllForFeed(BUYER_ID, ChatRoomTab.ALL, null, null, 20))
 					.willReturn(List.of(new ChatRoomFeedRow(room, 0L)));
-			List<Object[]> wornDateRows = Collections.singletonList(new Object[] {ITEM_ID, wornDate});
-			given(itemWearRecordRepository.findLastWornDates(List.of(ITEM_ID))).willReturn(wornDateRows);
+			given(itemWearRecordRepository.findLastWornDates(List.of(ITEM_ID)))
+					.willReturn(List.of(new ItemLastWornDateRow(ITEM_ID, wornDate)));
 			given(chatMessageRepository.findLatestByChatRoomIdIn(any())).willReturn(List.of());
 
 			CursorSlice<ChatRoomSummaryResponse> slice = chatService.list(BUYER_ID, ChatRoomTab.ALL, null, null, 20);

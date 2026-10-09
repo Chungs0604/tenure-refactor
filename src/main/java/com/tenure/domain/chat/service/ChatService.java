@@ -28,6 +28,7 @@ import com.tenure.domain.item.entity.Item;
 import com.tenure.domain.item.entity.ItemOwnership;
 import com.tenure.domain.item.enums.SaleStatus;
 import com.tenure.domain.item.exception.ItemErrorCode;
+import com.tenure.domain.item.repository.ItemLastWornDateRow;
 import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.item.repository.ItemWearRecordRepository;
@@ -69,6 +70,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 /*
@@ -240,28 +243,15 @@ public class ChatService {
 		User sender = senderId.equals(room.getBuyer().getId()) ? room.getBuyer() : room.getSeller();
 		User counterpart = counterpartOf(room, senderId);
 		requireNotBlocked(sender, counterpart);
+		requireValidMessage(request, roomId, senderId);
 
-		if (request.getMessageType() == null) {
-			log.warn("메시지 타입 없이 전송을 시도함 roomId={} senderId={}", roomId, senderId);
-			throw new CustomException(ChatErrorCode.CHAT_400_INVALID_MESSAGE);
-		}
-
-		// 타입별로 필수 필드를 확인하고 저장함 — TEXT 는 content, IMAGE 는 imageKeys 가 있어야 함
+		// 타입별로 저장함 — TEXT 는 content, IMAGE 는 imageKeys 를 씀(필수 검증은 위에서 끝남)
 		ChatMessage message;
 		List<String> imageUrls;
-
 		if (request.getMessageType() == ChatMessageType.TEXT) {
-			if (!StringUtils.hasText(request.getContent())) {
-				log.warn("content 없이 TEXT 메시지 전송을 시도함 roomId={} senderId={}", roomId, senderId);
-				throw new CustomException(ChatErrorCode.CHAT_400_INVALID_MESSAGE);
-			}
 			message = chatMessageRepository.save(ChatMessage.ofText(room, sender, request.getContent()));
 			imageUrls = null;
 		} else {
-			if (request.getImageKeys() == null || request.getImageKeys().isEmpty()) {
-				log.warn("imageKeys 없이 IMAGE 메시지 전송을 시도함 roomId={} senderId={}", roomId, senderId);
-				throw new CustomException(ChatErrorCode.CHAT_400_INVALID_MESSAGE);
-			}
 			message = chatMessageRepository.save(ChatMessage.ofImage(room, sender));
 			imageUrls = saveImages(message, request.getImageKeys());
 		}
@@ -269,50 +259,93 @@ public class ChatService {
 		// IDENTITY 전략이라 save 호출 시점에 바로 INSERT 됨 — createdAt(@CreatedDate)도 이때 채워짐
 		room.updateLastMessageAt(message.getCreatedAt());
 
-		// 나간 상대는 이 방을 더 볼 수 없음 — 알림·push 를 보내도 누르면 CHAT_403 인 막다른 길이라 건너뜀
-		ChatRoomMember counterpartMember = chatRoomMemberRepository
-				.findByChatRoomIdAndUserId(roomId, counterpart.getId())
-				.orElse(null);
-		boolean counterpartActive = counterpartMember != null && !counterpartMember.hasLeft();
-
 		ChatMessageResponse response = chatMapper.toMessageResponse(
 				message,
 				request.getMessageType() == ChatMessageType.TEXT ? message.getContent() : null,
 				imageUrls);
 
-		// 발신자 본인에게도 보냄(다중 기기 동기화), 상대는 나가지 않았을 때만 보냄
-		chatWebSocketService.pushMessage(roomId, sender.getId(), response);
-		if (counterpartActive) {
-			chatWebSocketService.pushMessage(roomId, counterpart.getId(), response);
-
-			// 상대가 지금 이 방을 보고 있으면 바로 읽은 걸로 침 — 목록 안읽음도 안 늘고 알림도 건너뜀
-			if (presenceRegistry.isViewing(roomId, counterpart.getId())) {
-				chatRoomMemberRepository.markReadIfNewer(counterpartMember.getId(), message, message.getId());
-				ChatReadEventResponse readEvent = ChatReadEventResponse.builder()
-						.roomId(roomId)
-						.lastReadMessageId(message.getId())
-						.build();
-				chatWebSocketService.pushReadEvent(roomId, sender.getId(), readEvent);
-			} else {
-				Long lastReadId = counterpartMember.getLastReadMessage() != null
-						? counterpartMember.getLastReadMessage().getId() : null;
-				long unreadCount = chatMessageRepository.countUnread(roomId, counterpart.getId(), lastReadId);
-				ChatRoomListUpdateResponse listUpdate = ChatRoomListUpdateResponse.builder()
-						.roomId(roomId)
-						.lastMessage(previewOf(message))
-						.lastMessageAt(message.getCreatedAt())
-						.unreadCount((int) unreadCount)
-						.build();
-				chatWebSocketService.pushRoomListUpdate(counterpart.getId(), listUpdate);
-
-				notificationService.notify(
-						counterpart, NotificationSettingType.CHAT, NotificationCategory.ACTION_REQUIRED,
-						room.getItem().getName(), "새 메시지가 왔어요.",
-						room.getItem().getCoverImageKey(), NotificationTargetType.CHAT_ROOM, room.getId());
-			}
-		}
+		routeDelivery(room, roomId, sender, counterpart, message, response);
 
 		return response;
+	}
+
+	// sendMessage 의 필수 필드 검증 — TEXT 는 content, IMAGE 는 imageKeys 가 있어야 함
+	private void requireValidMessage(ChatMessageSendRequest request, Long roomId, Long senderId) {
+		if (request.getMessageType() == null) {
+			log.warn("메시지 타입 없이 전송을 시도함 roomId={} senderId={}", roomId, senderId);
+			throw new CustomException(ChatErrorCode.CHAT_400_INVALID_MESSAGE);
+		}
+		if (request.getMessageType() == ChatMessageType.TEXT) {
+			if (!StringUtils.hasText(request.getContent())) {
+				log.warn("content 없이 TEXT 메시지 전송을 시도함 roomId={} senderId={}", roomId, senderId);
+				throw new CustomException(ChatErrorCode.CHAT_400_INVALID_MESSAGE);
+			}
+		} else if (request.getImageKeys() == null || request.getImageKeys().isEmpty()) {
+			log.warn("imageKeys 없이 IMAGE 메시지 전송을 시도함 roomId={} senderId={}", roomId, senderId);
+			throw new CustomException(ChatErrorCode.CHAT_400_INVALID_MESSAGE);
+		}
+	}
+
+	/*
+	 * 발신자 본인에게는 항상 push 해 다중 기기를 동기화하고, 상대는 나간 방이 아닐 때만 보냄
+	 * (나간 상대는 push·알림을 받아도 누르면 CHAT_403 인 막다른 길이라 건너뜀). 상대가 지금 이
+	 * 방을 보고 있으면 바로 읽은 걸로 치고, 아니면 목록 갱신과 알림을 보냄.
+	 */
+	private void routeDelivery(
+			ChatRoom room, Long roomId, User sender, User counterpart, ChatMessage message, ChatMessageResponse response) {
+		chatWebSocketService.pushMessage(roomId, sender.getId(), response);
+
+		ChatRoomMember counterpartMember = chatRoomMemberRepository
+				.findByChatRoomIdAndUserId(roomId, counterpart.getId())
+				.orElse(null);
+		if (counterpartMember == null || counterpartMember.hasLeft()) {
+			return;
+		}
+
+		chatWebSocketService.pushMessage(roomId, counterpart.getId(), response);
+
+		// 상대가 지금 이 방을 보고 있으면 바로 읽은 걸로 침 — 목록 안읽음도 안 늘고 알림도 건너뜀
+		if (presenceRegistry.isViewing(roomId, counterpart.getId())) {
+			chatRoomMemberRepository.markReadIfNewer(counterpartMember.getId(), message, message.getId());
+			ChatReadEventResponse readEvent = ChatReadEventResponse.builder()
+					.roomId(roomId)
+					.lastReadMessageId(message.getId())
+					.build();
+			chatWebSocketService.pushReadEvent(roomId, sender.getId(), readEvent);
+			return;
+		}
+
+		Long lastReadId = counterpartMember.getLastReadMessage() != null
+				? counterpartMember.getLastReadMessage().getId() : null;
+		long unreadCount = chatMessageRepository.countUnread(roomId, counterpart.getId(), lastReadId);
+		ChatRoomListUpdateResponse listUpdate = ChatRoomListUpdateResponse.builder()
+				.roomId(roomId)
+				.lastMessage(previewOf(message))
+				.lastMessageAt(message.getCreatedAt())
+				.unreadCount((int) unreadCount)
+				.build();
+		chatWebSocketService.pushRoomListUpdate(counterpart.getId(), listUpdate);
+
+		// 알림 INSERT·설정 조회는 커밋 전에 하면 아직 안 끝난 트랜잭션에 묶여 들어감 — pushMessage 와 같은 패턴으로 커밋 후로 미룸
+		afterCommit(() -> notificationService.notify(
+				counterpart, NotificationSettingType.CHAT, NotificationCategory.ACTION_REQUIRED,
+				room.getItem().getName(), "새 메시지가 왔어요.",
+				room.getItem().getCoverImageKey(), NotificationTargetType.CHAT_ROOM, room.getId()));
+	}
+
+	// 트랜잭션이 끝까지 커밋된 뒤에만 실행함. 트랜잭션 없이 불리면(단위 테스트 등) 동기화가
+	// 활성화돼 있지 않으니 그냥 바로 실행함 — ChatWebSocketService 와 같은 패턴
+	private void afterCommit(Runnable action) {
+		if (TransactionSynchronizationManager.isSynchronizationActive()) {
+			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+				@Override
+				public void afterCommit() {
+					action.run();
+				}
+			});
+		} else {
+			action.run();
+		}
 	}
 
 	// 방 구독(= 입장) 시점에 호출됨 — ChatRoomPresenceListener 전용. 그 방의 최신 메시지까지 한 번에 읽음 처리함
@@ -581,7 +614,7 @@ public class ChatService {
 	}
 
 	private boolean isBlocked(User a, User b) {
-		return userBlockRepository.existsBlock(a.getId(), b.getId()) || userBlockRepository.existsBlock(b.getId(), a.getId());
+		return userBlockRepository.existsMutualBlock(a.getId(), b.getId());
 	}
 
 	// fetch join 없는 가벼운 조회 — 연관 엔티티까지 필요 없는 곳에서 씀
@@ -607,7 +640,7 @@ public class ChatService {
 					log.warn("채팅방 멤버가 아님 roomId={} userId={}", roomId, userId);
 					return new CustomException(ChatErrorCode.CHAT_403);
 				});
-		if (member.getLeftAt() != null) {
+		if (member.hasLeft()) {
 			log.warn("나간 채팅방에 접근을 시도함 roomId={} userId={}", roomId, userId);
 			throw new CustomException(ChatErrorCode.CHAT_403);
 		}
@@ -658,6 +691,6 @@ public class ChatService {
 			return Map.of();
 		}
 		return itemWearRecordRepository.findLastWornDates(itemIds).stream()
-				.collect(Collectors.toMap(row -> (Long) row[0], row -> (LocalDate) row[1]));
+				.collect(Collectors.toMap(ItemLastWornDateRow::itemId, ItemLastWornDateRow::wornDate));
 	}
 }
