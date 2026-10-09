@@ -28,6 +28,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import static com.tenure.domain.auth.enums.VerificationPurpose.*;
@@ -189,7 +190,13 @@ public class AuthService {
 	 * 인증번호를 발송한다.
 	 *
 	 * 기존 인증번호가 있으면 덮어써서 무효화한다.
+	 *
+	 * <p>DB 쓰기가 없는 메서드다. 클래스 레벨 readOnly 트랜잭션을 그대로 물려받으면
+	 * {@code existsByEmail} 조회가 잡은 커넥션을 SMTP 발송(동기, 느릴 수 있다)이
+	 * 끝날 때까지 들고 있게 된다. 트랜잭션을 걷어내 조회는 리포지토리가 자체적으로
+	 * 열고 닫는 짧은 트랜잭션에 맡긴다.
 	 */
+	@Transactional(propagation = Propagation.NOT_SUPPORTED)
 	@Loggable("인증번호 발송")
 	public EmailVerificationSendResponse sendCode(EmailVerificationSendRequest request) {
 
