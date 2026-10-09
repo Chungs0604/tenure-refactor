@@ -1,6 +1,5 @@
 package com.tenure.domain.listing.service;
 
-import com.tenure.domain.category.enums.MeasurementScheme;
 import com.tenure.domain.item.entity.Item;
 import com.tenure.domain.item.entity.ItemImage;
 import com.tenure.domain.item.entity.ItemMeasurement;
@@ -33,7 +32,6 @@ import com.tenure.global.storage.FileStorage;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -146,17 +144,11 @@ public class ListingQueryService {
 				String.valueOf(listing.getPrice()),
 				String.valueOf(listing.getShippingFee()),
 				// 세트는 대분류가 가짐. 상세 조회가 카테고리를 부모까지 함께 읽어 추가 쿼리가 없음
-				measurementSchemeOf(listing.getItem()),
+				listing.getItem().getCategory().resolveMeasurementScheme(),
 				itemMeasurementRepository.findByItemId(itemId)
 						.map(ItemMeasurement::toValues)
 						.orElseGet(Map::of),
 				conditions);
-	}
-
-	/** 세부 카테고리는 세트를 갖지 않아 부모에서 읽는다. */
-	private MeasurementScheme measurementSchemeOf(Item item) {
-		MeasurementScheme scheme = item.getCategory().getParent().getMeasurementScheme();
-		return scheme == null ? MeasurementScheme.NONE : scheme;
 	}
 
 	private ListingSellerResponse toSeller(User seller) {
@@ -213,7 +205,7 @@ public class ListingQueryService {
 
 		// 소유자가 바뀌어도 기록은 이어지므로 구간 합계가 전체 인증 횟수임
 		return itemWearRecordRepository.countByOwnership(itemId).stream()
-				.mapToInt(row -> ((Number) row[1]).intValue())
+				.mapToInt(row -> row.wearCount().intValue())
 				.sum();
 	}
 }

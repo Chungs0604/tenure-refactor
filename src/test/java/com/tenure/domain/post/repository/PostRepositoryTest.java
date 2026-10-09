@@ -370,24 +370,31 @@ class PostRepositoryTest extends RepositorySliceTestSupport {
 
 		@Test
 		@DisplayName("판매 중인 아이템의 대표 OOTD 면 true, 상태가 다르면 false 다")
-		void existsByPostIdAndSaleStatus_dependsOnItemSaleStatus() {
-			Item item = persistItem(me);
-			item.changeSaleStatus(SaleStatus.ON_SALE);
-			Post post = persistPost(me, LocalDate.of(2026, 6, 1));
+		void existsOnSaleByPostId_dependsOnItemSaleStatus() {
+			Item onSaleItem = persistItem(me);
+			onSaleItem.changeSaleStatus(SaleStatus.ON_SALE);
+			Post onSalePost = persistPost(me, LocalDate.of(2026, 6, 1));
+
+			Item soldItem = persistItem(me);
+			soldItem.changeSaleStatus(SaleStatus.SOLD);
+			Post soldPost = persistPost(me, LocalDate.of(2026, 6, 2));
 			flush();
 
-			long openId = insertOpenListing(item, me, 360000);
-			insertFeaturedPost(openId, post.getId());
+			long openId = insertOpenListing(onSaleItem, me, 360000);
+			insertFeaturedPost(openId, onSalePost.getId());
+
+			long soldListingId = insertOpenListing(soldItem, me, 360000);
+			insertFeaturedPost(soldListingId, soldPost.getId());
 
 			assertThat(listingFeaturedPostRepository
-					.existsByPostIdAndSaleStatus(post.getId(), SaleStatus.ON_SALE)).isTrue();
+					.existsOnSaleByPostId(onSalePost.getId())).isTrue();
 			assertThat(listingFeaturedPostRepository
-					.existsByPostIdAndSaleStatus(post.getId(), SaleStatus.SOLD)).isFalse();
+					.existsOnSaleByPostId(soldPost.getId())).isFalse();
 		}
 
 		@Test
 		@DisplayName("판매를 내린 등록의 대표 OOTD 는 지울 수 있다 — 열린 행만 본다")
-		void existsByPostIdAndSaleStatus_closedListing_isFalse() {
+		void existsOnSaleByPostId_closedListing_isFalse() {
 			Item item = persistItem(me);
 			item.changeSaleStatus(SaleStatus.ON_SALE);
 			Post post = persistPost(me, LocalDate.of(2026, 6, 1));
@@ -397,7 +404,7 @@ class PostRepositoryTest extends RepositorySliceTestSupport {
 			insertFeaturedPost(closedId, post.getId());
 
 			assertThat(listingFeaturedPostRepository
-					.existsByPostIdAndSaleStatus(post.getId(), SaleStatus.ON_SALE)).isFalse();
+					.existsOnSaleByPostId(post.getId())).isFalse();
 		}
 
 		@Test
