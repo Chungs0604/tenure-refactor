@@ -27,18 +27,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.tenure.domain.category.enums.MeasurementField;
-import com.tenure.domain.category.enums.MeasurementScheme;
 import com.tenure.domain.item.dto.request.ItemForm;
-import com.tenure.domain.item.entity.ItemCondition;
-import com.tenure.domain.item.entity.ItemMeasurement;
-import com.tenure.domain.item.enums.ConditionCode;
-import com.tenure.domain.item.repository.ItemConditionRepository;
-import com.tenure.domain.item.repository.ItemMeasurementRepository;
-import java.math.BigDecimal;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * 아이템 등록·수정·삭제.

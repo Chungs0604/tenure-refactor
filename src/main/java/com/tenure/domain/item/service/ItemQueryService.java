@@ -14,9 +14,13 @@ import com.tenure.domain.item.entity.ItemOwnership;
 import com.tenure.domain.item.enums.RecommendationBlock;
 import com.tenure.domain.item.exception.ItemErrorCode;
 import com.tenure.domain.item.mapper.ItemMapper;
+import com.tenure.domain.item.repository.ItemCurrentWearCountRow;
+import com.tenure.domain.item.repository.ItemLastWornDateRow;
 import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.item.repository.ItemWearRecordRepository;
+import com.tenure.domain.item.repository.OwnershipPreviewRow;
+import com.tenure.domain.item.repository.OwnershipWearCountRow;
 import com.tenure.domain.listing.entity.ItemListing;
 import com.tenure.domain.listing.repository.ItemListingRepository;
 import com.tenure.domain.post.dto.response.PostSummaryResponse;
@@ -89,24 +93,18 @@ public class ItemQueryService {
 	public CursorSlice<ItemSummaryResponse> getMyItems(
 			Long userId, String keyword, Cursor cursor, int size
 	) {
-		List<Item> items = itemRepository.findOwnedItems(userId, keyword, cursor, size);
-
-		if (items.isEmpty()) {
+		OwnedItemsSlice owned = loadOwnedItemsSlice(userId, keyword, cursor, size);
+		if (owned == null) {
 			return CursorSlice.empty();
 		}
 
-		CursorSlice<Item> slice = CursorSlice.of(items, size, it -> Cursor.of(it.getCreatedAt(), it.getId()));
-
-		// 행마다 조회하면 카드 수만큼 쿼리가 늘어남
-		List<Long> itemIds = slice.getContent().stream().map(Item::getId).toList();
-
 		// 아이템 별 최근 착용 일
-		Map<Long, LocalDate> lastWornDates = lastWornDatesOf(itemIds);
+		Map<Long, LocalDate> lastWornDates = lastWornDatesOf(owned.itemIds());
 
 		// 아이템 별 열린 판매 등록. 가격을 그리는 데 쓴다 — 상태는 아이템이 들고 있다 (DEC-026)
-		Map<Long, ItemListing> listings = openListingsOf(itemIds);
+		Map<Long, ItemListing> listings = openListingsOf(owned.itemIds());
 
-		return slice.map(
+		return owned.slice().map(
 				item -> toSummary(item, lastWornDates.get(item.getId()), listings.get(item.getId()))
 		);
 	}
@@ -123,22 +121,39 @@ public class ItemQueryService {
 	public CursorSlice<TaggableItemResponse> getTaggableItems(
 			Long userId, String keyword, Cursor cursor, int size
 	) {
+		OwnedItemsSlice owned = loadOwnedItemsSlice(userId, keyword, cursor, size);
+		if (owned == null) {
+			return CursorSlice.empty();
+		}
+
+		Map<Long, LocalDate> lastWornDates = lastWornDatesOf(owned.itemIds());
+		Map<Long, Integer> wearCounts = currentWearCountsOf(owned.itemIds());
+
+		return owned.slice().map(item -> toTaggableItem(
+				item,
+				lastWornDates.get(item.getId()),
+				wearCounts.getOrDefault(item.getId(), 0)));
+	}
+
+	/**
+	 * 내 옷장·태그 가능 목록이 공유하는 조회 앞부분. 조회 → empty 가드 → 커서 슬라이스 →
+	 * itemId 추출까지가 똑같고 그 뒤에 붙이는 부가 조회만 화면마다 다르다.
+	 */
+	private OwnedItemsSlice loadOwnedItemsSlice(Long userId, String keyword, Cursor cursor, int size) {
 		List<Item> items = itemRepository.findOwnedItems(userId, keyword, cursor, size);
 		if (items.isEmpty()) {
-			return CursorSlice.empty();
+			return null;
 		}
 
 		CursorSlice<Item> slice = CursorSlice.of(items, size, it -> Cursor.of(it.getCreatedAt(), it.getId()));
 
-		// 행마다 조회하면 아이템 수만큼 쿼리가 늘어남
+		// 행마다 조회하면 카드 수만큼 쿼리가 늘어남
 		List<Long> itemIds = slice.getContent().stream().map(Item::getId).toList();
-		Map<Long, LocalDate> lastWornDates = lastWornDatesOf(itemIds);
-		Map<Long, Integer> wearCounts = currentWearCountsOf(itemIds);
 
-		return slice.map(item -> toTaggableItem(
-				item,
-				lastWornDates.get(item.getId()),
-				wearCounts.getOrDefault(item.getId(), 0)));
+		return new OwnedItemsSlice(slice, itemIds);
+	}
+
+	private record OwnedItemsSlice(CursorSlice<Item> slice, List<Long> itemIds) {
 	}
 
 	/** 아이템 상세 (소유자 시점). */
@@ -215,6 +230,11 @@ public class ItemQueryService {
 		// 블록마다 카드를 조립하면 대표 사진·좋아요·저장 조회가 블록 수만큼 반복됨
 		Map<RecommendationBlock, List<Post>> postsByBlock = new LinkedHashMap<>();
 
+		// 블록 세 개가 서로의 결과에 의존하지 않아 보여도, 한 트랜잭션이 커넥션 하나(EntityManager
+		// 하나)를 쓰므로 스레드로 나눠 돌리면 EntityManager 를 여러 스레드가 함께 건드리게 된다 —
+		// JPA EntityManager 는 스레드 안전하지 않아 그대로는 병렬화할 수 없다. 세 규칙(대분류 일치·
+		// 세부 카테고리 일치·공동 태그)을 한 쿼리로 합치는 것도 조건마다 조인 대상이 달라 가독성이
+		// 떨어져 그대로 순차 조회로 둔다.
 		for (RecommendationBlock block : RecommendationBlock.values()) {
 			List<Post> posts = itemRepository.findRecommendedPosts(userId, item, block, BLOCK_SIZE);
 
@@ -280,13 +300,14 @@ public class ItemQueryService {
 	 */
 	private ItemOwnershipHistoryResponse buildOwnershipHistory(Item item, List<ItemOwnership> ownerships) {
 		Map<Long, Integer> wearCounts = itemWearRecordRepository.countByOwnership(item.getId()).stream()
-				.collect(Collectors.toMap(row -> (Long) row[0], row -> ((Number) row[1]).intValue()));
+				.collect(Collectors.toMap(
+						OwnershipWearCountRow::ownershipId, row -> row.wearCount().intValue()));
 
 		// 구간별 최신 3장을 한 쿼리로 받아 구간에 맞춤
 		Map<Long, List<String>> previews = new HashMap<>();
-		for (Object[] row : itemWearRecordRepository.findOwnershipPreviews(item.getId())) {
-			previews.computeIfAbsent((Long) row[0], key -> new ArrayList<>())
-					.add(fileStorage.toUrl((String) row[1]));
+		for (OwnershipPreviewRow row : itemWearRecordRepository.findOwnershipPreviews(item.getId())) {
+			previews.computeIfAbsent(row.ownershipId(), key -> new ArrayList<>())
+					.add(fileStorage.toUrl(row.imageKey()));
 		}
 
 		List<ItemOwnershipResponse> cards = ownerships.stream()
@@ -351,12 +372,13 @@ public class ItemQueryService {
 	/** 현재 소유 구간의 인증 횟수. 태그 시트의 'OOTD 인증 : N회' 다. */
 	private Map<Long, Integer> currentWearCountsOf(Collection<Long> itemIds) {
 		return itemWearRecordRepository.countCurrentOwnershipWears(itemIds).stream()
-				.collect(Collectors.toMap(row -> (Long) row[0], row -> ((Number) row[1]).intValue()));
+				.collect(Collectors.toMap(
+						ItemCurrentWearCountRow::itemId, row -> row.wearCount().intValue()));
 	}
 
 	private Map<Long, LocalDate> lastWornDatesOf(Collection<Long> itemIds) {
 		return itemWearRecordRepository.findLastWornDates(itemIds).stream()
-				.collect(Collectors.toMap(row -> (Long) row[0], row -> (LocalDate) row[1]));
+				.collect(Collectors.toMap(ItemLastWornDateRow::itemId, ItemLastWornDateRow::wornDate));
 	}
 
 	/**

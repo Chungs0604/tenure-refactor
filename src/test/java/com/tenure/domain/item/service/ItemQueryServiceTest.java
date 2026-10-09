@@ -21,9 +21,13 @@ import com.tenure.domain.item.enums.WearTarget;
 import com.tenure.domain.item.exception.ItemErrorCode;
 import com.tenure.domain.item.mapper.ItemMapper;
 import com.tenure.domain.item.mapper.ItemMapperImpl;
+import com.tenure.domain.item.repository.ItemCurrentWearCountRow;
+import com.tenure.domain.item.repository.ItemLastWornDateRow;
 import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.item.repository.ItemWearRecordRepository;
+import com.tenure.domain.item.repository.OwnershipPreviewRow;
+import com.tenure.domain.item.repository.OwnershipWearCountRow;
 import com.tenure.domain.listing.entity.ItemListing;
 import com.tenure.domain.item.enums.SaleStatus;
 import com.tenure.domain.listing.repository.ItemListingRepository;
@@ -114,7 +118,7 @@ class ItemQueryServiceTest {
 			given(itemRepository.findOwnedItems(anyLong(), any(), any(), anyInt()))
 					.willReturn(List.of(item));
 			given(itemWearRecordRepository.findLastWornDates(any()))
-					.willReturn(List.<Object[]>of(new Object[]{ITEM_ID, LocalDate.of(2026, 5, 26)}));
+					.willReturn(List.of(new ItemLastWornDateRow(ITEM_ID, LocalDate.of(2026, 5, 26))));
 			given(itemListingRepository.findOpenByItemIds(any())).willReturn(List.of(listing));
 
 			ItemSummaryResponse row = itemQueryService.getMyItems(USER_ID, null, null, 20)
@@ -133,7 +137,7 @@ class ItemQueryServiceTest {
 			given(itemRepository.findOwnedItems(anyLong(), any(), any(), anyInt()))
 					.willReturn(List.of(item()));
 			given(itemWearRecordRepository.findLastWornDates(any()))
-					.willReturn(List.<Object[]>of(new Object[]{ITEM_ID, LocalDate.of(2026, 5, 26)}));
+					.willReturn(List.of(new ItemLastWornDateRow(ITEM_ID, LocalDate.of(2026, 5, 26))));
 			given(itemListingRepository.findOpenByItemIds(any())).willReturn(List.of());
 
 			ItemSummaryResponse row = itemQueryService.getMyItems(USER_ID, null, null, 20)
@@ -157,9 +161,9 @@ class ItemQueryServiceTest {
 			given(itemRepository.findOwnedItems(anyLong(), any(), any(), anyInt()))
 					.willReturn(List.of(item()));
 			given(itemWearRecordRepository.findLastWornDates(any()))
-					.willReturn(List.<Object[]>of(new Object[]{ITEM_ID, LocalDate.of(2026, 5, 26)}));
+					.willReturn(List.of(new ItemLastWornDateRow(ITEM_ID, LocalDate.of(2026, 5, 26))));
 			given(itemWearRecordRepository.countCurrentOwnershipWears(any()))
-					.willReturn(List.<Object[]>of(new Object[]{ITEM_ID, 2L}));
+					.willReturn(List.of(new ItemCurrentWearCountRow(ITEM_ID, 2L)));
 
 			TaggableItemResponse row = itemQueryService.getTaggableItems(USER_ID, null, null, 20)
 					.getContent().get(0);
@@ -231,10 +235,10 @@ class ItemQueryServiceTest {
 			given(itemOwnershipRepository.findCurrent(ITEM_ID)).willReturn(Optional.of(ownership));
 			given(itemOwnershipRepository.findAllByItemId(ITEM_ID)).willReturn(List.of(ownership));
 			given(itemWearRecordRepository.countByOwnership(ITEM_ID))
-					.willReturn(List.<Object[]>of(new Object[]{ownership.getId(), 12L}));
+					.willReturn(List.of(new OwnershipWearCountRow(ownership.getId(), 12L)));
 			given(itemWearRecordRepository.findOwnershipPreviews(ITEM_ID)).willReturn(List.of(
-					new Object[]{ownership.getId(), "post/a.jpg"},
-					new Object[]{ownership.getId(), "post/b.jpg"}));
+					new OwnershipPreviewRow(ownership.getId(), "post/a.jpg"),
+					new OwnershipPreviewRow(ownership.getId(), "post/b.jpg")));
 			given(itemWearRecordRepository.findLastWornDates(any())).willReturn(List.of());
 			given(itemListingRepository.findOpenByItemId(ITEM_ID)).willReturn(Optional.empty());
 			given(postItemTagRepository.findFrequentlyWornWith(anyLong(), any())).willReturn(List.of());

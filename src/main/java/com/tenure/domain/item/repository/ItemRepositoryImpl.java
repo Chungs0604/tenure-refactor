@@ -9,7 +9,7 @@ import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.JPQLQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
-import com.tenure.domain.block.entity.QUserBlock;
+import com.tenure.domain.block.repository.BlockPredicates;
 import com.tenure.domain.item.entity.Item;
 import com.tenure.domain.item.entity.QItem;
 import com.tenure.domain.item.enums.RecommendationBlock;
@@ -26,10 +26,6 @@ import lombok.RequiredArgsConstructor;
  */
 @RequiredArgsConstructor
 public class ItemRepositoryImpl implements ItemRepositoryCustom {
-
-	/** 한 쿼리에 같은 테이블이 두 번 들어가므로 별칭을 따로 준다 — 내가 차단한 쪽과 나를 차단한 쪽. */
-	private static final QUserBlock BLOCKED_BY_ME = new QUserBlock("blockedByMe");
-	private static final QUserBlock BLOCKED_ME = new QUserBlock("blockedMe");
 
 	private final JPAQueryFactory queryFactory;
 
@@ -107,14 +103,7 @@ public class ItemRepositoryImpl implements ItemRepositoryCustom {
 
 	/** 내가 차단한 쪽과 나를 차단한 쪽을 모두 뺀다 — PostRepositoryImpl 과 같은 규칙이다. */
 	private BooleanExpression notBlocked(Long viewerId) {
-		return post.author.id.notIn(
-						JPAExpressions.select(BLOCKED_BY_ME.blocked.id)
-								.from(BLOCKED_BY_ME)
-								.where(BLOCKED_BY_ME.blocker.id.eq(viewerId)))
-				.and(post.author.id.notIn(
-						JPAExpressions.select(BLOCKED_ME.blocker.id)
-								.from(BLOCKED_ME)
-								.where(BLOCKED_ME.blocked.id.eq(viewerId))));
+		return BlockPredicates.excludeBlockedEitherWay(post.author.id, viewerId);
 	}
 
 	/**

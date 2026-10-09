@@ -8,7 +8,7 @@ import static com.tenure.domain.post.entity.QPostSave.postSave;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
-import com.tenure.domain.block.entity.QUserBlock;
+import com.tenure.domain.block.repository.BlockPredicates;
 import com.tenure.domain.post.entity.Post;
 import com.tenure.domain.post.enums.FeedTab;
 import com.tenure.domain.post.enums.MyPostTab;
@@ -26,10 +26,6 @@ import lombok.RequiredArgsConstructor;
  */
 @RequiredArgsConstructor
 public class PostRepositoryImpl implements PostRepositoryCustom {
-
-	/** 한 쿼리에 같은 테이블이 두 번 들어가므로 별칭을 따로 준다 — 내가 차단한 쪽과 나를 차단한 쪽. */
-	private static final QUserBlock BLOCKED_BY_ME = new QUserBlock("blockedByMe");
-	private static final QUserBlock BLOCKED_ME = new QUserBlock("blockedMe");
 
 	private final JPAQueryFactory queryFactory;
 
@@ -113,14 +109,7 @@ public class PostRepositoryImpl implements PostRepositoryCustom {
 	 * 맞다 — 차단은 '서로 마주치지 않게' 하는 조치이므로 한쪽만 막으면 절반만 지켜진다.
 	 */
 	private BooleanExpression notBlocked(Long viewerId) {
-		return post.author.id.notIn(
-						JPAExpressions.select(BLOCKED_BY_ME.blocked.id)
-								.from(BLOCKED_BY_ME)
-								.where(BLOCKED_BY_ME.blocker.id.eq(viewerId)))
-				.and(post.author.id.notIn(
-						JPAExpressions.select(BLOCKED_ME.blocker.id)
-								.from(BLOCKED_ME)
-								.where(BLOCKED_ME.blocked.id.eq(viewerId))));
+		return BlockPredicates.excludeBlockedEitherWay(post.author.id, viewerId);
 	}
 
 	/** 팔로우 탭에서만 건다. 모두 탭이면 조건이 없다. */
