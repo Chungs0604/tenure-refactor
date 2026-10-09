@@ -52,6 +52,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * 가입과 중복 확인, 계정·프로필 조회와 수정.
@@ -114,11 +116,6 @@ public class UserService {
 	@Transactional
 	@Loggable("회원가입")
 	public UserCreateResponse signUp(UserCreateRequest request) {
-		// 인증 토큰부터 소비 - 유효하지 않으면 중복 검사도 하지 않는다
-		authService.consumeVerificationToken(
-				request.getVerificationToken(), request.getEmail(), VerificationPurpose.SIGN_UP
-		);
-
 		// 필수 약관 3종이 모두 있는지 검사
 		validateAgreements(request.getAgreements());
 
@@ -131,6 +128,12 @@ public class UserService {
 			log.warn("이미 가입된 닉네임 입니다. nickname={}", request.getNickname());
 			throw new CustomException(UserErrorCode.USER_409_NICKNAME);
 		}
+
+		// 인증 토큰은 여기서 소비 - 앞의 검증을 모두 통과해 실제로 계정을 만들기 직전까지
+		// 미뤄야, 약관·중복 검사 실패로 되돌아갔을 때 토큰이 살아있어 재시도할 수 있다
+		authService.consumeVerificationToken(
+				request.getVerificationToken(), request.getEmail(), VerificationPurpose.SIGN_UP
+		);
 
 		// 계정 생성. 비밀번호는 해시해서 넘김
 		User signUpUser = User.signUp(
@@ -324,14 +327,34 @@ public class UserService {
 		notificationSettingRepository.deleteAllByUserId(userId);
 		wishlistRepository.deleteAllByUserId(userId);
 
-		// Redis 에 남은 최근 열람 이력도 함께 지움
-		recentViewStore.deleteAll(userId);
+		// Redis 반영은 커밋 후로 미룸 — 커밋 전에 실행하면, 이후 커밋이 실패해 DB 가 롤백돼도
+		// 이미 끊은 refresh token·차단 표시는 되돌릴 수 없어 계정은 ACTIVE 인데 로그인만
+		// 막히는 상태가 됨
+		afterCommit(() -> {
+			// Redis 에 남은 최근 열람 이력도 함께 지움
+			recentViewStore.deleteAll(userId);
 
-		// 남은 refresh token 을 전부 끊음
-		refreshTokenStore.revokeAll(userId);
+			// 남은 refresh token 을 전부 끊음
+			refreshTokenStore.revokeAll(userId);
 
-		// access token 은 자연 만료 전까지 계속 유효하므로, Redis 에 탈퇴 표시를 남겨 막음
-		withdrawnUserStore.markWithdrawn(userId, jwtTokenProvider.accessTokenTtl());
+			// access token 은 자연 만료 전까지 계속 유효하므로, Redis 에 탈퇴 표시를 남겨 막음
+			withdrawnUserStore.markWithdrawn(userId, jwtTokenProvider.accessTokenTtl());
+		});
+	}
+
+	// 트랜잭션이 끝까지 커밋된 뒤에만 실행함. 트랜잭션 없이 불리면(단위 테스트 등) 동기화가
+	// 활성화돼 있지 않으니 그냥 바로 실행함 — ChatWebSocketService 와 같은 패턴
+	private void afterCommit(Runnable action) {
+		if (TransactionSynchronizationManager.isSynchronizationActive()) {
+			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+				@Override
+				public void afterCommit() {
+					action.run();
+				}
+			});
+		} else {
+			action.run();
+		}
 	}
 
 	private User findUser(Long userId) {
