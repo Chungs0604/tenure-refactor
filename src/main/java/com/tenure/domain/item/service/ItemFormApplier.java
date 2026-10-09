@@ -102,9 +102,9 @@ public class ItemFormApplier {
 			throw new CustomException(ItemErrorCode.ITEM_400_MEASUREMENT);
 		}
 
-		// 아이템당 한 행이라 지우고 다시 넣음
-		itemMeasurementRepository.findByItemId(item.getId())
-				.ifPresent(itemMeasurementRepository::delete);
+		// 아이템당 한 행이라 지우고 다시 넣음. 벌크 삭제로 지워야 DELETE 가 뒤의 save 보다
+		// 먼저 DB 에 닿는다 — em.remove() 는 flush 때까지 미뤄져 INSERT 가 먼저 나간다.
+		itemMeasurementRepository.deleteByItemId(item.getId());
 
 		// 한 칸도 안 채웠으면 행을 만들지 않음
 		if (sent.isEmpty()) {
