@@ -49,4 +49,14 @@ public interface PostItemTagRepository extends JpaRepository<PostItemTag, Long> 
 			+ "where t.item.id = :itemId and p.deletedAt is null "
 			+ "order by p.wornDate desc, p.id desc")
 	List<Post> findTaggedPosts(@Param("itemId") Long itemId, Pageable pageable);
+
+	/**
+	 * 이 게시물 안에서 이 아이템이 아직 태그된 횟수.
+	 *
+	 * 같은 아이템을 여러 사진에 태그할 수 있어서, 태그 하나를 지우거나 바꿔도 다른 사진에
+	 * 그대로 남아있으면 인증을 무효화하면 안 된다. 그 잔존 여부를 이걸로 판단한다.
+	 */
+	@Query("select count(t) from PostItemTag t join t.postImage i "
+			+ "where i.post.id = :postId and t.item.id = :itemId")
+	long countByPostIdAndItemId(@Param("postId") Long postId, @Param("itemId") Long itemId);
 }

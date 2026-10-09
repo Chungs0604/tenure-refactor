@@ -168,8 +168,8 @@ public class PostService {
 			Long afterItemId = edit.getItemId();
 
 			if (afterItemId == null) {
-				invalidateRecord(postId, beforeItemId, WearRecordVoidReason.TAG_DELETED);
 				postItemTagRepository.delete(tag);
+				invalidateIfNoLongerTagged(postId, beforeItemId, WearRecordVoidReason.TAG_DELETED);
 				continue;
 			}
 
@@ -178,8 +178,8 @@ public class PostService {
 			}
 
 			ItemOwnership ownership = findCurrentOwnership(userId, afterItemId);
-			invalidateRecord(postId, beforeItemId, WearRecordVoidReason.TAG_CHANGED);
 			tag.changeItem(ownership.getItem());
+			invalidateIfNoLongerTagged(postId, beforeItemId, WearRecordVoidReason.TAG_CHANGED);
 			certifyAgain(post, ownership);
 		}
 
@@ -345,6 +345,19 @@ public class PostService {
 		}
 
 		return ownership;
+	}
+
+	/**
+	 * 이 게시물의 다른 사진에 같은 아이템이 아직 태그돼 있으면 인증을 건드리지 않는다.
+	 *
+	 * 같은 아이템을 두 사진에 태그해도 인증은 한 번만 쌓이는데, 그중 한 태그만 지우거나 바꿀 때
+	 * 남은 태그를 보지 않고 무조건 무효화하면 '내 옷장'의 인증 횟수가 부당하게 줄어든다.
+	 */
+	private void invalidateIfNoLongerTagged(Long postId, Long itemId, WearRecordVoidReason reason) {
+		if (postItemTagRepository.countByPostIdAndItemId(postId, itemId) > 0) {
+			return;
+		}
+		invalidateRecord(postId, itemId, reason);
 	}
 
 	/** 태그가 떨어진 아이템의 인증을 무효화한다. 종료된 구간이면 수정 자체를 막는다. */
