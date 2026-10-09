@@ -1,6 +1,7 @@
 package com.tenure.domain.item.repository;
 
 import com.tenure.domain.item.entity.ItemOwnership;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -19,6 +20,17 @@ public interface ItemOwnershipRepository extends JpaRepository<ItemOwnership, Lo
 			"where o.item.id = :itemId " +
 			"and o.endDate is null")
 	Optional<ItemOwnership> findCurrent(@Param("itemId") Long itemId);
+
+	/**
+	 * 여러 아이템의 현재 소유 구간을 한 번에 읽는다.
+	 *
+	 * 이미지×태그 이중 루프에서 태그마다 findCurrent 를 부르면 쿼리가 태그 수만큼 는다 —
+	 * 요청에 등장한 itemId 를 모아 한 번에 읽고 맵으로 캐싱해 쓴다.
+	 */
+	@Query("select o from ItemOwnership o " +
+			"where o.item.id in :itemIds " +
+			"and o.endDate is null")
+	List<ItemOwnership> findCurrentByItemIds(@Param("itemIds") Collection<Long> itemIds);
 
 	/**
 	 * 'Tenure 기록 기준' 의 소유 구간 목록. 최신 구간이 위다 — 화면 카드가 '현재 소유자' 부터 시작한다.
