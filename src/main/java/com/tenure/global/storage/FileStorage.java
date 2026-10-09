@@ -16,6 +16,11 @@ public interface FileStorage {
 	/** 키를 화면에서 쓸 수 있는 URL 로 바꾼다. */
 	String toUrl(String key);
 
+	/** 키가 없으면 URL 도 없다. 여러 서비스가 각자 짜던 null 분기를 여기로 모은다. */
+	default String toUrlOrNull(String key) {
+		return key == null ? null : toUrl(key);
+	}
+
 	/** 키에 해당하는 파일을 지운다. */
 	void delete(String key);
 }

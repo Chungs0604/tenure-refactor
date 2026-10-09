@@ -29,11 +29,11 @@ import org.mapstruct.ReportingPolicy;
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.ERROR)
 public interface ChatMapper {
 
-	@Mapping(target = "nickname", expression = "java(displayNickname(user))")
+	@Mapping(target = "nickname", expression = "java(com.tenure.domain.user.mapper.UserMapper.displayNickname(user))")
 	@Mapping(target = "profileImageUrl", source = "profileImageUrl")
 	ChatCounterpartResponse toCounterpartResponse(User user, String profileImageUrl);
 
-	@Mapping(target = "nickname", expression = "java(displayNickname(user))")
+	@Mapping(target = "nickname", expression = "java(com.tenure.domain.user.mapper.UserMapper.displayNickname(user))")
 	ChatHeaderCounterpartResponse toHeaderCounterpartResponse(User user);
 
 	@Mapping(target = "brandName", source = "item.brandName")
@@ -77,9 +77,4 @@ public interface ChatMapper {
 	@Mapping(target = "images", source = "images")
 	@Mapping(target = "createdAt", source = "message.createdAt")
 	ChatMessageResponse toMessageResponse(ChatMessage message, String content, List<String> images);
-
-	/** 탈퇴 계정은 저장된 닉네임 대신 고정 문구를 보여줌 — OrderMapper 와 같은 기준 */
-	default String displayNickname(User user) {
-		return user.isWithdrawn() ? UserMapper.WITHDRAWN_NICKNAME : user.getNickname();
-	}
 }
