@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -208,10 +209,27 @@ public class NotificationService {
 		request.getSettings().forEach(item -> {
 			NotificationSetting setting = notificationSettingRepository
 					.findByUserIdAndSettingType(userId, item.getSettingType())
-					.orElseGet(() -> notificationSettingRepository.save(
-							NotificationSetting.register(user, item.getSettingType(), item.getEnabled(), now)));
+					.orElseGet(() -> createSetting(user, item.getSettingType(), item.getEnabled(), now));
 			setting.changeEnabled(item.getEnabled(), now);
 		});
+	}
+
+	/**
+	 * IDENTITY 전략이라 save 호출 시점에 바로 INSERT 됨. 같은 (user_id, setting_type) 행이
+	 * 없는 걸 동시에 확인한 두 요청이 있으면 uk_notification_setting 위반이 여기서 바로
+	 * 던져짐(OfferService.create() 와 같은 패턴)
+	 */
+	private NotificationSetting createSetting(
+			User user, NotificationSettingType settingType, boolean enabled, LocalDateTime now
+	) {
+		try {
+			return notificationSettingRepository.save(
+					NotificationSetting.register(user, settingType, enabled, now));
+		} catch (DataIntegrityViolationException e) {
+			log.info("동시 요청으로 알림 설정 유니크 제약에 걸림 userId={} settingType={}",
+					user.getId(), settingType);
+			throw new CustomException(NotificationErrorCode.NOTIFICATION_409_SETTING_CONFLICT);
+		}
 	}
 
 	/** 이 페이지에 있는 ITEM 대상 알림의 targetId 를 모아 한 번에 조회함(N+1 방지) */

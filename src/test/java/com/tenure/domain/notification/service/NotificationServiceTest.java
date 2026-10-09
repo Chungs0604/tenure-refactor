@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -49,6 +50,7 @@ import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -428,6 +430,23 @@ class NotificationServiceTest {
 			notificationService.updateSettings(USER_ID, request(NotificationSettingType.FOLLOW, true));
 
 			verify(notificationSettingRepository).save(any(NotificationSetting.class));
+		}
+
+		@Test
+		@DisplayName("동시 요청으로 같은 설정 행을 둘 다 새로 만들려 하면 NOTIFICATION_409_SETTING_CONFLICT 로 번역한다")
+		void updateSettings_concurrentNoRow_throwsConflict() {
+			User user = user(USER_ID);
+			given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+			given(notificationSettingRepository.findByUserIdAndSettingType(USER_ID, NotificationSettingType.FOLLOW))
+					.willReturn(Optional.empty());
+			willThrow(new DataIntegrityViolationException("uk_notification_setting"))
+					.given(notificationSettingRepository).save(any(NotificationSetting.class));
+
+			assertThatThrownBy(() ->
+					notificationService.updateSettings(USER_ID, request(NotificationSettingType.FOLLOW, true)))
+					.isInstanceOf(CustomException.class)
+					.extracting(NotificationServiceTest::errorCodeOf)
+					.isEqualTo(NotificationErrorCode.NOTIFICATION_409_SETTING_CONFLICT);
 		}
 
 		@Test

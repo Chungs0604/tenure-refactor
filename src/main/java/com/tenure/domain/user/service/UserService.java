@@ -49,6 +49,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -148,7 +149,20 @@ public class UserService {
 				request.getWeightKg()
 		);
 
-		User user = userRepository.save(signUpUser);
+		// IDENTITY 전략이라 save 호출 시점에 바로 INSERT 됨 — 위의 exists 선검사를 동시에 통과한
+		// 두 요청이 있으면 유니크 제약 위반이 여기서 바로 던져짐(OfferService.create() 와 같은 패턴)
+		User user;
+		try {
+			user = userRepository.save(signUpUser);
+		} catch (DataIntegrityViolationException e) {
+			String cause = e.getMostSpecificCause().getMessage();
+			if (cause != null && cause.contains("uk_user_nickname")) {
+				log.info("동시 가입으로 닉네임 유니크 제약에 걸림 nickname={}", request.getNickname());
+				throw new CustomException(UserErrorCode.USER_409_NICKNAME);
+			}
+			log.info("동시 가입으로 이메일 유니크 제약에 걸림 email={}", request.getEmail());
+			throw new CustomException(UserErrorCode.USER_409_EMAIL);
+		}
 
 		// 약관 동의 기록. 법적 증빙이라 append-only(update, delete 금지)
 		request.getAgreements().forEach(agreement ->
@@ -227,6 +241,15 @@ public class UserService {
 				request.getHeightCm(),
 				request.getWeightKg()
 		);
+
+		// 변경은 flush 전까지 더티 체킹으로만 대기함. existsOtherNickname 선검사를 동시에 통과한
+		// 두 요청이 있으면 유니크 제약 위반이 커밋 시점에야 새는데, 여기서 강제로 flush 해 그 자리에서 잡음
+		try {
+			userRepository.flush();
+		} catch (DataIntegrityViolationException e) {
+			log.info("동시 변경으로 닉네임 유니크 제약에 걸림 nickname={}", request.getNickname());
+			throw new CustomException(UserErrorCode.USER_409_NICKNAME);
+		}
 
 		return UserUpdateResponse.builder()
 				.id(user.getId())
