@@ -183,6 +183,22 @@ class ListingServiceTest {
 		}
 
 		@Test
+		@DisplayName("진행 중인 거래가 있으면 막는다 — 열린 등록이 없어도 이미 수락된 거래가 있을 수 있다")
+		void create_inTrade_rejected() {
+			Item item = item();
+			givenSellable(item, UserGrade.RECORD);
+			given(tradeOrderRepository.existsInProgress(anyLong(), any())).willReturn(true);
+
+			assertThatThrownBy(() -> listingService.create(
+					USER_ID, ITEM_ID, request(320000, 5000, FeeBearer.SELLER)))
+					.isInstanceOf(CustomException.class)
+					.extracting(ListingServiceTest::errorCodeOf)
+					.isEqualTo(ListingErrorCode.LISTING_409_IN_TRADE);
+
+			verify(itemListingRepository, never()).save(any());
+		}
+
+		@Test
 		@DisplayName("기본 사용자가 수수료 부담을 보내면 막는다 — 화면에서 칩이 비활성이다")
 		void create_basicUserSendsFeeBearer_rejected() {
 			Item item = item();

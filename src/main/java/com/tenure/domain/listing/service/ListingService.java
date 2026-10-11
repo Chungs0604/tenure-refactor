@@ -109,8 +109,21 @@ public class ListingService {
 			throw new CustomException(ListingErrorCode.LISTING_409_ALREADY_OPEN);
 		}
 
+		// 진행 중인 거래가 있으면 판매 전환할 수 없음 — 수락 후 구매 확정 전까지는 열린 등록이
+		// 없어도 이미 팔린 아이템이다. changeSaleStatus(210행) 와 같은 검사
+		if (tradeOrderRepository.existsInProgress(itemId, OrderStatus.FINISHED)) {
+			log.info("진행 중인 거래가 있어 판매 전환할 수 없다 itemId={}", itemId);
+			throw new CustomException(ListingErrorCode.LISTING_409_IN_TRADE);
+		}
+
 		// 폼이 아이템 정보도 다시 받으므로 함께 갱신함
 		Category category = applyItemChanges(item, request.getItem());
+
+		// 배지를 그리는 상태는 아이템이 가짐. 바로 아래 실측·상태이상·대표 OOTD 저장이 벌크
+		// @Modifying(clearAutomatically=true) 라 영속성 컨텍스트를 비운다 — 그 뒤에 두면 이미
+		// detach 된 item 을 바꾸는 꼴이라 커밋 때 반영되지 않는다. 이 호출보다 뒤에 item 변경을
+		// 두지 않는다
+		item.changeSaleStatus(SaleStatus.ON_SALE);
 
 		// 닫힌 행을 되살리지 않고 늘 새로 만듦
 		ItemListing listing = itemListingRepository.save(
@@ -128,9 +141,6 @@ public class ListingService {
 		itemFormApplier.replaceMeasurements(item, category, request.getMeasurements());
 		itemFormApplier.replaceConditions(item, request.getConditions());
 		replaceFeaturedPosts(listing, userId, request.getFeaturedPostIds());
-
-		// 배지를 그리는 상태는 아이템이 가짐
-		item.changeSaleStatus(SaleStatus.ON_SALE);
 
 		// 이 아이템을 미판매 상태일 때 관심 등록해 둔 사람이 있을 수 있음 — 다시 팔린다는 것을 알림
 		// 알림 받을 사람이 없으면 notifyAll 내부에서 바로 끝나므로 여기서 미리 거를 필요 없음

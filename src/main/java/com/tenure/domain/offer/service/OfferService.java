@@ -347,9 +347,12 @@ public class OfferService {
 
 		// 결제 완료 시점에 아이템이 판매 완료로 전이함
 		item.changeSaleStatus(SaleStatus.SOLD);
-		if (offer.getListing() != null && offer.getListing().isOpen()) {
-			offer.getListing().close(now);
-		}
+
+		// 아이템에 실제로 열려 있는 판매 등록을 닫는다 — offer.getListing() 이 아니다. 미판매로
+		// 받은 제안(listing=null)을 나중에 열린 등록보다 먼저 수락하면 offer.getListing() 은
+		// 여전히 null 이라, 그 기준으로는 방금 열린 등록이 영원히 안 닫힌다
+		itemListingRepository.findOpenByItemId(itemId)
+				.ifPresent(openListing -> openListing.close(now));
 
 		int autoCanceledCount = autoCancelOtherPendingOffers(itemId, offerId, now);
 
