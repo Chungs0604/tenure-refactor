@@ -1317,6 +1317,30 @@ notification 컨트롤러를 실제로 만들기 직전에 Figma 를 다시 열�
 있고 Service·Controller 가 없어(API-052·053 미구현) 이번 범위에서는 뺐다 — 팔로우 기능을
 구현할 때 같이 채운다.
 
+→ **(2026-10-11, follow 구현 시점에 채움)** `FollowService.follow()` 에 발행 훅을 추가했다.
+그런데 기존 `NotificationCategory` 4종(`ACTION_REQUIRED`·`ITEM_NEWS`·`TRADE_STATUS`·`WISHLIST`)
+중 팔로우 알림이 맞는 탭이 없었다 — 전부 거래·아이템 사건용이라 "누가 나를 팔로우함"을 담을
+자리가 아니다. `NotificationCategory` 에 `ACTIVITY` 를 추가했다. 딥링크 대상도 마찬가지로
+기존 `NotificationTargetType`(`ITEM`·`ORDER`·`OFFER`·`CHAT_ROOM`) 에 없어 `USER` 를 추가했다
+— 탈퇴해도 행을 지우지 않고 익명화만 하므로(`DEC-004`) item 과 달리 "삭제됨" 판정은 두지 않는다.
+
+### N-4. 팔로우 구현 시점 코드 리뷰에서 드러난 보정 (2026-10-11)
+
+`follow` 도메인 구현 직후 보안·효율성 리뷰에서 두 건이 나왔다.
+
+**차단 관계가 팔로우에서 전혀 확인되지 않음** — `PostQueryService.getUserPosts()` 는 이미
+"차단 관계면 빈 목록, 404 로 돌려주면 차단 사실이 드러남" 원칙을 쓰고 있는데(`묶음 2`),
+`follow()`/`listFollowers()`/`listFollowings()` 는 이 원칙을 적용하지 않고 있었다 —
+차단당한 쪽이 여전히 상대를 팔로우해 알림에 자기 닉네임을 띄울 수 있었다.
+`api-spec.md` 에는 이 상호작용이 전혀 적혀 있지 않았다(기존에 "나중에 채운다" 고 적어 둔
+공백이 아니라 리뷰로 새로 드러난 공백). 사용자 확인 후 반영 — 쓰기(`follow`)는
+`FOLLOW_403_BLOCKED` 로 거절하고, 읽기(목록 2종)는 기존 원칙대로 빈 목록을 돌려준다.
+
+**맞팔 동시 요청 데드락** — `follow()` 가 대상 User 행만 잠그는 걸로는 부족했다. `follow`
+테이블 insert 가 FK 검증으로 follower·target 양쪽 행에 공유 락을 걸어서, A→B 와 B→A 가
+동시에 들어오면 두 트랜잭션이 서로의 공유 락을 기다리다 MySQL 데드락이 났다(실측 10/10
+재현). 잠그는 순서를 아이디 오름차순으로 고정해 순환 대기를 없앴다.
+
 ### N-2. 알림 설정 9종을 가입 시 일괄 생성한다는 제약이 실제로는 안 맞았다
 
 스키마·명세 모두 "가입 시 9종을 모두 만든다"로 적혀 있었는데, `auth`·`user` 가입 흐름 어디에도

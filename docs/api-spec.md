@@ -154,7 +154,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | API-184 | `WS` | `/app/chat-rooms/{roomId}/messages` | 메시지 전송 (텍스트 / 이미지) — STOMP, REST 아님 | SCR-042 | ChatMessage, ChatRoom | O |
 | API-185 | `PATCH` | `/api/v1/chat-rooms/{roomId}/read` | 읽음 처리 | SCR-042 | ChatRoomMember | O |
 | API-186 | `DELETE` | `/api/v1/chat-rooms/{roomId}/me` | 채팅방 나가기 | SCR-043 | ChatRoomMember | O |
-| API-190 | `GET` | `/api/v1/notifications` | 알림 목록 (탭 5종) | SCR-044 | Notification | O |
+| API-190 | `GET` | `/api/v1/notifications` | 알림 목록 (탭 6종) | SCR-044 | Notification | O |
 | API-191 | `PATCH` | `/api/v1/notifications/{notificationId}/read` | 알림 읽음 | SCR-044 | Notification | O |
 | API-192 | `PATCH` | `/api/v1/notifications/read-all` | 전체 읽음 | SCR-044 | Notification | O |
 | API-193 | `GET` | `/api/v1/notifications/unread-count` | 안읽은 알림 수 (헤더 벨 배지) | SCR-014, SCR-020, SCR-044 | Notification | O |
@@ -376,6 +376,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 |---|:--:|---|---|
 | `FOLLOW_409` | 409 | 이미 팔로우한 사용자입니다. | API-052 |
 | `FOLLOW_400_SELF` | 400 | 자기 자신을 팔로우할 수 없습니다. | API-052 |
+| `FOLLOW_403_BLOCKED` | 403 | 차단 관계에서는 팔로우할 수 없습니다. | API-052 |
 
 ### BlockErrorCode
 
@@ -1495,6 +1496,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 팔로워 목록. 인증 **필요**. 관련 화면 SCR-011.
 
 페이징. 응답 `UserSummaryResponse[]` — `{ id, nickname, profileImageUrl, followerCount, postCount, isFollowing }`. 목록 반복 노출이라 카운터 컬럼을 읽는다.
+차단 관계면 빈 목록을 돌려준다(`API-082` 와 같은 이유 — 404 로 돌려주면 '차단했다' 는 사실이 드러난다).
 
 **경로 파라미터**
 
@@ -1541,7 +1543,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 팔로잉 목록. 인증 **필요**. 관련 화면 SCR-011.
 
-API-050 과 동일한 스키마. 방향만 다르다.
+API-050 과 동일한 스키마. 방향만 다르다. 차단 관계면 빈 목록을 돌려준다.
 
 **경로 파라미터**
 
@@ -1588,7 +1590,10 @@ API-050 과 동일한 스키마. 방향만 다르다.
 
 팔로우. 인증 **필요**. 관련 화면 SCR-011, SCR-012, SCR-015.
 
-멱등하지 않다. `follow` 생성과 같은 트랜잭션에서 대상의 `follower_count` 를 +1 한다.
+멱등하지 않다. `follow` 생성과 같은 트랜잭션에서 대상의 `follower_count` 를 +1 하고
+대상에게 `FOLLOW` 알림을 발행한다(`settingType=FOLLOW`, 기본값 OFF — API-040 참고).
+양방향 차단 관계면 거절한다(`FOLLOW_403_BLOCKED`) — 차단은 서로 마주치지 않게 하는
+조치라, 막지 않으면 차단당한 쪽이 알림에 닉네임을 띄워 상대 앞에 나타난다.
 
 **경로 파라미터**
 
@@ -1598,7 +1603,7 @@ API-050 과 동일한 스키마. 방향만 다르다.
 
 **응답** `data` 는 `null` 이다.
 
-에러 — USER_404, FOLLOW_409, FOLLOW_400_SELF
+에러 — USER_404, FOLLOW_409, FOLLOW_400_SELF, FOLLOW_403_BLOCKED
 
 #### API-053 · `DELETE /api/v1/users/{userId}/follow`
 
@@ -4585,9 +4590,11 @@ TEXT 인데 content 가 없거나 IMAGE 인데 imageKeys 가 없거나 10장을 
 
 #### API-190 · `GET /api/v1/notifications`
 
-알림 목록 (탭 5종). 인증 **필요**. 관련 화면 SCR-044.
+알림 목록 (탭 6종). 인증 **필요**. 관련 화면 SCR-044.
 
-쿼리 `category=ALL|ACTION_REQUIRED|ITEM_NEWS|TRADE_STATUS|WISHLIST` + 페이징. 정렬 `createdAt,desc`.
+쿼리 `category=ALL|ACTION_REQUIRED|ITEM_NEWS|TRADE_STATUS|WISHLIST|ACTIVITY` + 페이징. 정렬 `createdAt,desc`.
+`ACTIVITY` 는 follow 구현 시점(2026-10-11)에 추가됐다 — 기존 4종 어디에도 맞지 않는 팔로우
+알림을 담는다. Figma 는 이 탭을 포함하지 않으므로 화면 노출 여부는 프론트 과제로 남긴다.
 대상이 삭제된 알림은 딥링크 진입 시 `삭제된 게시물입니다` 를 표시한다.
 
 화면(`2958:68634`)은 `어제`·`10월 24일` 같은 **날짜 헤더로 묶어** 보여준다 — 클라이언트가 `createdAt` 으로 그룹을 만든다.
@@ -4604,7 +4611,7 @@ UI 연결은 프론트 과제로 남긴다.
 
 | 필드 | 타입 | 필수 | 제약 | 설명 |
 |---|---|:--:|---|---|
-| `category` | NotificationCategory |  | ACTION_REQUIRED \| ITEM_NEWS \| TRADE_STATUS \| WISHLIST | 미지정 시 전체 |
+| `category` | NotificationCategory |  | ACTION_REQUIRED \| ITEM_NEWS \| TRADE_STATUS \| WISHLIST \| ACTIVITY | 미지정 시 전체 |
 | `cursor` | String |  | 직전 응답의 nextCursor | 첫 페이지는 비운다 |
 | `size` | Integer |  | 1~100, 기본 20 | — |
 
@@ -4617,7 +4624,7 @@ UI 연결은 프론트 과제로 남긴다.
 | `imageUrl` | String | 행 썸네일. 없으면 null |
 | `title` | String | 아이템명 — `Levis / LVC 1955 501` |
 | `body` | String | 사건 — `가격이 128,000원으로 변경됐어요.` |
-| `targetType` | NotificationTargetType | ITEM \| ORDER \| OFFER \| CHAT_ROOM |
+| `targetType` | NotificationTargetType | ITEM \| ORDER \| OFFER \| CHAT_ROOM \| USER |
 | `targetId` | Long | — |
 | `targetDeleted` | Boolean | true 면 '삭제된 게시물입니다' |
 | `readAt` | LocalDateTime | null 이면 미읽음 |
@@ -4648,8 +4655,9 @@ UI 연결은 프론트 과제로 남긴다.
 }
 ```
 
-발행 주체 — `offer`(`OFFER`·`ORDER`), `chat`(`CHAT_ROOM`), `listing`(`ITEM`, 관심 등록자에게만). 전부
-각 도메인 Service 가 `NotificationService` 를 직접 주입받아 같은 트랜잭션에서 호출한다(동기, 이벤트 버스 없음).
+발행 주체 — `offer`(`OFFER`·`ORDER`), `chat`(`CHAT_ROOM`), `listing`(`ITEM`, 관심 등록자에게만),
+`follow`(`USER`, 팔로우 시점). 전부 각 도메인 Service 가 `NotificationService` 를 직접 주입받아
+같은 트랜잭션에서 호출한다(동기, 이벤트 버스 없음).
 
 에러 — COMMON_401
 
