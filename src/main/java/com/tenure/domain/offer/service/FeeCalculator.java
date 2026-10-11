@@ -56,9 +56,11 @@ public final class FeeCalculator {
 			default -> throw new IllegalStateException("알 수 없는 수수료 부담임: " + feeBearer);
 		}
 
-		// 배송비는 부담과 무관하게 항상 구매자가 내고 판매자에게 그대로 전달됨
-		int totalPaymentAmount = itemPrice + shippingFee + buyerFeeAmount;
-		int expectedPayoutAmount = itemPrice + shippingFee - sellerFeeAmount;
+		// 배송비는 부담과 무관하게 항상 구매자가 내고 판매자에게 그대로 전달됨.
+		// 입력 검증(shippingFee 상한)이 뚫려도 int 오버플로로 금액이 조용히 음수가 되는 일은
+		// 없어야 하므로 addExact/subtractExact 로 계층 간 방어함 — 넘치면 즉시 터진다
+		int totalPaymentAmount = Math.addExact(Math.addExact(itemPrice, shippingFee), buyerFeeAmount);
+		int expectedPayoutAmount = Math.subtractExact(Math.addExact(itemPrice, shippingFee), sellerFeeAmount);
 
 		return new Result(feeAmount, buyerFeeAmount, sellerFeeAmount, totalPaymentAmount, expectedPayoutAmount);
 	}
