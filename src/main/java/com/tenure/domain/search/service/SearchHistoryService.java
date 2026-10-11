@@ -1,5 +1,6 @@
 package com.tenure.domain.search.service;
 
+import com.tenure.domain.block.repository.UserBlockRepository;
 import com.tenure.domain.search.dto.response.SearchHistoryResponse;
 import com.tenure.domain.search.entity.SearchHistory;
 import com.tenure.domain.search.enums.RecentViewTargetType;
@@ -43,6 +44,7 @@ public class SearchHistoryService {
 	private final SearchHistoryRepository searchHistoryRepository;
 	private final RecentViewStore recentViewStore;
 	private final UserRepository userRepository;
+	private final UserBlockRepository userBlockRepository;
 	private final FileStorage fileStorage;
 
 	/** API-203. */
@@ -69,6 +71,8 @@ public class SearchHistoryService {
 						.map(usersById::get)
 						// Redis 는 남아 있지만 탈퇴 등으로 유저 행이 사라진 경우를 건너뛴다
 						.filter(u -> u != null)
+						// 열람 이후 차단 관계가 생겼으면 뺀다 — 검색·추천과 같은 기준(BlockPredicates)
+						.filter(u -> !userBlockRepository.existsMutualBlock(userId, u.getId()))
 						.map(u -> SearchHistoryResponse.RecentUser.builder()
 								.id(u.getId())
 								.nickname(UserMapper.displayNickname(u))

@@ -7,6 +7,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.tenure.domain.block.repository.UserBlockRepository;
 import com.tenure.domain.search.entity.SearchHistory;
 import com.tenure.domain.search.enums.RecentViewTargetType;
 import com.tenure.domain.search.exception.SearchErrorCode;
@@ -45,6 +46,7 @@ class SearchHistoryServiceTest {
 	@Mock private SearchHistoryRepository searchHistoryRepository;
 	@Mock private RecentViewStore recentViewStore;
 	@Mock private UserRepository userRepository;
+	@Mock private UserBlockRepository userBlockRepository;
 	@Mock private FileStorage fileStorage;
 
 	@InjectMocks private SearchHistoryService searchHistoryService;
@@ -134,6 +136,20 @@ class SearchHistoryServiceTest {
 			assertThat(response.getKeywords().get(0).getId()).isEqualTo(HISTORY_ID);
 			assertThat(response.getRecentUsers()).hasSize(1);
 			assertThat(response.getRecentUsers().get(0).getId()).isEqualTo(TARGET_ID);
+		}
+
+		@Test
+		@DisplayName("열람 이후 차단 관계가 생긴 사용자는 뺀다 — 검색·추천과 같은 기준")
+		void getHistories_blockedUser_isExcluded() {
+			given(searchHistoryRepository.findRecent(USER_ID, 20)).willReturn(List.of());
+			given(recentViewStore.findRecentTargetIds(USER_ID, RecentViewTargetType.USER, 20))
+					.willReturn(List.of(TARGET_ID));
+			given(userRepository.findAllById(List.of(TARGET_ID))).willReturn(List.of(user(TARGET_ID)));
+			given(userBlockRepository.existsMutualBlock(USER_ID, TARGET_ID)).willReturn(true);
+
+			var response = searchHistoryService.getHistories(USER_ID);
+
+			assertThat(response.getRecentUsers()).isEmpty();
 		}
 
 		@Test
