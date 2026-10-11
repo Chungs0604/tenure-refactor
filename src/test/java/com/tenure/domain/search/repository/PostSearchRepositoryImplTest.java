@@ -59,23 +59,47 @@ class PostSearchRepositoryImplTest extends RepositorySliceTestSupport {
 	class MatchGrade {
 
 		@Test
-		@DisplayName("브랜드+이름이 둘 다 일치(3등급)하면 하나만 일치(2등급)보다 앞선다 — 등급0은 아예 빠진다")
-		void search_recommended_ordersGrade3BeforeGrade2AndExcludesGrade0() {
-			Item bothMatch = persistItem(101L, "Levis", "Levis 501");
+		@DisplayName("'Levis 501'처럼 브랜드+모델명을 붙여 쓴 키워드는 brandName='Levis'·name='501'인 "
+				+ "아이템만 3등급으로 잡는다 — 브랜드만 같은 아이템은 이 키워드로는 등급0이다")
+		void search_recommended_brandAndModelCombinedKeyword_matchesGrade3Only() {
+			// brandName·name 을 독립 필드로 둔다 — 'Levis 501'을 한쪽 필드에 전부 넣으면
+			// (field.containsIgnoreCase(keyword)) 방향 착오를 가려 버그를 못 잡는다. 실제로
+			// 이 테스트는 그 가짜 통과를 거친 뒤 런타임 curl 호출에서 처음 들통났다.
+			Item bothMatch = persistItem(101L, "Levis", "501");
 			Item brandOnly = persistItem(115L, "Levis", "Trucker Jacket");
 			Item noMatch = persistItem(115L, "Uniqlo", "Basic Tee");
 
 			Post grade3Post = persistPost();
 			tag(grade3Post, bothMatch);
-			Post grade2Post = persistPost();
-			tag(grade2Post, brandOnly);
+			Post brandOnlyPost = persistPost();
+			tag(brandOnlyPost, brandOnly);
+			Post grade0Post = persistPost();
+			tag(grade0Post, noMatch);
+
+			List<PostSearchRow> rows = search(criteria("Levis 501", PostSortType.RECOMMENDED));
+
+			assertThat(rows).extracting(r -> r.post().getId())
+					.containsExactly(grade3Post.getId());
+		}
+
+		@Test
+		@DisplayName("브랜드명만 한 단어로 검색하면(모델명 없이) 브랜드가 같은 아이템 전부가 2등급으로 묶인다")
+		void search_recommended_brandOnlyKeyword_matchesGrade2ForBothItems() {
+			Item bothMatch = persistItem(101L, "Levis", "501");
+			Item brandOnly = persistItem(115L, "Levis", "Trucker Jacket");
+			Item noMatch = persistItem(115L, "Uniqlo", "Basic Tee");
+
+			Post grade2PostA = persistPost();
+			tag(grade2PostA, bothMatch);
+			Post grade2PostB = persistPost();
+			tag(grade2PostB, brandOnly);
 			Post grade0Post = persistPost();
 			tag(grade0Post, noMatch);
 
 			List<PostSearchRow> rows = search(criteria("Levis", PostSortType.RECOMMENDED));
 
 			assertThat(rows).extracting(r -> r.post().getId())
-					.containsExactly(grade3Post.getId(), grade2Post.getId());
+					.containsExactlyInAnyOrder(grade2PostA.getId(), grade2PostB.getId());
 		}
 
 		@Test
@@ -107,8 +131,10 @@ class PostSearchRepositoryImplTest extends RepositorySliceTestSupport {
 		@Test
 		@DisplayName("추천 순 복합 키는 등급을 먼저 보고, 같은 등급 안에서만 rank_score 로 가른다")
 		void search_recommended_gradeAlwaysOutranksRankScore() {
-			Item highGradeLowScore = persistItem(101L, "Levis", "Levis 501"); // 3등급
-			Item lowGradeHighScore = persistItem(115L, "Levis", "Shirt"); // 2등급 (브랜드만 일치)
+			// 'Levis 501' 로 찾으면 brandName·name 둘 다 키워드에 포함돼 3등급
+			Item highGradeLowScore = persistItem(101L, "Levis", "501");
+			// 브랜드는 안 맞지만(3등급 실패) name 필드 자체가 'Levis 501' 을 포함해 2등급(name 일치)
+			Item lowGradeHighScore = persistItem(115L, "Wrangler", "Levis 501 Vintage");
 
 			Post grade3Post = persistPost();
 			tag(grade3Post, highGradeLowScore);
@@ -118,7 +144,7 @@ class PostSearchRepositoryImplTest extends RepositorySliceTestSupport {
 			tag(grade2Post, lowGradeHighScore);
 			setRankScore(grade2Post, new BigDecimal("99.9999"));
 
-			List<PostSearchRow> rows = search(criteria("Levis", PostSortType.RECOMMENDED));
+			List<PostSearchRow> rows = search(criteria("Levis 501", PostSortType.RECOMMENDED));
 
 			// grade2Post 의 rank_score 가 훨씬 높아도 등급이 낮아 뒤로 간다
 			assertThat(rows).extracting(r -> r.post().getId())

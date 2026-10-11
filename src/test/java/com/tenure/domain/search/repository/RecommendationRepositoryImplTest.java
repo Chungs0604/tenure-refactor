@@ -195,6 +195,15 @@ class RecommendationRepositoryImplTest extends RepositorySliceTestSupport {
 		}
 
 		@Test
+		@DisplayName("뷰어 자신은 자기 추천에 뜨지 않는다")
+		void findPopularUsers_excludesViewerThemselves() {
+			persistUserWithFollowers("other@tenure.app", "Other", 1);
+
+			assertThat(recommendationRepository.findPopularUsers(viewer.getId(), null, SIZE))
+					.extracting(User::getId).doesNotContain(viewer.getId());
+		}
+
+		@Test
 		@DisplayName("차단한·차단당한 사용자는 양방향으로 제외된다")
 		void findPopularUsers_blocked_excludedBothWays() {
 			User blockedByMe = persistUser("blockedbyme@tenure.app", "BlockedByMe");

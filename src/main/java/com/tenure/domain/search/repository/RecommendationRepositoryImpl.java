@@ -87,6 +87,7 @@ public class RecommendationRepositoryImpl implements RecommendationRepository {
 		return queryFactory
 				.selectFrom(user)
 				.where(
+						user.id.ne(viewerId),
 						BlockPredicates.excludeBlockedEitherWay(user.id, viewerId),
 						afterFollowerCount(cursor))
 				.orderBy(user.followerCount.desc(), user.id.desc())

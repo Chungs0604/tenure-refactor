@@ -8,6 +8,7 @@ import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.core.types.dsl.CaseBuilder;
 import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.core.types.dsl.NumberExpression;
+import com.querydsl.core.types.dsl.StringExpression;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import com.tenure.domain.block.repository.BlockPredicates;
@@ -155,14 +156,21 @@ public class PostSearchRepositoryImpl implements PostSearchRepository {
 		return conditions.stream().filter(c -> c != null).toArray(BooleanExpression[]::new);
 	}
 
-	/** 키워드가 있으면 태그된 아이템 중 하나라도 등급 1 이상이어야 한다(등급 0 은 제외). */
+	/**
+	 * 키워드가 있으면 태그된 아이템 중 하나라도 등급 1 이상이어야 한다(등급 0 은 제외).
+	 *
+	 * 3등급(brandAndNameBothMatch)을 빼면 안 된다 — 2등급(brandOrNameMatches)과 방향이
+	 * 반대라 2등급의 부분집합이 아니다. 처음엔 "3등급은 2등급을 항상 만족한다"고 잘못 생각해
+	 * 여기서 뺐었는데, 'Levis 501' 같은 결합 키워드가 통째로 걸러져 사라지는 버그로 드러났다.
+	 */
 	private BooleanExpression keywordMatchCondition(String keyword) {
 		if (keyword == null || keyword.isBlank()) {
 			return null;
 		}
 
 		String trimmed = keyword.trim();
-		return taggedItemExists(candidate -> brandOrNameMatches(candidate, trimmed)
+		return taggedItemExists(candidate -> brandAndNameBothMatch(candidate, trimmed)
+				.or(brandOrNameMatches(candidate, trimmed))
 				.or(categoryNameMatches(candidate, trimmed)));
 	}
 
@@ -188,8 +196,21 @@ public class PostSearchRepositoryImpl implements PostSearchRepository {
 				.otherwise(0);
 	}
 
+	/**
+	 * 3등급은 "Levis 501"처럼 브랜드+모델명을 붙여 적은 키워드를 가리킨다(예시가 그렇다).
+	 * brandName="Levis"·name="501" 를 각각 "Levis 501" 이 포함하는지 봐야 하므로, 다른
+	 * 등급(필드가 키워드를 포함)과 방향이 반대다 — 키워드가 필드를 포함하는지 본다.
+	 * 실제 호출로 이 방향 착오를 잡았다(처음엔 다른 등급과 같은 방향으로 짜서 'Levis 501'
+	 * 검색이 아예 안 걸렸다).
+	 */
 	private BooleanExpression brandAndNameBothMatch(QItem candidate, String keyword) {
-		return candidate.brandName.containsIgnoreCase(keyword).and(candidate.name.containsIgnoreCase(keyword));
+		return keywordContains(keyword, candidate.brandName).and(keywordContains(keyword, candidate.name));
+	}
+
+	/** keyword 가 field 값을 포함하는지 — brandAndNameBothMatch 전용. 방향이 반대라 따로 둔다. */
+	private BooleanExpression keywordContains(String keyword, StringExpression field) {
+		return Expressions.booleanTemplate(
+				"lower({0}) like lower(concat('%', {1}, '%'))", keyword, field);
 	}
 
 	private BooleanExpression brandOrNameMatches(QItem candidate, String keyword) {
