@@ -207,10 +207,19 @@ public class PostSearchRepositoryImpl implements PostSearchRepository {
 		return keywordContains(keyword, candidate.brandName).and(keywordContains(keyword, candidate.name));
 	}
 
-	/** keyword 가 field 값을 포함하는지 — brandAndNameBothMatch 전용. 방향이 반대라 따로 둔다. */
+	/**
+	 * keyword 가 field 값을 포함하는지 — brandAndNameBothMatch 전용. 방향이 반대라 따로 둔다.
+	 *
+	 * LIKE + CONCAT('%', field, '%') 로 짰다가(이전 버전) 바꿨다 — field 는 사용자가 등록한
+	 * 아이템의 brandName·name 이라 그 값 자체에 '%'·'_' 가 들어가면 그 글자가 패턴의
+	 * 와일드카드로 작동한다. brandName 을 '%' 한 글자로 등록하면 모든 검색에 3등급으로
+	 * 걸려 노출 순위를 조작할 수 있었다. INSTR 은 패턴이 아니라 리터럴 부분일치라 이 문제가
+	 * 구조적으로 없다.
+	 */
 	private BooleanExpression keywordContains(String keyword, StringExpression field) {
-		return Expressions.booleanTemplate(
-				"lower({0}) like lower(concat('%', {1}, '%'))", keyword, field);
+		NumberExpression<Integer> position = Expressions.numberTemplate(
+				Integer.class, "function('instr', lower({0}), lower({1}))", keyword, field);
+		return position.gt(0);
 	}
 
 	private BooleanExpression brandOrNameMatches(QItem candidate, String keyword) {

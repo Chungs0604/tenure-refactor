@@ -103,6 +103,20 @@ class PostSearchRepositoryImplTest extends RepositorySliceTestSupport {
 		}
 
 		@Test
+		@DisplayName("brandName·name에 '%'를 넣어도 와일드카드로 작동하지 않는다 — 리터럴 글자일 뿐이라 "
+				+ "무관한 검색어로는 걸리지 않는다(순위 조작 방지)")
+		void search_recommended_wildcardCharsInFieldAreTreatedAsLiteral() {
+			Item wildcardBrand = persistItem(101L, "%", "%");
+
+			Post post = persistPost();
+			tag(post, wildcardBrand);
+
+			List<PostSearchRow> rows = search(criteria("아예 무관한 키워드", PostSortType.RECOMMENDED));
+
+			assertThat(rows).extracting(r -> r.post().getId()).doesNotContain(post.getId());
+		}
+
+		@Test
 		@DisplayName("카테고리명(1등급)은 세부 카테고리명으로도, 그 대분류명으로도 찾힌다")
 		void search_categoryKeyword_matchesByOwnNameAndParentName() {
 			Item item = persistItem(101L, "Uniqlo", "Basic");
