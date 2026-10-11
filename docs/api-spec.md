@@ -446,6 +446,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 |---|:--:|---|---|
 | `WISHLIST_409` | 409 | 이미 관심 등록한 아이템입니다. | API-121 |
 | `WISHLIST_404` | 404 | 위시리스트 항목을 찾을 수 없습니다. | API-122, API-123 |
+| `WISHLIST_403` | 403 | 본인의 위시리스트 항목이 아닙니다. | API-123 |
 
 ### OfferErrorCode
 
@@ -3350,16 +3351,15 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
-| `wishlistId` | Long | — |
-| `itemId` | Long | 관심 해제(`API-122`) 호출 키 |
-| `itemId` | Long | 아이템 상세(`API-110`) 이동 키 |
+| `wishlistId` | Long | 알림 on/off(`API-123`) 호출 키 |
+| `itemId` | Long | 관심 해제(`API-122`) 호출 키이자 아이템 상세(`API-110`) 이동 키 |
 | `brandName` | String | — |
 | `name` | String | — |
 | `coverImageUrl` | String | — |
-| `price` | String | — |
+| `price` | String | nullable. 활성 `listing` 이 없는 아이템(미판매)은 null — 화면은 그 자리에 `구매 제안` 링크를 그린다 |
 | `saleStatus` | SaleStatus | 판매중 / 미판매 배지 |
 | `sellerNickname` | String | — |
-| `listedAgo` | String | '1일 전' |
+| `listedAgo` | String | '1일 전'. `listing` 이 있으면 `listing.created_at`, 없으면(미판매) `item.created_at` 기준 |
 | `alarmEnabled` | Boolean | 알림 벨 |
 | `offerAllowed` | Boolean | '구매 제안' 버튼 노출 여부 |
 
@@ -3373,7 +3373,6 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
       {
         "wishlistId": 1,
         "itemId": 1,
-        "listingId": 1,
         "brandName": "<String>",
         "name": "<String>",
         "coverImageUrl": "https://cdn.tenure.app/post/2026/06/ab12.jpg",
@@ -3397,7 +3396,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 
 관심 등록. 인증 **필요**. 관련 화면 SCR-026, SCR-030.
 
-같은 트랜잭션에서 해당 아이템의 최신 `item_listing.wish_count` 를 +1 한다. 판매 등록이 없는 아이템이면 `wishlist` 행만 쌓이고 카운터는 없다 — 응답 `wishCount` 는 그 경우 `wishlist` 를 COUNT 해서 돌려준다.
+같은 트랜잭션에서 `item.wish_count` 를 +1 한다. 이 카운터는 `item_listing` 이 아니라 `item` 에 있다(DEC-024) — 판매를 내렸다 다시 걸면 `item_listing` 행이 새로 생기므로 거기 두면 수가 리셋되기 때문이다. 그래서 판매 등록 여부와 무관하게 항상 증가한다.
 
 **경로 파라미터**
 
@@ -3428,7 +3427,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 
 관심 해제. 인증 **필요**. 관련 화면 SCR-026, SCR-030.
 
-같은 트랜잭션에서 `item_listing.wish_count` 를 -1 한다.
+같은 트랜잭션에서 `item.wish_count` 를 -1 한다(API-121 과 같은 이유로 `item` 소유).
 
 **경로 파라미터**
 
@@ -3469,7 +3468,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 
 **응답** `data` 는 `null` 이다.
 
-에러 — WISHLIST_404, COMMON_403
+에러 — WISHLIST_404, WISHLIST_403
 
 ### 구매 제안
 

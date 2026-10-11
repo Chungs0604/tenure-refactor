@@ -20,9 +20,6 @@ import lombok.NoArgsConstructor;
 
 /**
  * 관심 등록(위시리스트). Item 기준이다 — 목록에 '판매중'/'미판매' 배지가 함께 뜨므로 판매 등록 전 아이템도 담을 수 있어야 한다.
- *
- * <p>생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
- * 스키마에서 읽을 수 없다. {@code @Builder} 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
  */
 @Entity
 @Table(name = "wishlist")
@@ -51,5 +48,22 @@ public class Wishlist extends BaseCreatedEntity {
 	/** '위시리스트 알림 활성화' / '알림 비활성화' 프레임 2종, 항목별 벨 아이콘 */
 	@Column(name = "alarm_enabled", nullable = false)
 	private Boolean alarmEnabled;
+
+	/**
+	 * 관심 등록. 아이템 상세의 벨 하나가 등록·알림을 동시에 켜므로 알림은 항상 켠 채로 시작함
+	 * — 담기만 하고 알림을 끈 상태로 만드는 입구는 없음.
+	 */
+	public static Wishlist register(User user, Item item) {
+		return Wishlist.builder()
+				.user(user)
+				.item(item)
+				.alarmEnabled(true)
+				.build();
+	}
+
+	/** 위시리스트 알림 on/off. */
+	public void changeAlarmEnabled(boolean alarmEnabled) {
+		this.alarmEnabled = alarmEnabled;
+	}
 
 }

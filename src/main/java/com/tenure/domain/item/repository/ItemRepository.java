@@ -61,4 +61,13 @@ public interface ItemRepository extends JpaRepository<Item, Long>, ItemRepositor
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select i from Item i where i.id = :itemId and i.deletedAt is null")
 	Optional<Item> findActiveForUpdate(@Param("itemId") Long itemId);
+
+	/**
+	 * 행 잠금 조회. 삭제 여부를 가리지 않음 — 관심 해제는 그 사이 아이템이 삭제됐어도
+	 * wish_count 를 맞춰야 하고, 삭제된 아이템에 새로 관심을 등록할 길은 findActiveForUpdate 가
+	 * 막아서 여기서 다시 가릴 필요가 없음
+	 */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select i from Item i where i.id = :itemId")
+	Optional<Item> findForUpdate(@Param("itemId") Long itemId);
 }

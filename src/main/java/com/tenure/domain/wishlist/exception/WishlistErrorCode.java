@@ -11,7 +11,8 @@ import org.springframework.http.HttpStatus;
 public enum WishlistErrorCode implements ErrorCode {
 
 	WISHLIST_409(HttpStatus.CONFLICT, "WISHLIST_409", "이미 관심 등록한 아이템입니다."),
-	WISHLIST_404(HttpStatus.NOT_FOUND, "WISHLIST_404", "위시리스트 항목을 찾을 수 없습니다.");
+	WISHLIST_404(HttpStatus.NOT_FOUND, "WISHLIST_404", "위시리스트 항목을 찾을 수 없습니다."),
+	WISHLIST_403(HttpStatus.FORBIDDEN, "WISHLIST_403", "본인의 위시리스트 항목이 아닙니다.");
 
 	private final HttpStatus status;
 	private final String code;
