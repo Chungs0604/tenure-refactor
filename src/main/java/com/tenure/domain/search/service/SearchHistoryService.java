@@ -69,8 +69,12 @@ public class SearchHistoryService {
 						.toList())
 				.recentUsers(recentUserIds.stream()
 						.map(usersById::get)
-						// Redis 는 남아 있지만 탈퇴 등으로 유저 행이 사라진 경우를 건너뛴다
+						// Redis 는 남아 있는데 findAllById 결과에 없는 경우(이론상 발생하지 않음)를 방어한다
 						.filter(u -> u != null)
+						// 탈퇴는 하드 삭제가 아니라 즉시 익명화(User.anonymize(), DEC-004)라 user 행은
+						// 그대로 남는다 — status 로 걸러야 한다. UserSearchRepositoryImpl·
+						// RecommendationRepositoryImpl 등 다른 사용자 목록 경로와 기준을 맞춘다
+						.filter(u -> !u.isWithdrawn())
 						// 열람 이후 차단 관계가 생겼으면 뺀다 — 검색·추천과 같은 기준(BlockPredicates)
 						.filter(u -> !userBlockRepository.existsMutualBlock(userId, u.getId()))
 						.map(u -> SearchHistoryResponse.RecentUser.builder()
