@@ -523,8 +523,9 @@ FREE_NUMBER  0 · 1 · 2 · 3 · 4 · 5 · 6
 - **알림 탭** — `전체`·`확인 필요`·`아이템 소식`·`거래 현황`·`관심 등록`. `NotificationCategory` 4종과 일치
 - **검색 메인 추천 4종** — `방금 보신 OOTD와 유사한 게시물`·`지금 인기 있는 스타일`·`인기 사용자`·
   `새로 올라온 OOTD`. `API-202` 와 일치
-- **최근 검색·최근 본 사용자** — 개별 X 와 `지우기`(전체). `API-203`·`204`·`205` 와 일치.
-  최근 본 사용자가 Redis 라는 것도 화면 동작과 맞다(`DEC-014`)
+- **최근 검색** — 개별 X 와 `지우기`(전체). `API-203`·`204`·`205` 와 일치.
+- **최근 본 사용자** — Redis 라는 것은 화면 동작과 맞다(`DEC-014`). 다만 개별 X·전체 `지우기` 에 대응하는
+  API 가 당시엔 없었다 — 아래 `search 착수 전 정밀 재대조` 절에서 바로잡았다(`API-208`·`209`)
 - **검색 필터** — 판매 상태 3모드, 게시자 성별, 카테고리 **다중 선택**, 키·몸무게 범위.
   `API-200` 의 `categoryIds[]` 가 복수를 받는다
 - **빈 상태** — `검색 결과가 없어요.` 아래 추천 섹션이 그대로 붙는다. 계정 탭은 `'수'에 해당하는 유저가 없어요.`
@@ -1402,3 +1403,29 @@ enum 라벨과 한 글자도 다르지 않았고, 추가 입력란이나 확인 
 내가 받은 건 거절)은 `offer` 도메인의 기존 취소·거절 로직과 같은 패턴
 (`OfferService.cancelAndRejectPendingForWithdrawal`)으로 구현해, `cancelPendingForDelist`와
 로직이 중복되지 않게 했다.
+
+## search 착수 전 정밀 재점검 (2026-10-11)
+
+🚦 절 확인(착수를 막는 미결 없음)과는 별개로, 묶음 5(Q-10·Q-11·A-21로 해소됐다고 적은 부분)를
+화면과 다시 대조하다가 **그 반영 기록 자체의 누락**을 하나 찾았다.
+
+### E-1. "최근 본 사용자" 개별·전체 삭제에 대응하는 API 가 없었다
+
+521-527행의 "OK — 화면과 일치한 것"은 "최근 검색·최근 본 사용자 — 개별 X 와 `지우기`(전체).
+`API-203`·`204`·`205` 와 일치"라고 적어 두었다. 그런데 `API-204`(`DELETE
+/search/histories/{historyId}`)·`API-205`(`DELETE /search/histories`)는 둘 다 `SearchHistory`
+(검색어, RDB)만 대상으로 한다 — 화면↔API 매핑표에도 `SearchHistory`로만 연결돼 있었다.
+"최근 본 사용자"는 `RecentViewStore`(Redis Sorted Set, `DEC-014`)에 있고, 거기엔 `add()`·
+`deleteAll()`(회원탈퇴용, 전체 유형 일괄삭제)만 있을 뿐 개별 제거나 `USER` 유형만 지우는
+메서드가 없었다. 즉 Figma의 개별 X·전체 지우기 UI 둘 다 받아줄 API가 실제로는 없었는데
+"일치"로 적힌 것이다.
+
+→ `API-208 DELETE /search/recent-views/users/{targetId}`(개별, `ZREM`) ·
+`API-209 DELETE /search/recent-views/users`(전체, `USER` 유형 키만 삭제) 신설.
+`RecentViewStore` 에 `remove(userId, targetType, targetId)` · `deleteByType(userId, targetType)`
+를 추가한다 — 기존 `deleteAll(userId)`(모든 유형)은 회원탈퇴 용도로 그대로 둔다.
+
+### OK — 재확인한 나머지
+
+- 검색 메인 추천 4종(`API-202`), 추천 섹션 더보기(`API-207`), 추천 검색어(`API-206`),
+  검색 필터 4종(`API-200`), 빈 상태 2종 — 전부 1차 감사 그대로 유지, 추가로 깨진 곳 없음

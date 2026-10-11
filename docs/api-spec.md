@@ -166,6 +166,8 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | API-203 | `GET` | `/api/v1/search/histories` | 최근 검색어 + 최근 본 사용자 | SCR-045 | SearchHistory, 최근 열람(Redis) | O |
 | API-204 | `DELETE` | `/api/v1/search/histories/{historyId}` | 최근 검색어 개별 삭제 | SCR-045 | SearchHistory | O |
 | API-205 | `DELETE` | `/api/v1/search/histories` | 최근 검색어 전체 삭제 | SCR-045 | SearchHistory | O |
+| API-208 | `DELETE` | `/api/v1/search/recent-views/users/{targetId}` | 최근 본 사용자 개별 삭제 | SCR-045 | 최근 열람(Redis) | O |
+| API-209 | `DELETE` | `/api/v1/search/recent-views/users` | 최근 본 사용자 전체 삭제 | SCR-045 | 최근 열람(Redis) | O |
 ---
 
 ## 3. CRUD 커버리지
@@ -269,7 +271,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | SCR-042 | 채팅방 | read, create, paging | O | API-060 API-182 API-183 API-184 API-185 |
 | SCR-043 | 채팅방 관리 (차단 · 나가기) | update, delete, create | O | API-054 API-055 API-186 |
 | SCR-044 | 알림 | read, filter, paging | O | API-190 API-191 API-192 API-193 |
-| SCR-045 | 검색 | read, create, delete, search | O | API-200 API-201 API-202 API-203 API-204 API-205 API-206 API-207 |
+| SCR-045 | 검색 | read, create, delete, search | O | API-200 API-201 API-202 API-203 API-204 API-205 API-206 API-207 API-208 API-209 |
 | SCR-046 | 검색 결과 | read, search, filter, paging | O | API-200 API-201 |
 | SCR-047 | 검색 필터 | filter | O | API-090 API-200 API-201 |
 
@@ -5032,6 +5034,35 @@ UI 연결은 프론트 과제로 남긴다.
 #### API-205 · `DELETE /api/v1/search/histories`
 
 최근 검색어 전체 삭제. 인증 **필요**. 관련 화면 SCR-045.
+
+**응답** `data` 는 `null` 이다.
+
+에러 — COMMON_401
+
+#### API-208 · `DELETE /api/v1/search/recent-views/users/{targetId}`
+
+최근 본 사용자 개별 삭제. 인증 **필요**. 관련 화면 SCR-045.
+
+Redis `recent-view:{userId}:USER` 에서 해당 멤버를 `ZREM` 한다(`DEC-014`). `SearchHistory`(검색어)와
+저장소가 달라 `API-204`(`historyId` 는 RDB PK)로는 지울 수 없다 — 경로가 가리키는 대상도 검색어가 아니라
+"열람한 사용자"의 id(`targetId`)다.
+
+**경로 파라미터**
+
+| 필드 | 타입 | 필수 | 제약 | 설명 |
+|---|---|:--:|---|---|
+| `targetId` | Long | O | — | 열람 대상 사용자 id |
+
+**응답** `data` 는 `null` 이다. 이미 없는 멤버를 지워도(만료·미열람) 멱등하게 성공한다.
+
+에러 — COMMON_401
+
+#### API-209 · `DELETE /api/v1/search/recent-views/users`
+
+최근 본 사용자 전체 삭제. 인증 **필요**. 관련 화면 SCR-045.
+
+Redis `recent-view:{userId}:USER` 키 하나를 지운다(`DEC-014`). `RecentViewTargetType.POST`
+(최근 본 게시물, API-202 추천 입력)는 지우지 않는다 — 화면의 "지우기"는 '최근 본 사용자' 섹션에만 있다.
 
 **응답** `data` 는 `null` 이다.
 
