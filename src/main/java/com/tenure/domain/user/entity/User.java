@@ -206,6 +206,16 @@ public class User extends BaseEntity {
 		this.postCount = Math.max(0, this.postCount - 1);
 	}
 
+	/** 팔로우. 정본은 follow 테이블이고 이 값은 목록에서 반복 노출되는 카운터다. */
+	public void increaseFollowerCount() {
+		this.followerCount++;
+	}
+
+	/** 언팔로우. 0 아래로는 내리지 않는다 — 어긋나면 프로필에 음수가 그대로 뜬다. */
+	public void decreaseFollowerCount() {
+		this.followerCount = Math.max(0, this.followerCount - 1);
+	}
+
 	/**
 	 * 레코드 승격. 판정은 UserGradeService 가 한다 — 조건이 게시물 수라 엔티티가 알 수 없다.
 	 *

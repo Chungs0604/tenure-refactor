@@ -19,9 +19,6 @@ import lombok.NoArgsConstructor;
 
 /**
  * 팔로우 관계. 마이페이지 팔로워/팔로잉 수의 원천.
- *
- * <p>생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
- * 스키마에서 읽을 수 없다. {@code @Builder} 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
  */
 @Entity
 @Table(name = "follow")
@@ -46,5 +43,13 @@ public class Follow extends BaseCreatedEntity {
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "following_id", nullable = false)
 	private User following;
+
+	/** 팔로우. 자기 자신 여부·중복 여부는 Service 가 가린다. */
+	public static Follow create(User follower, User following) {
+		return Follow.builder()
+				.follower(follower)
+				.following(following)
+				.build();
+	}
 
 }

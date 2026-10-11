@@ -19,9 +19,6 @@ import lombok.NoArgsConstructor;
 
 /**
  * 사용자 차단. 해제가 있으므로 행 삭제로 처리한다.
- *
- * <p>생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
- * 스키마에서 읽을 수 없다. {@code @Builder} 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
  */
 @Entity
 @Table(name = "user_block")
@@ -46,5 +43,13 @@ public class UserBlock extends BaseCreatedEntity {
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "blocked_id", nullable = false)
 	private User blocked;
+
+	/** 차단. 자기 자신 여부·중복 여부는 Service 가 가린다. */
+	public static UserBlock create(User blocker, User blocked) {
+		return UserBlock.builder()
+				.blocker(blocker)
+				.blocked(blocked)
+				.build();
+	}
 
 }

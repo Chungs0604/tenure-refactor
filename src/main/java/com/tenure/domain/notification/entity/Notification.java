@@ -47,7 +47,7 @@ public class Notification extends BaseCreatedEntity {
 	@JoinColumn(name = "user_id", nullable = false)
 	private User user;
 
-	/** 탭 4종 */
+	/** 탭 5종 */
 	@Enumerated(EnumType.STRING)
 	@Column(name = "category", nullable = false, length = 30)
 	private NotificationCategory category;

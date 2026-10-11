@@ -19,9 +19,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
 	Optional<User> findByEmail(String email);
 
 	/**
-	 * 탈퇴 전용. 같은 사용자가 동시에 탈퇴를 두 번 요청해도 뒤처진 트랜잭션이 user_withdrawal
-	 * insert 까지 가지 않고 여기서 먼저 막히게 함 — user_id 유니크 제약에 동시 insert 가
-	 * 부딪히면 깔끔한 409 대신 MySQL 데드락이 그대로 샌다
+	 * User 행에 쓰기 잠금이 필요한 곳에서 공용으로 씀 — 잠그지 않으면 동시 요청이 서로의 갱신을
+	 * 덮어쓰거나(lost update) MySQL 데드락이 그대로 새는 자리들이다.
+	 *
+	 * 탈퇴(UserService.withdraw()) — 같은 사용자가 동시에 탈퇴를 두 번 요청해도 뒤처진
+	 * 트랜잭션이 user_withdrawal insert 까지 가지 않고 여기서 먼저 막히게 함.
+	 *
+	 * 팔로우(FollowService.follow()/unfollow()) — follower_count 증감을 보호함.
 	 */
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select u from User u where u.id = :userId")

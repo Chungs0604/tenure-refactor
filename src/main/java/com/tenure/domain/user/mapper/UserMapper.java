@@ -3,6 +3,7 @@ package com.tenure.domain.user.mapper;
 import com.tenure.domain.user.dto.response.AccountResponse;
 import com.tenure.domain.user.dto.response.MyProfileResponse;
 import com.tenure.domain.user.dto.response.UserProfileResponse;
+import com.tenure.domain.user.dto.response.UserSummaryResponse;
 import com.tenure.domain.user.entity.User;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -37,6 +38,11 @@ public interface UserMapper {
 	UserProfileResponse toUserProfileResponse(
 			User user, String profileImageUrl, Integer itemCount, Boolean following, Boolean blocked
 	);
+
+	@Mapping(target = "nickname", expression = "java(com.tenure.domain.user.mapper.UserMapper.displayNickname(user))")
+	@Mapping(target = "profileImageUrl", source = "profileImageUrl")
+	@Mapping(target = "isFollowing", source = "following")
+	UserSummaryResponse toUserSummaryResponse(User user, String profileImageUrl, Boolean following);
 
 	/**
 	 * 탈퇴 계정은 저장된 닉네임 대신 고정 문구를 보여준다.
