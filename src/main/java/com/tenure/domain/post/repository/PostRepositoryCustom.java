@@ -26,4 +26,7 @@ public interface PostRepositoryCustom {
 
 	/** 타인 프로필의 게시물 그리드. 커서 키는 착용일이다. */
 	List<Post> findUserPosts(Long authorId, Cursor cursor, int size);
+
+	/** 조회수 배치 반영 (DEC-019). 대상 게시물이 삭제됐으면 조용히 무시한다 — 조회수는 다시 볼 일이 없다. */
+	void incrementViewCount(Long postId, long delta);
 }

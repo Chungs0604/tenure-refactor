@@ -25,6 +25,7 @@ import com.tenure.domain.post.repository.PostItemTagRepository;
 import com.tenure.domain.post.repository.PostLikeRepository;
 import com.tenure.domain.post.repository.PostRepository;
 import com.tenure.domain.post.repository.PostSaveRepository;
+import com.tenure.domain.post.store.PostViewCountBuffer;
 import com.tenure.domain.search.enums.RecentViewTargetType;
 import com.tenure.domain.search.store.RecentViewStore;
 import com.tenure.domain.user.entity.User;
@@ -85,6 +86,7 @@ public class PostQueryService {
 	private final PostMapper postMapper;
 	private final FileStorage fileStorage;
 	private final RecentViewStore recentViewStore;
+	private final PostViewCountBuffer postViewCountBuffer;
 
 	/** 홈 피드. 차단 관계와 삭제된 게시물은 쿼리에서 빠진다. 커서 키는 게시일이다. */
 	@Loggable("홈 피드 조회")
@@ -168,6 +170,7 @@ public class PostQueryService {
 		);
 
 		recentViewStore.add(userId, RecentViewTargetType.POST, postId);
+		postViewCountBuffer.increment(postId);
 
 		return response;
 	}

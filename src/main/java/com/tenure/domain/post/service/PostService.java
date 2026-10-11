@@ -29,6 +29,7 @@ import com.tenure.domain.post.repository.PostItemTagRepository;
 import com.tenure.domain.post.repository.PostLikeRepository;
 import com.tenure.domain.post.repository.PostRepository;
 import com.tenure.domain.post.repository.PostSaveRepository;
+import com.tenure.domain.post.store.PostViewCountBuffer;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.user.exception.UserErrorCode;
 import com.tenure.domain.user.repository.UserRepository;
@@ -81,6 +82,7 @@ public class PostService {
 	private final ListingFeaturedPostRepository listingFeaturedPostRepository;
 	private final UserRepository userRepository;
 	private final UserGradeService userGradeService;
+	private final PostViewCountBuffer postViewCountBuffer;
 
 	/**
 	 * OOTD 게시.
@@ -306,6 +308,27 @@ public class PostService {
 		return PostSaveResponse.builder()
 				.saveCount(post.getSaveCount())
 				.build();
+	}
+
+	/**
+	 * 조회수 배치 반영 + 추천 순 정렬 키 재계산. {@code PostSearchMetricsScheduler} 가 주기 호출한다.
+	 *
+	 * 순서가 중요하다 — rank_score 계산식이 view_count 를 쓰므로, 조회수를 먼저 반영해야
+	 * 이번 주기에 쌓인 조회가 이번 주기의 점수에 들어간다.
+	 */
+	@Transactional
+	@Loggable("검색 정렬 지표 배치")
+	public void syncSearchMetrics() {
+		postViewCountBuffer.drain()
+				.forEach(postRepository::incrementViewCount);
+
+		postRepository.recalculateRankScores(
+				RankScorePolicy.SAVE_WEIGHT,
+				RankScorePolicy.LIKE_WEIGHT,
+				RankScorePolicy.VIEW_WEIGHT,
+				RankScorePolicy.POPULARITY_WEIGHT,
+				RankScorePolicy.FRESHNESS_WEIGHT,
+				RankScorePolicy.FRESHNESS_HALF_LIFE_DAYS);
 	}
 
 	/**

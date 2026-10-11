@@ -75,6 +75,15 @@ public class PostRepositoryImpl implements PostRepositoryCustom {
 				.fetch();
 	}
 
+	@Override
+	public void incrementViewCount(Long postId, long delta) {
+		queryFactory
+				.update(post)
+				.set(post.viewCount, post.viewCount.add((int) delta))
+				.where(post.id.eq(postId))
+				.execute();
+	}
+
 	/**
 	 * 게시일 커서. 정렬이 (createdAt desc, id desc) 라 조건도 같은 순서로 비교한다.
 	 *
