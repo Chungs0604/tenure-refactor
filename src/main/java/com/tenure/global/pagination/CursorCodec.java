@@ -28,6 +28,14 @@ public class CursorCodec {
 	private static final int PART_COUNT = 3;
 
 	/**
+	 * 정상적인 커서는 이 안에 한참 못 미친다(가장 긴 정렬 키인 LocalDateTime ISO 표기도
+	 * 30자 안팎). 길이 제한 없이 그대로 디코딩·파싱하면 공격자가 거대한 숫자 문자열을 커서로
+	 * 보내 {@code BigDecimal}·{@code Long} 파싱 비용을 부풀리는 자원 소모(DoS) 통로가 된다 —
+	 * Base64 디코드 전에 걸러낸다.
+	 */
+	private static final int MAX_ENCODED_LENGTH = 200;
+
+	/**
 	 * 조회 결과를 응답으로 바꾼다. Controller 가 부른다.
 	 *
 	 * 커서를 문자열로 만드는 일이 여기 있는 이유는 그것이 전송 형식이기 때문이다 —
@@ -61,6 +69,11 @@ public class CursorCodec {
 	public Cursor decode(String encoded) {
 		if (!StringUtils.hasText(encoded)) {
 			return null;
+		}
+
+		if (encoded.length() > MAX_ENCODED_LENGTH) {
+			log.warn("커서가 너무 깁니다. length={}", encoded.length());
+			throw new CustomException(CommonErrorCode.BAD_REQUEST);
 		}
 
 		String raw;

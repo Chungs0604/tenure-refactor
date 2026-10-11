@@ -2294,6 +2294,34 @@ entities:
     - created_at
     unique: false
     note: 레코드 승격 판정 — 직전 30일 유효 OOTD 카운트. 게시일 기준이라 worn_date 인덱스와 별개
+  - name: ix_post_rank_score
+    columns:
+    - deleted_at
+    - rank_score
+    - id
+    unique: false
+    note: 검색 추천 순 (DEC-023). V13 이 미뤄 둔 인덱스를 api-spec.md API-200 확정 후 V22 에서 추가
+  - name: ix_post_like_count
+    columns:
+    - deleted_at
+    - like_count
+    - id
+    unique: false
+    note: 검색 좋아요 순 (V22)
+  - name: ix_post_view_count
+    columns:
+    - deleted_at
+    - view_count
+    - id
+    unique: false
+    note: 검색 조회수 순 (DEC-019, V22)
+  - name: ix_post_save_count
+    columns:
+    - deleted_at
+    - save_count
+    - id
+    unique: false
+    note: 검색 저장 순 (V22)
   constraints:
   - rule: 본문(캡션) 컬럼을 두지 않는다. 작성 플로우(촬영 → 비율 → 날짜 → 태그 → 미리보기 → 게시하기)에 입력란이 없고 OOTD 상세에도 표시 영역이 없다
     enforced_by: application

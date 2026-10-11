@@ -4,6 +4,7 @@ import com.tenure.domain.post.entity.Post;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import java.util.Collection;
@@ -38,4 +39,27 @@ public interface PostRepository extends JpaRepository<Post, Long>, PostRepositor
 	/** 대표 OOTD 로 걸 게시물. 삭제된 것은 빠지므로 개수로 존재를 확인한다. */
 	@Query("select p from Post p where p.id in :postIds and p.deletedAt is null")
 	List<Post> findActiveByIds(@Param("postIds") Collection<Long> postIds);
+
+	/**
+	 * 검색 '추천 순' 정렬 키 배치 재계산 (DEC-023).
+	 *
+	 * 엔티티를 읽어 Java 에서 계산하지 않고 SQL 함수(LOG10·EXP·DATEDIFF)로 한 번에 UPDATE 한다 —
+	 * 게시물 전체를 매번 메모리에 올리는 것은 배치 주기(1시간)에 비해 낭비다.
+	 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query(value = """
+			UPDATE post
+			SET rank_score =
+				LOG10(1 + save_count * :saveWeight + like_count * :likeWeight + view_count * :viewWeight)
+					* :popularityWeight
+				+ EXP(-DATEDIFF(CURRENT_DATE, DATE(created_at)) / :halfLifeDays) * :freshnessWeight
+			WHERE deleted_at IS NULL
+			""", nativeQuery = true)
+	int recalculateRankScores(
+			@Param("saveWeight") double saveWeight,
+			@Param("likeWeight") double likeWeight,
+			@Param("viewWeight") double viewWeight,
+			@Param("popularityWeight") double popularityWeight,
+			@Param("freshnessWeight") double freshnessWeight,
+			@Param("halfLifeDays") double halfLifeDays);
 }

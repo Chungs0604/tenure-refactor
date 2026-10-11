@@ -50,4 +50,15 @@ public class SearchHistory {
 	@Column(name = "searched_at", nullable = false)
 	private LocalDateTime searchedAt;
 
+	/**
+	 * 검색 기록. API-200·201 호출마다 부수효과로 남긴다 — 같은 키워드를 다시 검색해도
+	 * 중복 제거 없이 새 행을 쌓는다(검색 '기록' 이므로).
+	 */
+	public static SearchHistory record(User user, String keyword, LocalDateTime searchedAt) {
+		return SearchHistory.builder()
+				.user(user)
+				.keyword(keyword)
+				.searchedAt(searchedAt)
+				.build();
+	}
 }

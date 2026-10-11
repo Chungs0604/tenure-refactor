@@ -2,6 +2,8 @@ package com.tenure.domain.search.store;
 
 import com.tenure.domain.search.enums.RecentViewTargetType;
 import java.time.Instant;
+import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
@@ -47,5 +49,35 @@ public class RecentViewStore {
 		for (RecentViewTargetType targetType : RecentViewTargetType.values()) {
 			redis.delete(KEY.formatted(userId, targetType));
 		}
+	}
+
+	/**
+	 * 최근 열람한 대상 id 목록. score(열람 시각)가 높은 순 — 가장 최근 본 것부터다.
+	 * '최근 본 사용자'(API-203)와 '방금 보신 OOTD와 유사한 게시물'(API-202)의 입력이다.
+	 */
+	public List<Long> findRecentTargetIds(Long userId, RecentViewTargetType targetType, int limit) {
+		Set<String> members = redis.opsForZSet()
+				.reverseRange(KEY.formatted(userId, targetType), 0, limit - 1);
+
+		if (members == null || members.isEmpty()) {
+			return List.of();
+		}
+		return members.stream().map(Long::valueOf).toList();
+	}
+
+	/**
+	 * 개별 삭제 (API-208, '최근 본 사용자' X). 이미 없는 멤버를 지워도(열람 안 했거나 상한에
+	 * 잘렸거나) 멱등하게 성공한다.
+	 */
+	public void remove(Long userId, RecentViewTargetType targetType, Long targetId) {
+		redis.opsForZSet().remove(KEY.formatted(userId, targetType), String.valueOf(targetId));
+	}
+
+	/**
+	 * 유형 하나만 전체 삭제 (API-209, '최근 본 사용자' 지우기). {@code deleteAll} 과 달리
+	 * 화면의 '최근 본 사용자' 섹션만 지운다 — '방금 보신 OOTD' 추천 입력(POST 유형)은 남긴다.
+	 */
+	public void deleteByType(Long userId, RecentViewTargetType targetType) {
+		redis.delete(KEY.formatted(userId, targetType));
 	}
 }

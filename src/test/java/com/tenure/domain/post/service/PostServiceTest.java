@@ -39,6 +39,7 @@ import com.tenure.global.exception.ErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -46,8 +47,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -56,7 +59,10 @@ import org.springframework.test.util.ReflectionTestUtils;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -605,6 +611,41 @@ class PostServiceTest {
 					.isInstanceOf(CustomException.class)
 					.extracting(PostServiceTest::errorCodeOf)
 					.isEqualTo(PostErrorCode.POST_404);
+		}
+	}
+
+	@Nested
+	@DisplayName("검색 정렬 지표 배치")
+	class SyncSearchMetrics {
+
+		@Test
+		@DisplayName("조회수를 먼저 반영하고 그 다음 rank_score 를 재계산한다 — 순서가 바뀌면 이번 주기 조회가 점수에 안 들어간다")
+		void applySearchMetrics_appliesViewCountsBeforeRecalculatingRankScore() {
+			// Map.of() 는 순서를 보장하지 않으므로 한 건만 둔다 — 보고 싶은 건 여러 post 간
+			// 순서가 아니라 '조회수 반영 → rank_score 재계산' 이라는 단계 순서다.
+			// Redis peek/clear 는 스케줄러가 호출하므로(PostSearchMetricsScheduler) 이
+			// 메서드는 이미 읽어온 delta 맵만 받는다.
+			postService.applySearchMetrics(Map.of(POST_ID, 3L));
+
+			InOrder order = Mockito.inOrder(postRepository);
+			order.verify(postRepository).incrementViewCount(POST_ID, 3L);
+			order.verify(postRepository).recalculateRankScores(
+					RankScorePolicy.SAVE_WEIGHT,
+					RankScorePolicy.LIKE_WEIGHT,
+					RankScorePolicy.VIEW_WEIGHT,
+					RankScorePolicy.POPULARITY_WEIGHT,
+					RankScorePolicy.FRESHNESS_WEIGHT,
+					RankScorePolicy.FRESHNESS_HALF_LIFE_DAYS);
+		}
+
+		@Test
+		@DisplayName("delta 가 비어 있어도 rank_score 재계산은 돈다 — 신선도만으로도 값이 바뀐다")
+		void applySearchMetrics_emptyDeltas_stillRecalculates() {
+			postService.applySearchMetrics(Map.of());
+
+			verify(postRepository, never()).incrementViewCount(any(), anyLong());
+			verify(postRepository).recalculateRankScores(
+					anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble());
 		}
 	}
 
