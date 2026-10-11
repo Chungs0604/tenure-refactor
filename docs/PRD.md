@@ -48,18 +48,23 @@ OOTD 게시 ──(태그)──▶ 아이템 실착 이력 축적 ──▶ 판
 
 ## 4. 구현 현황
 
-**확인 기준: 컨트롤러 존재 여부, 2026-10-08 재확인.** 이 섹션은 기능이 추가될 때마다 바로 낡는다 —
+**확인 기준: 컨트롤러 존재 여부, 2026-10-11 재확인.** 이 섹션은 기능이 추가될 때마다 바로 낡는다 —
 도메인을 새로 시작하기 전에 `find src/main/java/com/tenure/domain -iname "*Controller.java"`로 먼저
 재확인할 것. **예외: `payment`는 설계상 단독 컨트롤러를 두지 않고 `offer`/`order` 플로우에 내장되므로
 이 기준에 걸리지 않는다 — 구현 여부는 `PaymentService`(승인·확정·해제·환불) 존재로 판단한다.**
 
 - **완료**: `auth` · `user` · `address` · `payout` · `category` · `post` · `item` · `listing` ·
-  `offer` · `order` · `payment`(offer/order 플로우에 내장) · `chat` · `notification`
-- **미착수(엔티티만 존재)**: `follow` · `search` · `report` · `wishlist` · `block` · `settlement`
+  `offer` · `order` · `payment`(offer/order 플로우에 내장) · `chat` · `notification` · `wishlist` ·
+  `follow` · `block` · `report`
+- **미착수**: `search`(엔티티만 존재, API-200~207)
+- **전용 API 없음**: `settlement` — API-165(구매 확정)가 내부에서 자동 생성하는 구조라
+  별도 컨트롤러를 두지 않는다(`api-spec.md` §3 CRUD 커버리지 참고). 구현 대상에서 빠지는 게
+  아니라 애초에 단독 엔드포인트가 없는 도메인이다.
 
 `notification` 은 발행(`notify`/`notifyAll`)·조회·읽음 처리·수신 설정까지 전부 구현됐다.
-`listing` 이 가격 변경·판매 완료·판매 중 재전환 때 관심 등록자에게 발행하는 훅도 함께 들어갔다.
-`follow` 알림은 `follow` 도메인 자체가 미구현이라 같이 빠졌다 — `follow` 구현 시 채운다.
+`listing` 이 가격 변경·판매 완료·판매 중 재전환 때, `follow` 가 팔로우 시점에 발행하는 훅도
+들어갔다 — 팔로우 알림은 기존 탭 4종 어디에도 안 맞아 `NotificationCategory.ACTIVITY` 를
+새로 추가했다(2026-10-11, `design-audit.md` N-4 참고).
 
 회원탈퇴(`API-016`)도 구현 완료다(2026-10-08, `feat/user-withdrawal`). 즉시 익명화 +
 대기 중 제안 정리(`OfferService.cancelAndRejectPendingForWithdrawal`) + 연관 데이터(배송지·정산계좌·
