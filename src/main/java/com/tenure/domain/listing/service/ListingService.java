@@ -9,6 +9,7 @@ import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.listing.dto.request.ListingCreateRequest;
 import com.tenure.domain.listing.dto.request.ListingItemRequest;
+import com.tenure.domain.listing.dto.response.FeaturedPostResponse;
 import com.tenure.domain.listing.dto.response.ListingIdResponse;
 import com.tenure.domain.listing.dto.response.SaleStatusResponse;
 import com.tenure.domain.listing.entity.ItemListing;
@@ -29,11 +30,13 @@ import com.tenure.domain.payout.exception.PayoutErrorCode;
 import com.tenure.domain.payout.repository.PayoutAccountRepository;
 import com.tenure.domain.post.entity.Post;
 import com.tenure.domain.post.exception.PostErrorCode;
+import com.tenure.domain.post.repository.PostImageRepository;
 import com.tenure.domain.post.repository.PostRepository;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.wishlist.repository.WishlistRepository;
 import com.tenure.global.exception.CustomException;
 import com.tenure.global.logging.Loggable;
+import com.tenure.global.storage.FileStorage;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -77,11 +80,13 @@ public class ListingService {
 	private final ItemOwnershipRepository itemOwnershipRepository;
 	private final PayoutAccountRepository payoutAccountRepository;
 	private final PostRepository postRepository;
+	private final PostImageRepository postImageRepository;
 	private final TradeOrderRepository tradeOrderRepository;
 	private final OfferService offerService;
 	private final WishlistRepository wishlistRepository;
 	private final NotificationService notificationService;
 	private final ListingMapper listingMapper;
+	private final FileStorage fileStorage;
 
 	/**
 	 * 판매 전환.
@@ -183,6 +188,27 @@ public class ListingService {
 		}
 
 		return listingMapper.toListingIdResponse(listing);
+	}
+
+	/**
+	 * 대표 OOTD 교체. 상세 화면 상단 캐러셀만 따로 바꿀 때 쓴다 — 가격·배송비·수수료 등
+	 * 나머지 판매 조건은 손대지 않는다. update() 와 같은 가드(본인 판매 등록인지, 판매가
+	 * 끝난 등록인지)를 그대로 적용한다.
+	 */
+	@Transactional
+	@Loggable("대표 OOTD 교체")
+	public List<FeaturedPostResponse> replaceFeaturedPosts(Long userId, Long listingId, List<Long> postIds) {
+		ItemListing listing = findOwnListing(userId, listingId);
+
+		// 판매중이 아니면 대표 OOTD 도 수정 불가
+		if (listing.isClosed()) {
+			log.info("판매가 끝난 등록의 대표 OOTD를 교체하려 했다 listingId={}", listingId);
+			throw new CustomException(ListingErrorCode.LISTING_409_CLOSED);
+		}
+
+		replaceFeaturedPosts(listing, userId, postIds);
+
+		return featuredPostsOf(listing.getId());
 	}
 
 	/**
@@ -322,6 +348,32 @@ public class ListingService {
 			rows.add(ListingFeaturedPost.of(listing, ordered.get(i), i));
 		}
 		listingFeaturedPostRepository.saveAll(rows);
+	}
+
+	/**
+	 * 교체된 대표 OOTD 를 응답 모양으로 돌려준다. ListingQueryService#getFeaturedPosts 와 같은
+	 * 조회지만, 두 서비스를 서로 의존하게 만들지 않기 위해 여기서 다시 조립한다.
+	 */
+	private List<FeaturedPostResponse> featuredPostsOf(Long listingId) {
+		// 선택 순서대로 내려옴
+		List<Post> posts = listingFeaturedPostRepository.findAllByListingId(listingId).stream()
+				.map(ListingFeaturedPost::getPost)
+				.toList();
+
+		if (posts.isEmpty()) {
+			return List.of();
+		}
+
+		// 카드마다 대표 사진을 다시 읽으면 장수만큼 쿼리가 늘어남
+		Map<Long, String> covers = postImageRepository
+				.findCovers(posts.stream().map(Post::getId).toList()).stream()
+				.collect(Collectors.toMap(
+						image -> image.getPost().getId(),
+						image -> fileStorage.toUrl(image.getImageKey())));
+
+		return posts.stream()
+				.map(post -> listingMapper.toFeaturedPostResponse(post, covers.get(post.getId())))
+				.toList();
 	}
 
 	/** 기본 사용자는 배송비를 보낼 수 없다. 화면에서도 '0원' 으로 잠겨 있다 */

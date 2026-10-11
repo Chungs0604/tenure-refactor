@@ -29,6 +29,7 @@ import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.listing.dto.request.ListingCreateRequest;
 import com.tenure.domain.listing.dto.request.ListingItemRequest;
+import com.tenure.domain.listing.dto.response.FeaturedPostResponse;
 import com.tenure.domain.category.enums.MeasurementField;
 import com.tenure.domain.listing.entity.ItemListing;
 import com.tenure.domain.listing.entity.ListingFeaturedPost;
@@ -47,8 +48,10 @@ import com.tenure.domain.order.repository.TradeOrderRepository;
 import com.tenure.domain.payout.exception.PayoutErrorCode;
 import com.tenure.domain.payout.repository.PayoutAccountRepository;
 import com.tenure.domain.post.entity.Post;
+import com.tenure.domain.post.entity.PostImage;
 import com.tenure.domain.post.enums.AspectRatio;
 import com.tenure.domain.post.exception.PostErrorCode;
+import com.tenure.domain.post.repository.PostImageRepository;
 import com.tenure.domain.post.repository.PostRepository;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.user.enums.Gender;
@@ -56,6 +59,7 @@ import com.tenure.domain.user.enums.UserGrade;
 import com.tenure.domain.wishlist.repository.WishlistRepository;
 import com.tenure.global.exception.CustomException;
 import com.tenure.global.exception.ErrorCode;
+import com.tenure.global.storage.FileStorage;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -97,10 +101,12 @@ class ListingServiceTest {
 	@Mock private ItemOwnershipRepository itemOwnershipRepository;
 	@Mock private PayoutAccountRepository payoutAccountRepository;
 	@Mock private PostRepository postRepository;
+	@Mock private PostImageRepository postImageRepository;
 	@Mock private TradeOrderRepository tradeOrderRepository;
 	@Mock private OfferService offerService;
 	@Mock private WishlistRepository wishlistRepository;
 	@Mock private NotificationService notificationService;
+	@Mock private FileStorage fileStorage;
 
 	// 매핑은 검증 대상이라 mock 이 아니라 실제 생성 구현을 넣는다
 	@Spy private ListingMapper listingMapper = new ListingMapperImpl();
@@ -611,6 +617,93 @@ class ListingServiceTest {
 			listingService.update(USER_ID, LISTING_ID, request(320000, 3000, FeeBearer.SPLIT));
 
 			verify(notificationService, never()).notifyAll(any(), any(), any(), any(), any(), any(), any(), any());
+		}
+	}
+
+	@Nested
+	@DisplayName("대표 OOTD 교체")
+	class ReplaceFeaturedPosts {
+
+		@Test
+		@DisplayName("성공하면 교체된 대표 OOTD 목록을 돌려준다")
+		void replace_success_returnsFeaturedPosts() {
+			Item item = item();
+			ItemListing listing = listing(item, seller(UserGrade.RECORD));
+			givenUpdatableListing(listing);
+
+			Post post = post(POST_ID, USER_ID);
+			given(listingFeaturedPostRepository.findAllByListingId(LISTING_ID))
+					.willReturn(List.of(ListingFeaturedPost.of(listing, post, 0)));
+			PostImage cover = PostImage.of(post, "post/2026/06/cover.jpg", 0, true);
+			given(postImageRepository.findCovers(List.of(POST_ID))).willReturn(List.of(cover));
+			given(fileStorage.toUrl("post/2026/06/cover.jpg"))
+					.willReturn("https://cdn.tenure.app/post/2026/06/cover.jpg");
+
+			List<FeaturedPostResponse> response =
+					listingService.replaceFeaturedPosts(USER_ID, LISTING_ID, List.of(POST_ID));
+
+			assertThat(response).extracting(FeaturedPostResponse::getPostId).containsExactly(POST_ID);
+			assertThat(response.get(0).getImageUrl())
+					.isEqualTo("https://cdn.tenure.app/post/2026/06/cover.jpg");
+			verify(listingFeaturedPostRepository).deleteAllByListingId(LISTING_ID);
+			verify(listingFeaturedPostRepository).saveAll(any());
+		}
+
+		@Test
+		@DisplayName("판매가 끝난 등록은 대표 OOTD를 교체할 수 없다")
+		void replace_closedListing_rejected() {
+			ItemListing listing = listing(item(), seller(UserGrade.RECORD));
+			listing.close(LocalDateTime.now());
+			given(itemListingRepository.findById(LISTING_ID)).willReturn(Optional.of(listing));
+
+			assertThatThrownBy(() -> listingService.replaceFeaturedPosts(
+					USER_ID, LISTING_ID, List.of(POST_ID)))
+					.isInstanceOf(CustomException.class)
+					.extracting(ListingServiceTest::errorCodeOf)
+					.isEqualTo(ListingErrorCode.LISTING_409_CLOSED);
+
+			verify(listingFeaturedPostRepository, never()).deleteAllByListingId(any());
+		}
+
+		@Test
+		@DisplayName("남의 판매 등록은 건드릴 수 없다")
+		void replace_othersListing_forbidden() {
+			ItemListing listing = listing(item(), user(OTHER_USER_ID, UserGrade.RECORD));
+			given(itemListingRepository.findById(LISTING_ID)).willReturn(Optional.of(listing));
+
+			assertThatThrownBy(() -> listingService.replaceFeaturedPosts(
+					USER_ID, LISTING_ID, List.of(POST_ID)))
+					.isInstanceOf(CustomException.class)
+					.extracting(ListingServiceTest::errorCodeOf)
+					.isEqualTo(ListingErrorCode.LISTING_403);
+		}
+
+		@Test
+		@DisplayName("5개를 넘으면 막는다")
+		void replace_tooManyFeaturedPosts_rejected() {
+			ItemListing listing = listing(item(), seller(UserGrade.RECORD));
+			given(itemListingRepository.findById(LISTING_ID)).willReturn(Optional.of(listing));
+
+			assertThatThrownBy(() -> listingService.replaceFeaturedPosts(
+					USER_ID, LISTING_ID, List.of(1L, 2L, 3L, 4L, 5L, 6L)))
+					.isInstanceOf(CustomException.class)
+					.extracting(ListingServiceTest::errorCodeOf)
+					.isEqualTo(ListingErrorCode.LISTING_400_FEATURED_RANGE);
+		}
+
+		@Test
+		@DisplayName("남의 게시물은 걸 수 없다")
+		void replace_othersPost_forbidden() {
+			ItemListing listing = listing(item(), seller(UserGrade.RECORD));
+			given(itemListingRepository.findById(LISTING_ID)).willReturn(Optional.of(listing));
+			given(postRepository.findActiveByIds(any()))
+					.willReturn(List.of(post(POST_ID, OTHER_USER_ID)));
+
+			assertThatThrownBy(() -> listingService.replaceFeaturedPosts(
+					USER_ID, LISTING_ID, List.of(POST_ID)))
+					.isInstanceOf(CustomException.class)
+					.extracting(ListingServiceTest::errorCodeOf)
+					.isEqualTo(PostErrorCode.POST_403);
 		}
 	}
 

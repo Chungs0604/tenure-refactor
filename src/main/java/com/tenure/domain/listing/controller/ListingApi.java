@@ -1,6 +1,8 @@
 package com.tenure.domain.listing.controller;
 
+import com.tenure.domain.listing.dto.request.FeaturedPostsReplaceRequest;
 import com.tenure.domain.listing.dto.request.ListingCreateRequest;
+import com.tenure.domain.listing.dto.response.FeaturedPostResponse;
 import com.tenure.domain.listing.dto.response.ListingIdResponse;
 import com.tenure.global.response.BaseResponse;
 import com.tenure.global.security.AuthUser;
@@ -10,6 +12,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 
@@ -33,4 +36,21 @@ public interface ListingApi {
 			@Parameter(hidden = true) AuthUser authUser,
 			@Parameter(description = "판매 등록 id") Long listingId,
 			@Valid ListingCreateRequest request);
+
+	@Operation(summary = "대표 OOTD 교체",
+			description = "상세 화면 상단 캐러셀에 걸 대표 OOTD 만 1~5개로 교체한다. 전체 교체(지우고 "
+					+ "다시 넣기)이며 보낸 순서가 노출 순서가 된다. 가격·배송비·수수료 등 나머지 판매 "
+					+ "조건은 손대지 않는다 — 전체 폼을 다시 보내야 하는 update() 와 달리 대표 OOTD 만 "
+					+ "바꾸는 전용 엔드포인트다.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "교체 성공"),
+			@ApiResponse(responseCode = "400", description = "LISTING_400_FEATURED_RANGE"),
+			@ApiResponse(responseCode = "403", description = "LISTING_403 / POST_403"),
+			@ApiResponse(responseCode = "404", description = "LISTING_404 / POST_404"),
+			@ApiResponse(responseCode = "409", description = "LISTING_409_CLOSED — 판매가 끝난 등록")
+	})
+	ResponseEntity<BaseResponse<List<FeaturedPostResponse>>> replaceFeaturedPosts(
+			@Parameter(hidden = true) AuthUser authUser,
+			@Parameter(description = "판매 등록 id") Long listingId,
+			@Valid FeaturedPostsReplaceRequest request);
 }
