@@ -78,9 +78,13 @@ public class SearchService {
 	public PostSearchResult searchPosts(Long userId, PostSearchCriteria criteria, Cursor cursor, int size) {
 		recordKeyword(userId, criteria.keyword());
 
+		// 조건이 바뀌지 않는 한 모든 페이지의 총계가 같다 — 행이 없다고 0건을 돌려주면
+		// 스크롤이 끝에 닿는 순간 화면 상단 '총 N개'가 0으로 바뀌어 보인다.
+		int totalCount = (int) postSearchRepository.countMatches(criteria, userId);
+
 		List<PostSearchRow> rows = postSearchRepository.search(criteria, userId, cursor, size);
 		if (rows.isEmpty()) {
-			return new PostSearchResult(CursorSlice.empty(), 0);
+			return new PostSearchResult(CursorSlice.empty(), totalCount);
 		}
 
 		Map<Long, String> coverUrls = coverUrls(rows.stream().map(r -> r.post().getId()).toList());
@@ -88,7 +92,6 @@ public class SearchService {
 		CursorSlice<SearchPostSummaryResponse> slice = CursorSlice.of(rows, size, PostSearchRow::cursor)
 				.map(row -> toSearchPostSummary(row.post(), coverUrls));
 
-		int totalCount = (int) postSearchRepository.countMatches(criteria, userId);
 		return new PostSearchResult(slice, totalCount);
 	}
 
@@ -142,8 +145,7 @@ public class SearchService {
 				.build();
 	}
 
-	/** API-206. 캐시 미스면 집계해서 채운다(DEC-020). */
-	@Transactional
+	/** API-206. 캐시 미스면 집계해서 채운다(DEC-020). DB 는 읽기만 하고 캐시는 Redis 라 쓰기 트랜잭션이 필요 없다. */
 	@Loggable("추천 검색어")
 	public List<SuggestedKeywordResponse> getSuggestedKeywords() {
 		List<String> cached = suggestedKeywordCache.get();

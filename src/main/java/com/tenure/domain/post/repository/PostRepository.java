@@ -46,7 +46,7 @@ public interface PostRepository extends JpaRepository<Post, Long>, PostRepositor
 	 * 엔티티를 읽어 Java 에서 계산하지 않고 SQL 함수(LOG10·EXP·DATEDIFF)로 한 번에 UPDATE 한다 —
 	 * 게시물 전체를 매번 메모리에 올리는 것은 배치 주기(1시간)에 비해 낭비다.
 	 */
-	@Modifying(clearAutomatically = true)
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query(value = """
 			UPDATE post
 			SET rank_score =

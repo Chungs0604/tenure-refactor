@@ -107,15 +107,13 @@ public class SearchHistoryService {
 		searchHistoryRepository.deleteAllByUserId(userId);
 	}
 
-	/** API-208. Redis ZREM 은 멱등이라 대상이 이미 없어도 그냥 성공한다. */
-	@Transactional
+	/** API-208. Redis ZREM 은 멱등이라 대상이 이미 없어도 그냥 성공한다. Redis 만 건드려 DB 트랜잭션이 필요 없다. */
 	@Loggable("최근 본 사용자 개별 삭제")
 	public void removeRecentUser(Long userId, Long targetId) {
 		recentViewStore.remove(userId, RecentViewTargetType.USER, targetId);
 	}
 
 	/** API-209. '방금 보신 OOTD' 추천의 입력(POST 유형)은 남긴다 — 화면의 '지우기'는 이 섹션뿐이다. */
-	@Transactional
 	@Loggable("최근 본 사용자 전체 삭제")
 	public void clearRecentUsers(Long userId) {
 		recentViewStore.deleteByType(userId, RecentViewTargetType.USER);

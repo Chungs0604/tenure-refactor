@@ -30,7 +30,6 @@ import com.tenure.domain.post.repository.PostItemTagRepository;
 import com.tenure.domain.post.repository.PostLikeRepository;
 import com.tenure.domain.post.repository.PostRepository;
 import com.tenure.domain.post.repository.PostSaveRepository;
-import com.tenure.domain.post.store.PostViewCountBuffer;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.user.enums.Gender;
 import com.tenure.domain.user.repository.UserRepository;
@@ -90,7 +89,6 @@ class PostServiceTest {
 	@Mock private ListingFeaturedPostRepository listingFeaturedPostRepository;
 	@Mock private UserRepository userRepository;
 	@Mock private UserGradeService userGradeService;
-	@Mock private PostViewCountBuffer postViewCountBuffer;
 
 	@InjectMocks private PostService postService;
 
@@ -622,12 +620,12 @@ class PostServiceTest {
 
 		@Test
 		@DisplayName("조회수를 먼저 반영하고 그 다음 rank_score 를 재계산한다 — 순서가 바뀌면 이번 주기 조회가 점수에 안 들어간다")
-		void syncSearchMetrics_appliesViewCountsBeforeRecalculatingRankScore() {
+		void applySearchMetrics_appliesViewCountsBeforeRecalculatingRankScore() {
 			// Map.of() 는 순서를 보장하지 않으므로 한 건만 둔다 — 보고 싶은 건 여러 post 간
-			// 순서가 아니라 '조회수 반영 → rank_score 재계산' 이라는 단계 순서다
-			given(postViewCountBuffer.drain()).willReturn(Map.of(POST_ID, 3L));
-
-			postService.syncSearchMetrics();
+			// 순서가 아니라 '조회수 반영 → rank_score 재계산' 이라는 단계 순서다.
+			// Redis peek/clear 는 스케줄러가 호출하므로(PostSearchMetricsScheduler) 이
+			// 메서드는 이미 읽어온 delta 맵만 받는다.
+			postService.applySearchMetrics(Map.of(POST_ID, 3L));
 
 			InOrder order = Mockito.inOrder(postRepository);
 			order.verify(postRepository).incrementViewCount(POST_ID, 3L);
@@ -641,11 +639,9 @@ class PostServiceTest {
 		}
 
 		@Test
-		@DisplayName("버퍼가 비어 있어도 rank_score 재계산은 돈다 — 신선도만으로도 값이 바뀐다")
-		void syncSearchMetrics_emptyBuffer_stillRecalculates() {
-			given(postViewCountBuffer.drain()).willReturn(Map.of());
-
-			postService.syncSearchMetrics();
+		@DisplayName("delta 가 비어 있어도 rank_score 재계산은 돈다 — 신선도만으로도 값이 바뀐다")
+		void applySearchMetrics_emptyDeltas_stillRecalculates() {
+			postService.applySearchMetrics(Map.of());
 
 			verify(postRepository, never()).incrementViewCount(any(), anyLong());
 			verify(postRepository).recalculateRankScores(

@@ -29,7 +29,6 @@ import com.tenure.domain.post.repository.PostItemTagRepository;
 import com.tenure.domain.post.repository.PostLikeRepository;
 import com.tenure.domain.post.repository.PostRepository;
 import com.tenure.domain.post.repository.PostSaveRepository;
-import com.tenure.domain.post.store.PostViewCountBuffer;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.user.exception.UserErrorCode;
 import com.tenure.domain.user.repository.UserRepository;
@@ -82,7 +81,6 @@ public class PostService {
 	private final ListingFeaturedPostRepository listingFeaturedPostRepository;
 	private final UserRepository userRepository;
 	private final UserGradeService userGradeService;
-	private final PostViewCountBuffer postViewCountBuffer;
 
 	/**
 	 * OOTD 게시.
@@ -311,16 +309,20 @@ public class PostService {
 	}
 
 	/**
-	 * 조회수 배치 반영 + 추천 순 정렬 키 재계산. {@code PostSearchMetricsScheduler} 가 주기 호출한다.
+	 * 조회수 배치 반영 + 추천 순 정렬 키 재계산. {@code PostSearchMetricsScheduler} 가 Redis
+	 * 조회(peek)·이 메서드·Redis 삭제(clear) 순서로 호출한다 — Redis 읽기/삭제를 이 메서드
+	 * 밖에 두는 이유가 둘이다. (1) DB 트랜잭션 안에서 Redis 왕복을 하면 그 시간만큼 DB
+	 * 커넥션을 붙들게 된다. (2) 같은 클래스 안에서 이 메서드를 호출하면(self-invocation)
+	 * {@code @Transactional} 이 스프링 프록시를 안 타 조용히 무시되므로, 애초에 트랜잭션
+	 * 경계가 필요한 지점을 별도 빈(스케줄러)이 호출하는 공개 메서드로 둔다.
 	 *
-	 * 순서가 중요하다 — rank_score 계산식이 view_count 를 쓰므로, 조회수를 먼저 반영해야
-	 * 이번 주기에 쌓인 조회가 이번 주기의 점수에 들어간다.
+	 * 증가·재계산 순서도 중요하다 — rank_score 계산식이 view_count 를 쓰므로, 조회수를
+	 * 먼저 반영해야 이번 주기에 쌓인 조회가 이번 주기의 점수에 들어간다.
 	 */
 	@Transactional
 	@Loggable("검색 정렬 지표 배치")
-	public void syncSearchMetrics() {
-		postViewCountBuffer.drain()
-				.forEach(postRepository::incrementViewCount);
+	public void applySearchMetrics(Map<Long, Long> viewDeltas) {
+		viewDeltas.forEach(postRepository::incrementViewCount);
 
 		postRepository.recalculateRankScores(
 				RankScorePolicy.SAVE_WEIGHT,

@@ -378,6 +378,40 @@ class PostSearchRepositoryImplTest extends RepositorySliceTestSupport {
 
 			assertThat(collected).containsExactlyElementsOf(expectedOrder);
 		}
+
+		@Test
+		@DisplayName("키워드가 있는 추천 순도 페이지를 연속으로 넘겨도 중복·누락이 없다 — "
+				+ "이 경로(Tuple 로 combinedKey 를 같이 select 하는 경로)는 키워드 없이 호출하는 "
+				+ "다른 페이징 테스트로는 한 번도 실행되지 않는다")
+		void search_recommendedWithKeyword_pagingHasNoDuplicatesOrGaps() {
+			List<Long> expectedOrder = new ArrayList<>();
+			BigDecimal score = new BigDecimal("10.0000");
+			for (int i = 0; i < 5; i++) {
+				Item item = persistItem(101L, "Nike", "Item " + i); // 전부 2등급('Nike' 브랜드 일치)
+				Post post = persistPost();
+				tag(post, item);
+				setRankScore(post, score);
+				expectedOrder.add(post.getId());
+				score = score.subtract(BigDecimal.ONE);
+			}
+
+			List<Long> collected = new ArrayList<>();
+			Cursor cursor = null;
+			for (int i = 0; i < 5; i++) {
+				List<PostSearchRow> page = postSearchRepository.search(
+						criteria("Nike", PostSortType.RECOMMENDED), viewer.getId(), cursor, 2);
+				int take = Math.min(2, page.size());
+				for (int j = 0; j < take; j++) {
+					collected.add(page.get(j).post().getId());
+				}
+				if (page.isEmpty()) {
+					break;
+				}
+				cursor = page.get(take - 1).cursor();
+			}
+
+			assertThat(collected).containsExactlyElementsOf(expectedOrder);
+		}
 	}
 
 	@Nested

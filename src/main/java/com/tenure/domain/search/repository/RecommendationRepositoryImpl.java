@@ -12,6 +12,7 @@ import com.tenure.domain.block.repository.BlockPredicates;
 import com.tenure.domain.item.entity.QItem;
 import com.tenure.domain.post.entity.Post;
 import com.tenure.domain.user.entity.User;
+import com.tenure.domain.user.enums.UserStatus;
 import com.tenure.global.pagination.Cursor;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -88,6 +89,7 @@ public class RecommendationRepositoryImpl implements RecommendationRepository {
 				.selectFrom(user)
 				.where(
 						user.id.ne(viewerId),
+						user.status.eq(UserStatus.ACTIVE),
 						BlockPredicates.excludeBlockedEitherWay(user.id, viewerId),
 						afterFollowerCount(cursor))
 				.orderBy(user.followerCount.desc(), user.id.desc())

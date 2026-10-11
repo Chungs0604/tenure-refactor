@@ -17,6 +17,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
@@ -35,10 +36,10 @@ public interface SearchApi {
 			@Parameter(description = "판매 상태 3모드. 미지정 시 전체") SaleStatusFilter saleStatus,
 			@Parameter(description = "게시자 성별. 미지정 시 전체") AuthorGenderFilter authorGender,
 			@Parameter(description = "세부 카테고리 id 목록") List<Long> categoryIds,
-			@Parameter(description = "키 최소(cm)") Integer heightMin,
-			@Parameter(description = "키 최대(cm)") Integer heightMax,
-			@Parameter(description = "몸무게 최소(kg)") Integer weightMin,
-			@Parameter(description = "몸무게 최대(kg)") Integer weightMax,
+			@Parameter(description = "키 최소(cm)") @Min(0) @Max(200) Integer heightMin,
+			@Parameter(description = "키 최대(cm)") @Min(0) @Max(200) Integer heightMax,
+			@Parameter(description = "몸무게 최소(kg)") @Min(0) @Max(150) Integer weightMin,
+			@Parameter(description = "몸무게 최대(kg)") @Min(0) @Max(150) Integer weightMax,
 			@Parameter(description = "정렬. 미지정 시 추천 순") PostSortType sort,
 			@Parameter(description = "직전 응답의 nextCursor. 첫 페이지는 비운다") String cursor,
 			@Parameter(description = "페이지 크기") @Min(1) @Max(100) int size);
@@ -47,7 +48,7 @@ public interface SearchApi {
 	@ApiResponse(responseCode = "200", description = "조회 성공")
 	ResponseEntity<BaseResponse<CursorResponse<UserSummaryResponse>>> searchUsers(
 			@Parameter(hidden = true) AuthUser authUser,
-			@Parameter(description = "검색어", required = true) @Size(max = 100) String keyword,
+			@Parameter(description = "검색어", required = true) @NotBlank @Size(max = 100) String keyword,
 			@Parameter(description = "직전 응답의 nextCursor. 첫 페이지는 비운다") String cursor,
 			@Parameter(description = "페이지 크기") @Min(1) @Max(100) int size);
 

@@ -115,18 +115,19 @@ class SearchServiceTest {
 		}
 
 		@Test
-		@DisplayName("결과가 없으면 총 건수 집계를 하지 않는다")
-		void searchPosts_empty_skipsCountMatches() {
+		@DisplayName("커서 끝에 닿아 이번 페이지가 비어도 총 건수는 그대로 내려준다 — "
+				+ "0으로 떨어지면 화면 상단 '총 N개'가 스크롤 끝에서 갑자기 0으로 바뀐다")
+		void searchPosts_emptyPageAtCursorEnd_stillReturnsTotalCount() {
 			User user = user(VIEWER_ID);
 			given(userRepository.findById(VIEWER_ID)).willReturn(Optional.of(user));
 			PostSearchCriteria criteria = criteria("데님");
 			given(postSearchRepository.search(criteria, VIEWER_ID, null, SIZE)).willReturn(List.of());
+			given(postSearchRepository.countMatches(criteria, VIEWER_ID)).willReturn(5L);
 
 			PostSearchResult result = searchService.searchPosts(VIEWER_ID, criteria, null, SIZE);
 
-			assertThat(result.totalCount()).isZero();
+			assertThat(result.totalCount()).isEqualTo(5);
 			assertThat(result.slice().isEmpty()).isTrue();
-			verify(postSearchRepository, never()).countMatches(any(), any());
 			verify(postImageRepository, never()).findCovers(anyList());
 		}
 

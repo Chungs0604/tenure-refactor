@@ -6,6 +6,7 @@ import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import com.tenure.domain.block.repository.BlockPredicates;
 import com.tenure.domain.user.entity.User;
+import com.tenure.domain.user.enums.UserStatus;
 import com.tenure.global.pagination.Cursor;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ public class UserSearchRepositoryImpl implements UserSearchRepository {
 				.selectFrom(user)
 				.where(
 						user.nickname.containsIgnoreCase(keyword.trim()),
+						user.status.eq(UserStatus.ACTIVE),
 						BlockPredicates.excludeBlockedEitherWay(user.id, viewerId),
 						afterFollowerCount(cursor))
 				.orderBy(user.followerCount.desc(), user.id.desc())
