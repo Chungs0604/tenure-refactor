@@ -1,9 +1,11 @@
 package com.tenure.domain.post.repository;
 
 import com.tenure.domain.post.entity.Post;
+import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -15,6 +17,15 @@ public interface PostRepository extends JpaRepository<Post, Long>, PostRepositor
 	/** 상세·수정·삭제의 진입점. 삭제된 게시물은 없는 것으로 본다. */
 	@Query("select p from Post p where p.id = :postId and p.deletedAt is null")
 	Optional<Post> findActive(@Param("postId") Long postId);
+
+	/**
+	 * 행 잠금 조회. like_count·save_count 는 더티체킹만으로 증감하면 동시 요청 두 건이 같은 값을
+	 * 읽어 한 건만 반영되는 lost update 가 난다(ItemRepository.findActiveForUpdate 와 같은 패턴) —
+	 * like()/unlike()/save()/unsave() 전용이다.
+	 */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select p from Post p where p.id = :postId and p.deletedAt is null")
+	Optional<Post> findActiveForUpdate(@Param("postId") Long postId);
 
 	/** 상세는 작성자 정보를 함께 그린다 — 닉네임·프로필 사진·팔로워 수. */
 	@Query("select p from Post p join fetch p.author where p.id = :postId and p.deletedAt is null")
