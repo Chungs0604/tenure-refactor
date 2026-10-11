@@ -55,11 +55,13 @@ OOTD 게시 ──(태그)──▶ 아이템 실착 이력 축적 ──▶ 판
 
 - **완료**: `auth` · `user` · `address` · `payout` · `category` · `post` · `item` · `listing` ·
   `offer` · `order` · `payment`(offer/order 플로우에 내장) · `chat` · `notification` · `wishlist` ·
-  `follow` · `block` · `report`
-- **미착수**: `search`(엔티티만 존재, API-200~207)
+  `follow` · `block` · `report` · `search`
 - **전용 API 없음**: `settlement` — API-165(구매 확정)가 내부에서 자동 생성하는 구조라
   별도 컨트롤러를 두지 않는다(`api-spec.md` §3 CRUD 커버리지 참고). 구현 대상에서 빠지는 게
   아니라 애초에 단독 엔드포인트가 없는 도메인이다.
+
+`search`(API-200~209, PR #27)는 게시물·계정 검색, 추천 섹션, 최근 검색어·최근 본 사용자까지
+전부 구현됐다. 조회수·추천순 정렬은 Redis 버퍼 → 배치 반영(`PostSearchMetricsScheduler`) 구조다.
 
 `notification` 은 발행(`notify`/`notifyAll`)·조회·읽음 처리·수신 설정까지 전부 구현됐다.
 `listing` 이 가격 변경·판매 완료·판매 중 재전환 때, `follow` 가 팔로우 시점에 발행하는 훅도
