@@ -48,10 +48,8 @@ import com.tenure.domain.order.repository.TradeOrderRepository;
 import com.tenure.domain.payout.exception.PayoutErrorCode;
 import com.tenure.domain.payout.repository.PayoutAccountRepository;
 import com.tenure.domain.post.entity.Post;
-import com.tenure.domain.post.entity.PostImage;
 import com.tenure.domain.post.enums.AspectRatio;
 import com.tenure.domain.post.exception.PostErrorCode;
-import com.tenure.domain.post.repository.PostImageRepository;
 import com.tenure.domain.post.repository.PostRepository;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.user.enums.Gender;
@@ -59,7 +57,6 @@ import com.tenure.domain.user.enums.UserGrade;
 import com.tenure.domain.wishlist.repository.WishlistRepository;
 import com.tenure.global.exception.CustomException;
 import com.tenure.global.exception.ErrorCode;
-import com.tenure.global.storage.FileStorage;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -101,12 +98,11 @@ class ListingServiceTest {
 	@Mock private ItemOwnershipRepository itemOwnershipRepository;
 	@Mock private PayoutAccountRepository payoutAccountRepository;
 	@Mock private PostRepository postRepository;
-	@Mock private PostImageRepository postImageRepository;
+	@Mock private FeaturedPostAssembler featuredPostAssembler;
 	@Mock private TradeOrderRepository tradeOrderRepository;
 	@Mock private OfferService offerService;
 	@Mock private WishlistRepository wishlistRepository;
 	@Mock private NotificationService notificationService;
-	@Mock private FileStorage fileStorage;
 
 	// 매핑은 검증 대상이라 mock 이 아니라 실제 생성 구현을 넣는다
 	@Spy private ListingMapper listingMapper = new ListingMapperImpl();
@@ -631,20 +627,16 @@ class ListingServiceTest {
 			ItemListing listing = listing(item, seller(UserGrade.RECORD));
 			givenUpdatableListing(listing);
 
-			Post post = post(POST_ID, USER_ID);
-			given(listingFeaturedPostRepository.findAllByListingId(LISTING_ID))
-					.willReturn(List.of(ListingFeaturedPost.of(listing, post, 0)));
-			PostImage cover = PostImage.of(post, "post/2026/06/cover.jpg", 0, true);
-			given(postImageRepository.findCovers(List.of(POST_ID))).willReturn(List.of(cover));
-			given(fileStorage.toUrl("post/2026/06/cover.jpg"))
-					.willReturn("https://cdn.tenure.app/post/2026/06/cover.jpg");
+			FeaturedPostResponse card = FeaturedPostResponse.builder()
+					.postId(POST_ID)
+					.imageUrl("https://cdn.tenure.app/post/2026/06/cover.jpg")
+					.build();
+			given(featuredPostAssembler.toCards(any())).willReturn(List.of(card));
 
 			List<FeaturedPostResponse> response =
 					listingService.replaceFeaturedPosts(USER_ID, LISTING_ID, List.of(POST_ID));
 
-			assertThat(response).extracting(FeaturedPostResponse::getPostId).containsExactly(POST_ID);
-			assertThat(response.get(0).getImageUrl())
-					.isEqualTo("https://cdn.tenure.app/post/2026/06/cover.jpg");
+			assertThat(response).containsExactly(card);
 			verify(listingFeaturedPostRepository).deleteAllByListingId(LISTING_ID);
 			verify(listingFeaturedPostRepository).saveAll(any());
 		}

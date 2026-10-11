@@ -30,13 +30,11 @@ import com.tenure.domain.payout.exception.PayoutErrorCode;
 import com.tenure.domain.payout.repository.PayoutAccountRepository;
 import com.tenure.domain.post.entity.Post;
 import com.tenure.domain.post.exception.PostErrorCode;
-import com.tenure.domain.post.repository.PostImageRepository;
 import com.tenure.domain.post.repository.PostRepository;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.wishlist.repository.WishlistRepository;
 import com.tenure.global.exception.CustomException;
 import com.tenure.global.logging.Loggable;
-import com.tenure.global.storage.FileStorage;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -80,13 +78,12 @@ public class ListingService {
 	private final ItemOwnershipRepository itemOwnershipRepository;
 	private final PayoutAccountRepository payoutAccountRepository;
 	private final PostRepository postRepository;
-	private final PostImageRepository postImageRepository;
+	private final FeaturedPostAssembler featuredPostAssembler;
 	private final TradeOrderRepository tradeOrderRepository;
 	private final OfferService offerService;
 	private final WishlistRepository wishlistRepository;
 	private final NotificationService notificationService;
 	private final ListingMapper listingMapper;
-	private final FileStorage fileStorage;
 
 	/**
 	 * 판매 전환.
@@ -132,7 +129,7 @@ public class ListingService {
 		// 실측·상태는 아이템에 붙고 대표 OOTD 는 판매 등록에 붙음
 		itemFormApplier.replaceMeasurements(item, category, request.getMeasurements());
 		itemFormApplier.replaceConditions(item, request.getConditions());
-		replaceFeaturedPosts(listing, userId, request.getFeaturedPostIds());
+		applyFeaturedPosts(listing, userId, request.getFeaturedPostIds());
 
 		// 배지를 그리는 상태는 아이템이 가짐
 		item.changeSaleStatus(SaleStatus.ON_SALE);
@@ -179,7 +176,7 @@ public class ListingService {
 
 		itemFormApplier.replaceMeasurements(item, category, request.getMeasurements());
 		itemFormApplier.replaceConditions(item, request.getConditions());
-		replaceFeaturedPosts(listing, userId, request.getFeaturedPostIds());
+		applyFeaturedPosts(listing, userId, request.getFeaturedPostIds());
 
 		// 가격만 알림 대상임 — 위에서 떼어 둔 previousPrice 와 지금 요청값을 비교해서 실제로 바뀐 경우만 보냄
 		// 배송비·판매자 설명만 바뀐 요청은 여기 안 걸려서 알림이 안 나감
@@ -206,9 +203,9 @@ public class ListingService {
 			throw new CustomException(ListingErrorCode.LISTING_409_CLOSED);
 		}
 
-		replaceFeaturedPosts(listing, userId, postIds);
+		List<Post> ordered = applyFeaturedPosts(listing, userId, postIds);
 
-		return featuredPostsOf(listing.getId());
+		return featuredPostAssembler.toCards(ordered);
 	}
 
 	/**
@@ -312,7 +309,7 @@ public class ListingService {
 	 *
 	 * 본인 게시물만 걸 수 있다 — 남의 OOTD 로 내 상품을 증명할 수 없다.
 	 */
-	private void replaceFeaturedPosts(ItemListing listing, Long userId, List<Long> postIds) {
+	private List<Post> applyFeaturedPosts(ItemListing listing, Long userId, List<Long> postIds) {
 		// 중복을 걷어낸 뒤 개수를 셈
 		List<Long> distinct = postIds.stream().distinct().toList();
 
@@ -348,34 +345,14 @@ public class ListingService {
 			rows.add(ListingFeaturedPost.of(listing, ordered.get(i), i));
 		}
 		listingFeaturedPostRepository.saveAll(rows);
+
+		return ordered;
 	}
 
 	/**
 	 * 교체된 대표 OOTD 를 응답 모양으로 돌려준다. ListingQueryService#getFeaturedPosts 와 같은
 	 * 조회지만, 두 서비스를 서로 의존하게 만들지 않기 위해 여기서 다시 조립한다.
 	 */
-	private List<FeaturedPostResponse> featuredPostsOf(Long listingId) {
-		// 선택 순서대로 내려옴
-		List<Post> posts = listingFeaturedPostRepository.findAllByListingId(listingId).stream()
-				.map(ListingFeaturedPost::getPost)
-				.toList();
-
-		if (posts.isEmpty()) {
-			return List.of();
-		}
-
-		// 카드마다 대표 사진을 다시 읽으면 장수만큼 쿼리가 늘어남
-		Map<Long, String> covers = postImageRepository
-				.findCovers(posts.stream().map(Post::getId).toList()).stream()
-				.collect(Collectors.toMap(
-						image -> image.getPost().getId(),
-						image -> fileStorage.toUrl(image.getImageKey())));
-
-		return posts.stream()
-				.map(post -> listingMapper.toFeaturedPostResponse(post, covers.get(post.getId())))
-				.toList();
-	}
-
 	/** 기본 사용자는 배송비를 보낼 수 없다. 화면에서도 '0원' 으로 잠겨 있다 */
 	private Integer resolveShippingFee(User seller, ListingCreateRequest request) {
 		validateFeeFieldsForBasicGrade(seller, request);

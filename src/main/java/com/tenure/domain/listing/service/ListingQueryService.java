@@ -20,7 +20,6 @@ import com.tenure.domain.listing.mapper.ListingMapper;
 import com.tenure.domain.listing.repository.ItemListingRepository;
 import com.tenure.domain.listing.repository.ListingFeaturedPostRepository;
 import com.tenure.domain.post.entity.Post;
-import com.tenure.domain.post.repository.PostImageRepository;
 import com.tenure.domain.post.repository.PostItemTagRepository;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.user.mapper.UserMapper;
@@ -32,7 +31,6 @@ import com.tenure.global.storage.FileStorage;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Pageable;
@@ -70,7 +68,7 @@ public class ListingQueryService {
 	private final PostItemTagRepository postItemTagRepository;
 	private final WishlistRepository wishlistRepository;
 	private final PurchaseOfferRepository purchaseOfferRepository;
-	private final PostImageRepository postImageRepository;
+	private final FeaturedPostAssembler featuredPostAssembler;
 	private final ListingMapper listingMapper;
 	private final FileStorage fileStorage;
 
@@ -167,30 +165,12 @@ public class ListingQueryService {
 		List<Post> posts = listingFeaturedPostRepository.findAllByListingId(listingId).stream()
 				.map(ListingFeaturedPost::getPost)
 				.toList();
-		return toPostCards(posts);
+		return featuredPostAssembler.toCards(posts);
 	}
 
 	private List<FeaturedPostResponse> taggedPostsOf(Long itemId) {
-		return toPostCards(
+		return featuredPostAssembler.toCards(
 				postItemTagRepository.findTaggedPosts(itemId, Pageable.ofSize(PREVIEW_SIZE)));
-	}
-
-
-	/** 카드마다 대표 사진을 다시 읽으면 장수만큼 쿼리가 늘어남 */
-	private List<FeaturedPostResponse> toPostCards(List<Post> posts) {
-		if (posts.isEmpty()) {
-			return List.of();
-		}
-
-		Map<Long, String> covers = postImageRepository
-				.findCovers(posts.stream().map(Post::getId).toList()).stream()
-				.collect(Collectors.toMap(
-						image -> image.getPost().getId(),
-						image -> fileStorage.toUrl(image.getImageKey())));
-
-		return posts.stream()
-				.map(post -> listingMapper.toFeaturedPostResponse(post, covers.get(post.getId())))
-				.toList();
 	}
 
 	private List<String> imageUrlsOf(Long itemId) {
