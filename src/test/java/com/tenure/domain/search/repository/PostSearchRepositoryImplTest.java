@@ -117,6 +117,32 @@ class PostSearchRepositoryImplTest extends RepositorySliceTestSupport {
 		}
 
 		@Test
+		@DisplayName("brandName·name이 한 글자면 3등급(키워드가 필드를 포함하는 방향) 판정에서 제외된다 — "
+				+ "한 글자 조합이면 어떤 검색어로도 3등급(최상위 매칭)이 돼 순위를 조작할 수 있었다")
+		void search_recommended_singleCharBrandOrName_doesNotQualifyForGrade3() {
+			// brandName="e"·name="5" — "Levis 501" 이 둘 다 부분 문자열로 포함하지만 한 글자라 제외돼야 한다
+			Item oneCharBothFields = persistItem(101L, "e", "5");
+			Post oneCharPost = persistPost();
+			tag(oneCharPost, oneCharBothFields);
+
+			List<PostSearchRow> rows = search(criteria("Levis 501", PostSortType.RECOMMENDED));
+
+			assertThat(rows).extracting(r -> r.post().getId()).doesNotContain(oneCharPost.getId());
+		}
+
+		@Test
+		@DisplayName("brandName·name이 최소 길이(2자) 이상이면 종전처럼 3등급이 성립한다")
+		void search_recommended_twoCharBrandAndName_stillQualifiesForGrade3() {
+			Item twoCharBothFields = persistItem(101L, "Le", "50");
+			Post twoCharPost = persistPost();
+			tag(twoCharPost, twoCharBothFields);
+
+			List<PostSearchRow> rows = search(criteria("Levis 501", PostSortType.RECOMMENDED));
+
+			assertThat(rows).extracting(r -> r.post().getId()).containsExactly(twoCharPost.getId());
+		}
+
+		@Test
 		@DisplayName("카테고리명(1등급)은 세부 카테고리명으로도, 그 대분류명으로도 찾힌다")
 		void search_categoryKeyword_matchesByOwnNameAndParentName() {
 			Item item = persistItem(101L, "Uniqlo", "Basic");
