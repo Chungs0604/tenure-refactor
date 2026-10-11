@@ -179,14 +179,7 @@ public class ItemService {
 					return new CustomException(ItemErrorCode.ITEM_404);
 				});
 
-		// 등록자여도 팔았으면 남의 옷임
-		itemOwnershipRepository.findCurrent(itemId)
-				.filter(ownership -> ownership.getOwner().getId().equals(userId))
-				.orElseThrow(() -> {
-					log.info("현재 소유자가 아니다 userId={} itemId={}", userId, itemId);
-					return new CustomException(ItemErrorCode.ITEM_403);
-				});
-
+		requireCurrentOwner(userId, itemId);
 		return item;
 	}
 
@@ -201,15 +194,21 @@ public class ItemService {
 					return new CustomException(ItemErrorCode.ITEM_404);
 				});
 
-		// 등록자여도 팔았으면 남의 옷임
+		requireCurrentOwner(userId, itemId);
+		return item;
+	}
+
+	/**
+	 * 등록자여도 팔았으면 남의 옷이다 — 소유자 판정 기준을 두 finder 가 공유한다. 복제해 두면
+	 * 한쪽만 고쳐졌을 때 "수정은 막히는데 삭제는 통과" 같은 비대칭이 조용히 생긴다.
+	 */
+	private void requireCurrentOwner(Long userId, Long itemId) {
 		itemOwnershipRepository.findCurrent(itemId)
 				.filter(ownership -> ownership.getOwner().getId().equals(userId))
 				.orElseThrow(() -> {
 					log.info("현재 소유자가 아니다 userId={} itemId={}", userId, itemId);
 					return new CustomException(ItemErrorCode.ITEM_403);
 				});
-
-		return item;
 	}
 
 	private User findUser(Long userId) {

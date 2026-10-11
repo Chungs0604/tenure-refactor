@@ -441,6 +441,9 @@ public class OfferService {
 	@Loggable("판매 내림/삭제에 따른 제안 정리")
 	public void cancelPendingForDelist(Long itemId, OfferCancelReason reason) {
 		LocalDateTime now = LocalDateTime.now();
+		// 사유는 호출 전체에서 고정이다 — 건마다 다시 판정하지 않고, 지원하지 않는 사유면
+		// 상태를 하나도 안 건드린 시점에 바로 실패한다
+		String notificationBody = delistCancelNotificationBody(reason);
 
 		// id 만 가볍게 훑고, 전이는 건마다 잠금 재조회로 다시 확인함 — 그 사이 구매자가 직접
 		// 취소했거나 이미 처리된 건이면 더 이상 대상이 아님
@@ -451,18 +454,24 @@ public class OfferService {
 
 				notificationService.notify(
 						offer.getBuyer(), NotificationSettingType.REQUEST_AUTO_CANCEL, NotificationCategory.TRADE_STATUS,
-						offer.getItem().getName(), delistCancelNotificationBody(reason),
+						offer.getItem().getName(), notificationBody,
 						offer.getItem().getCoverImageKey(), NotificationTargetType.OFFER, offer.getId());
 			});
 		}
 	}
 
-	/** cancelPendingForDelist 가 다루는 두 사유(LISTING_DELISTED·ITEM_DELETED)만 문구를 가름 */
+	/**
+	 * cancelPendingForDelist 가 다루는 두 사유(LISTING_DELISTED·ITEM_DELETED)만 문구를 가름.
+	 *
+	 * default 대신 나머지 사유를 전부 나열해 switch 를 exhaustive 하게 둔다 — OfferCancelReason
+	 * 에 값이 추가되는데 이 메서드를 안 고치면, default 였다면 런타임까지 숨어 있었을 실수가
+	 * 컴파일 시점에 드러난다.
+	 */
 	private String delistCancelNotificationBody(OfferCancelReason reason) {
 		return switch (reason) {
 			case LISTING_DELISTED -> "판매가 종료되어 보낸 제안이 취소됐어요.";
 			case ITEM_DELETED -> "아이템이 삭제되어 보낸 제안이 취소됐어요.";
-			default -> throw new IllegalArgumentException(
+			case BUYER_CANCELED, OTHER_OFFER_ACCEPTED, WITHDRAWN -> throw new IllegalStateException(
 					"cancelPendingForDelist 에서 다루지 않는 취소 사유임: " + reason);
 		};
 	}
