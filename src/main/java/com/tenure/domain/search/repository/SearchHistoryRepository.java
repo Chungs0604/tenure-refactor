@@ -6,7 +6,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-public interface SearchHistoryRepository extends JpaRepository<SearchHistory, Long> {
+public interface SearchHistoryRepository extends JpaRepository<SearchHistory, Long>, SearchHistoryRepositoryCustom {
 
 	/** 회원탈퇴 시 하드 삭제. 검색 이력은 다시 볼 일도 남길 이유도 없음 */
 	@Modifying(clearAutomatically = true, flushAutomatically = true)

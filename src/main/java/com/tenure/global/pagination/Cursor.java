@@ -2,6 +2,7 @@ package com.tenure.global.pagination;
 
 import com.tenure.global.exception.CommonErrorCode;
 import com.tenure.global.exception.CustomException;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
@@ -57,6 +58,22 @@ public class Cursor {
 				.build();
 	}
 
+	/** 검색 '추천 순' 정렬 키(rank_score)에 쓴다. */
+	public static Cursor of(BigDecimal sortValue, Long id) {
+		return Cursor.builder()
+				.sortKey(sortValue.toString())
+				.id(id)
+				.build();
+	}
+
+	/** 좋아요·조회수·저장 수 정렬에 쓴다. */
+	public static Cursor of(Integer sortValue, Long id) {
+		return Cursor.builder()
+				.sortKey(sortValue.toString())
+				.id(id)
+				.build();
+	}
+
 	/**
 	 * 인코딩된 문자열에서 되살린다. 정렬 키가 이미 ISO 표기라 그대로 담는다.
 	 *
@@ -81,6 +98,22 @@ public class Cursor {
 		try {
 			return LocalDate.parse(sortKey);
 		} catch (DateTimeParseException e) {
+			throw new CustomException(CommonErrorCode.BAD_REQUEST);
+		}
+	}
+
+	public BigDecimal asBigDecimal() {
+		try {
+			return new BigDecimal(sortKey);
+		} catch (NumberFormatException e) {
+			throw new CustomException(CommonErrorCode.BAD_REQUEST);
+		}
+	}
+
+	public Integer asInt() {
+		try {
+			return Integer.parseInt(sortKey);
+		} catch (NumberFormatException e) {
 			throw new CustomException(CommonErrorCode.BAD_REQUEST);
 		}
 	}
