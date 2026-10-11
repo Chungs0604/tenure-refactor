@@ -188,6 +188,16 @@ public class Item extends BaseEntity {
 		this.offerAllowed = offerAllowed;
 	}
 
+	/** 관심 등록. 비관적 락으로 읽은 행에서만 불러야 동시 등록·해제가 수를 안 잃음 */
+	public void increaseWishCount() {
+		this.wishCount = this.wishCount + 1;
+	}
+
+	/** 관심 해제. 비관적 락으로 읽은 행에서만 불러야 동시 등록·해제가 수를 안 잃음 */
+	public void decreaseWishCount() {
+		this.wishCount = this.wishCount - 1;
+	}
+
 	/**
 	 * 판매 상태 전이 (DEC-026).
 	 *

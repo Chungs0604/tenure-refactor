@@ -35,4 +35,15 @@ public interface ItemListingRepository extends JpaRepository<ItemListing, Long> 
 	@Query("select l from ItemListing l join fetch l.seller "
 			+ "where l.item.id = :itemId order by l.listedAt desc, l.id desc limit 1")
 	Optional<ItemListing> findLatestByItemId(@Param("itemId") Long itemId);
+
+	/**
+	 * 여러 아이템의 가장 최근 판매 등록(닫힌 것 포함)을 한 번에 읽음. 위시리스트 목록처럼
+	 * 페이지마다 아이템이 여럿인 곳에서 건마다 findLatestByItemId 를 부르면 N+1 이 됨.
+	 *
+	 * 아이템당 여러 행이 섞여 오므로, 아이템 안에서 최신 한 건만 남기는 일은 호출하는 쪽이
+	 * item.id 로 묶어 첫 행만 취하는 방식으로 함(정렬이 이미 최신순이라 그룹의 첫 행이 최신).
+	 */
+	@Query("select l from ItemListing l join fetch l.seller "
+			+ "where l.item.id in :itemIds order by l.item.id asc, l.listedAt desc, l.id desc")
+	List<ItemListing> findAllByItemIdsOrderByLatest(@Param("itemIds") Collection<Long> itemIds);
 }

@@ -4,15 +4,19 @@ import com.tenure.domain.user.entity.User;
 import com.tenure.domain.wishlist.entity.Wishlist;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-public interface WishlistRepository extends JpaRepository<Wishlist, Long> {
+public interface WishlistRepository extends JpaRepository<Wishlist, Long>, WishlistRepositoryCustom {
 
 	// 마이페이지의 '위시 4'. 위시리스트 목록과 같은 조건이다
 	int countByUserId(Long userId);
+
+	/** 관심 해제용. itemId 가 호출 키라 wishlistId 를 몰라도 찾을 수 있어야 함 */
+	Optional<Wishlist> findByUserIdAndItemId(Long userId, Long itemId);
 
 	/**
 	 * 태그된 아이템 목록의 벨 아이콘 상태. 행마다 묻지 않고 한 번에 받는다.
