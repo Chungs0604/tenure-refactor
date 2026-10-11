@@ -53,10 +53,17 @@ public class EmailVerificationStore {
 	private final StringRedisTemplate redis;
 	private final SecureRandom random = new SecureRandom();
 
-	/** 인증번호를 새로 발급한다. 기존 것이 있으면 덮어써서 무효화한다. */
+	/**
+	 * 인증번호를 새로 발급한다. 기존 것이 있으면 덮어써서 무효화한다.
+	 *
+	 * 대조 실패 횟수도 함께 지운다 — 코드를 새로 발급하면서 이전 코드의 실패 횟수를 들고 가면,
+	 * 재발송 직후 정상적으로 몇 번 틀렸을 뿐인데 누적 횟수가 바로 한도를 넘어 새 코드가
+	 * 무효화될 수 있다(대조 실패 횟수는 코드와 생애주기를 같이 해야 한다).
+	 */
 	public String issueCode(String email, VerificationPurpose purpose) {
 		String code = "%06d".formatted(random.nextInt(CODE_BOUND));
 		redis.opsForValue().set(codeKey(email, purpose), code, CODE_TTL);
+		clearConfirmAttempts(email, purpose);
 		return code;
 	}
 
@@ -90,26 +97,56 @@ public class EmailVerificationStore {
 		redis.delete(attemptKey(email, purpose));
 	}
 
-	/** 재전송 쿨다운 중인지 본다. */
+	/**
+	 * 재전송 쿨다운 중인지 본다. 명백히 막힌 요청을 DB 조회(가입 여부 확인) 전에 거르기 위한
+	 * 얕은 선제 검사일 뿐이다 — 읽고 나서 거는 사이의 짧은 창은 동시 요청을 막지 못한다.
+	 * 실제 차단은 {@link #reserveSendCooldown} 이 한다.
+	 */
 	public boolean isInSendCooldown(String email, VerificationPurpose purpose) {
 		return Boolean.TRUE.equals(redis.hasKey(sendCooldownKey(email, purpose)));
 	}
 
-	/** 오늘 보낸 횟수가 일일 한도를 넘었는지 본다. */
+	/** 오늘 보낸 횟수가 일일 한도를 넘었는지 본다. {@link #isInSendCooldown} 과 같은 얕은 선제 검사다. */
 	public boolean exceedsDailySendLimit(String email, VerificationPurpose purpose) {
 		String count = redis.opsForValue().get(sendCountKey(email, purpose));
 		return count != null && Long.parseLong(count) >= MAX_DAILY_SEND;
 	}
 
-	/** 발송에 성공한 뒤 쿨다운을 걸고 일일 발송 횟수를 하나 늘린다. */
-	public void markSent(String email, VerificationPurpose purpose) {
-		redis.opsForValue().set(sendCooldownKey(email, purpose), "1", SEND_COOLDOWN);
+	/**
+	 * 쿨다운 슬롯을 원자적으로 예약한다({@code SETNX}). 동시에 들어온 요청 여럿이 얕은 선제
+	 * 검사를 전부 통과했더라도, 여기서는 하나만 성공한다.
+	 *
+	 * @return 예약에 성공했으면(= 쿨다운 중이 아니었으면) true
+	 */
+	public boolean reserveSendCooldown(String email, VerificationPurpose purpose) {
+		Boolean reserved = redis.opsForValue()
+				.setIfAbsent(sendCooldownKey(email, purpose), "1", SEND_COOLDOWN);
+		return Boolean.TRUE.equals(reserved);
+	}
 
+	/** 예약 후 실제 발송이 실패했을 때 쿨다운을 되돌린다 — 인프라 장애로 재시도 기회를 깎지 않는다. */
+	public void releaseSendCooldown(String email, VerificationPurpose purpose) {
+		redis.delete(sendCooldownKey(email, purpose));
+	}
+
+	/**
+	 * 일일 발송 횟수를 원자적으로 늘리고({@code INCR}) 한도 이내인지 함께 판정한다. 읽고 나서
+	 * 늘리는 두 단계로 나누면 그 사이 동시 요청들이 같은 옛 값을 보고 전부 통과할 수 있다.
+	 *
+	 * @return 이번 증가를 반영해도 한도 이내였으면 true
+	 */
+	public boolean incrementAndCheckDailySend(String email, VerificationPurpose purpose) {
 		String key = sendCountKey(email, purpose);
 		Long count = redis.opsForValue().increment(key);
 		if (count != null && count == 1L) {
 			redis.expire(key, SEND_DAILY_WINDOW);
 		}
+		return count != null && count <= MAX_DAILY_SEND;
+	}
+
+	/** 예약 후 실제 발송이 실패했을 때 일일 횟수를 되돌린다. */
+	public void decrementDailySend(String email, VerificationPurpose purpose) {
+		redis.opsForValue().decrement(sendCountKey(email, purpose));
 	}
 
 	/**

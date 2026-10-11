@@ -108,6 +108,65 @@ class EmailVerificationStoreTest {
 			// 매번 TTL 을 다시 걸면 계속 대입하는 동안 만료가 미뤄져 창이 넓어진다
 			verify(redis, never()).expire(anyString(), any(Duration.class));
 		}
+
+		@Test
+		@DisplayName("새 인증번호를 발급하면 이전 코드의 대조 실패 횟수를 지운다")
+		void issueCode_clearsPreviousAttemptCount() {
+			given(redis.opsForValue()).willReturn(valueOperations);
+
+			store.issueCode("gildong@naver.com", PURPOSE);
+
+			// 안 지우면 재발송 직후 몇 번 틀렸을 뿐인데 누적 횟수가 이전 코드 것과 합쳐져
+			// 새 코드가 바로 무효화될 수 있다
+			verify(redis).delete("email-verify-attempt:SIGN_UP:gildong@naver.com");
+		}
+	}
+
+	@Nested
+	@DisplayName("발송 제한 원자적 예약")
+	class SendReservation {
+
+		@Test
+		@DisplayName("쿨다운 중이 아니면 SETNX 로 예약하고 true 를 돌려준다")
+		void reserveSendCooldown_notInCooldown_reservesAndReturnsTrue() {
+			given(redis.opsForValue()).willReturn(valueOperations);
+			given(valueOperations.setIfAbsent(
+					"email-verify-cooldown:SIGN_UP:gildong@naver.com", "1", EmailVerificationStore.SEND_COOLDOWN))
+					.willReturn(true);
+
+			assertThat(store.reserveSendCooldown("gildong@naver.com", PURPOSE)).isTrue();
+		}
+
+		@Test
+		@DisplayName("이미 쿨다운 중이면(동시 요청 포함) SETNX 가 실패해 false 를 돌려준다")
+		void reserveSendCooldown_alreadyReserved_returnsFalse() {
+			given(redis.opsForValue()).willReturn(valueOperations);
+			given(valueOperations.setIfAbsent(
+					"email-verify-cooldown:SIGN_UP:gildong@naver.com", "1", EmailVerificationStore.SEND_COOLDOWN))
+					.willReturn(false);
+
+			assertThat(store.reserveSendCooldown("gildong@naver.com", PURPOSE)).isFalse();
+		}
+
+		@Test
+		@DisplayName("증가 후 값이 일일 한도를 넘지 않으면 true 다")
+		void incrementAndCheckDailySend_withinLimit_returnsTrue() {
+			given(redis.opsForValue()).willReturn(valueOperations);
+			given(valueOperations.increment("email-verify-sendcount:SIGN_UP:gildong@naver.com"))
+					.willReturn((long) EmailVerificationStore.MAX_DAILY_SEND);
+
+			assertThat(store.incrementAndCheckDailySend("gildong@naver.com", PURPOSE)).isTrue();
+		}
+
+		@Test
+		@DisplayName("증가 후 값이 일일 한도를 넘으면 false 다 — 읽고 나서 늘리는 두 단계가 아니라 INCR 결과 자체로 판정한다")
+		void incrementAndCheckDailySend_overLimit_returnsFalse() {
+			given(redis.opsForValue()).willReturn(valueOperations);
+			given(valueOperations.increment("email-verify-sendcount:SIGN_UP:gildong@naver.com"))
+					.willReturn((long) EmailVerificationStore.MAX_DAILY_SEND + 1);
+
+			assertThat(store.incrementAndCheckDailySend("gildong@naver.com", PURPOSE)).isFalse();
+		}
 	}
 
 	@Nested

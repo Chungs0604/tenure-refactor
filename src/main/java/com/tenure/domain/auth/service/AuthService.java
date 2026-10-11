@@ -216,7 +216,9 @@ public class AuthService {
 	@Loggable("인증번호 발송")
 	public EmailVerificationSendResponse sendCode(EmailVerificationSendRequest request) {
 
-		// 재전송 어뷰징 차단(design-audit Q7) — 계정 조회보다 먼저 봐서 불필요한 DB 조회도 아낀다
+		// 재전송 어뷰징 차단(design-audit Q7) — 계정 조회보다 먼저 봐서 불필요한 DB 조회도 아낀다.
+		// 얕은 선제 검사일 뿐이다 — 동시 요청 두 개가 똑같이 이 두 검사를 통과할 수 있다. 진짜
+		// 차단은 아래 원자적 예약에서 일어난다
 		if (verificationStore.isInSendCooldown(request.getEmail(), request.getPurpose())) {
 			log.warn("재전송 쿨다운 중이다. email={} purpose={}", request.getEmail(), request.getPurpose());
 			throw new CustomException(AuthErrorCode.AUTH_429_CODE_RESEND_COOLDOWN);
@@ -238,15 +240,30 @@ public class AuthService {
 			throw new CustomException(AuthErrorCode.AUTH_404_EMAIL);
 		}
 
-		// 인증번호 발급. 같은 (email, purpose) 의 이전 번호는 이 시점에 무효화
-		String code = verificationStore.issueCode(request.getEmail(), request.getPurpose());
+		// 원자적 예약 — 위의 얕은 선제 검사를 동시에 통과한 요청이 여럿이어도 쿨다운은 하나만
+		// 가져간다. 늦게 온 쪽은 여기서 걸린다
+		if (!verificationStore.reserveSendCooldown(request.getEmail(), request.getPurpose())) {
+			log.warn("재전송 쿨다운 경합에서 졌다. email={} purpose={}", request.getEmail(), request.getPurpose());
+			throw new CustomException(AuthErrorCode.AUTH_429_CODE_RESEND_COOLDOWN);
+		}
+		if (!verificationStore.incrementAndCheckDailySend(request.getEmail(), request.getPurpose())) {
+			verificationStore.releaseSendCooldown(request.getEmail(), request.getPurpose());
+			log.warn("일일 발송 한도 경합에서 졌다. email={} purpose={}", request.getEmail(), request.getPurpose());
+			throw new CustomException(AuthErrorCode.AUTH_429_CODE_DAILY_LIMIT);
+		}
 
-		// 메일 발송
-		emailSender.sendVerificationCode(request.getEmail(), code);
-
-		// 발송에 성공한 뒤에만 쿨다운·일일 횟수를 기록한다 — 메일 발송 실패까지 한도에 넣으면
-		// 인프라 장애가 사용자의 재시도 기회를 깎아먹는다
-		verificationStore.markSent(request.getEmail(), request.getPurpose());
+		String code;
+		try {
+			// 인증번호 발급. 같은 (email, purpose) 의 이전 번호는 이 시점에 무효화
+			code = verificationStore.issueCode(request.getEmail(), request.getPurpose());
+			emailSender.sendVerificationCode(request.getEmail(), code);
+		} catch (RuntimeException e) {
+			// 발송 실패까지 한도에 넣으면 인프라 장애가 사용자의 재시도 기회를 깎아먹는다 —
+			// 위에서 선점한 예약을 되돌린다
+			verificationStore.releaseSendCooldown(request.getEmail(), request.getPurpose());
+			verificationStore.decrementDailySend(request.getEmail(), request.getPurpose());
+			throw e;
+		}
 
 		return EmailVerificationSendResponse.builder()
 				.expiresAt(LocalDateTime.now().plus(EmailVerificationStore.CODE_TTL))

@@ -45,6 +45,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -315,6 +316,8 @@ class AuthServiceTest {
 		@DisplayName("가입용이고 미가입 이메일이면 인증번호를 발송한다")
 		void sendCode_signUpWithNewEmail_sendsMail() {
 			given(userRepository.existsByEmail(EMAIL)).willReturn(false);
+			given(verificationStore.reserveSendCooldown(EMAIL, SIGN_UP)).willReturn(true);
+			given(verificationStore.incrementAndCheckDailySend(EMAIL, SIGN_UP)).willReturn(true);
 			given(verificationStore.issueCode(EMAIL, SIGN_UP)).willReturn(CODE);
 
 			LocalDateTime before = LocalDateTime.now();
@@ -325,8 +328,60 @@ class AuthServiceTest {
 			assertThat(response.getExpiresAt())
 					.isAfterOrEqualTo(before.plus(EmailVerificationStore.CODE_TTL))
 					.isBeforeOrEqualTo(LocalDateTime.now().plus(EmailVerificationStore.CODE_TTL));
-			// 쿨다운·일일 한도 집계가 안 되면 재전송 제한이 동작하지 않는다
-			verify(verificationStore).markSent(EMAIL, SIGN_UP);
+			// 쿨다운·일일 한도 예약이 안 되면 재전송 제한이 동작하지 않는다
+			verify(verificationStore).reserveSendCooldown(EMAIL, SIGN_UP);
+			verify(verificationStore).incrementAndCheckDailySend(EMAIL, SIGN_UP);
+			verify(verificationStore, never()).releaseSendCooldown(any(), any());
+			verify(verificationStore, never()).decrementDailySend(any(), any());
+		}
+
+		@Test
+		@DisplayName("얕은 검사는 통과했지만 쿨다운 예약 경합에서 지면 AUTH_429_CODE_RESEND_COOLDOWN 이고 메일을 보내지 않는다")
+		void sendCode_loseCooldownReservationRace_throwsTooManyRequests() {
+			given(userRepository.existsByEmail(EMAIL)).willReturn(false);
+			given(verificationStore.reserveSendCooldown(EMAIL, SIGN_UP)).willReturn(false);
+
+			assertThatThrownBy(() -> authService.sendCode(sendRequest(SIGN_UP)))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_429_CODE_RESEND_COOLDOWN);
+
+			verifyNoInteractions(emailSender);
+			verify(verificationStore, never()).issueCode(anyString(), any());
+			verify(verificationStore, never()).incrementAndCheckDailySend(any(), any());
+		}
+
+		@Test
+		@DisplayName("쿨다운 예약은 이겼지만 일일 한도 예약에서 지면 쿨다운 예약을 되돌리고 AUTH_429_CODE_DAILY_LIMIT 이다")
+		void sendCode_loseDailyLimitReservationRace_releasesCooldownAndThrows() {
+			given(userRepository.existsByEmail(EMAIL)).willReturn(false);
+			given(verificationStore.reserveSendCooldown(EMAIL, SIGN_UP)).willReturn(true);
+			given(verificationStore.incrementAndCheckDailySend(EMAIL, SIGN_UP)).willReturn(false);
+
+			assertThatThrownBy(() -> authService.sendCode(sendRequest(SIGN_UP)))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_429_CODE_DAILY_LIMIT);
+
+			verifyNoInteractions(emailSender);
+			verify(verificationStore).releaseSendCooldown(EMAIL, SIGN_UP);
+		}
+
+		@Test
+		@DisplayName("예약까지 마쳤는데 메일 발송이 실패하면 쿨다운·일일 횟수 예약을 되돌리고 원래 예외를 그대로 전파한다")
+		void sendCode_mailSendFails_rollsBackReservation() {
+			given(userRepository.existsByEmail(EMAIL)).willReturn(false);
+			given(verificationStore.reserveSendCooldown(EMAIL, SIGN_UP)).willReturn(true);
+			given(verificationStore.incrementAndCheckDailySend(EMAIL, SIGN_UP)).willReturn(true);
+			given(verificationStore.issueCode(EMAIL, SIGN_UP)).willReturn(CODE);
+			RuntimeException mailFailure = new RuntimeException("smtp down");
+			doThrow(mailFailure).when(emailSender).sendVerificationCode(EMAIL, CODE);
+
+			assertThatThrownBy(() -> authService.sendCode(sendRequest(SIGN_UP)))
+					.isSameAs(mailFailure);
+
+			verify(verificationStore).releaseSendCooldown(EMAIL, SIGN_UP);
+			verify(verificationStore).decrementDailySend(EMAIL, SIGN_UP);
 		}
 
 		@Test
@@ -363,6 +418,8 @@ class AuthServiceTest {
 		@DisplayName("비밀번호 찾기이고 가입된 이메일이면 인증번호를 발송한다")
 		void sendCode_passwordResetWithJoinedEmail_sendsMail() {
 			given(userRepository.existsByEmail(EMAIL)).willReturn(true);
+			given(verificationStore.reserveSendCooldown(EMAIL, PASSWORD_RESET)).willReturn(true);
+			given(verificationStore.incrementAndCheckDailySend(EMAIL, PASSWORD_RESET)).willReturn(true);
 			given(verificationStore.issueCode(EMAIL, PASSWORD_RESET)).willReturn(CODE);
 
 			authService.sendCode(sendRequest(PASSWORD_RESET));
