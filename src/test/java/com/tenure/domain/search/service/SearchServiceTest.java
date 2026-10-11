@@ -222,6 +222,38 @@ class SearchServiceTest {
 			assertThat(response.getPopularUsers()).extracting("id").containsExactly(4L);
 			assertThat(response.getPopularUsers().get(0).getIsFollowing()).isFalse();
 		}
+
+		@Test
+		@DisplayName("리포지토리가 hasNext 판단용 여분 1건을 더 돌려줘도, 각 섹션은 미리보기 개수만큼만 내려간다")
+		void getRecommendations_repositoryReturnsOneExtraRow_trimsToPreviewSize() {
+			int previewSize = 8;
+			given(recentViewStore.findRecentTargetIds(VIEWER_ID, RecentViewTargetType.POST, 10))
+					.willReturn(List.of(100L));
+
+			List<Post> similarRows = posts(1L, previewSize + 1);
+			List<Post> popularRows = posts(101L, previewSize + 1);
+			List<Post> latestRows = posts(201L, previewSize + 1);
+			List<User> popularUserRows = users(301L, previewSize + 1);
+
+			given(recommendationRepository.findSimilarToRecent(List.of(100L), VIEWER_ID, null, previewSize))
+					.willReturn(similarRows);
+			given(recommendationRepository.findPopularStyle(VIEWER_ID, null, previewSize)).willReturn(popularRows);
+			given(recommendationRepository.findNewOotd(VIEWER_ID, null, previewSize)).willReturn(latestRows);
+			given(recommendationRepository.findPopularUsers(VIEWER_ID, null, previewSize))
+					.willReturn(popularUserRows);
+			given(postImageRepository.findCovers(anyList())).willAnswer(invocation -> List.<PostImage>of());
+			given(followRepository.findFollowingIdsAmong(eq(VIEWER_ID), anyList())).willReturn(List.of());
+			givenUrlPrefix();
+
+			RecommendationResponse response = searchService.getRecommendations(VIEWER_ID);
+
+			assertThat(response.getSimilarPosts()).hasSize(previewSize);
+			assertThat(response.getPopularPosts()).hasSize(previewSize);
+			assertThat(response.getLatestPosts()).hasSize(previewSize);
+			assertThat(response.getPopularUsers()).hasSize(previewSize);
+			// 잘라낸 쪽이 뒤에 붙은 여분이 아니라 앞에서부터 size 개인지도 확인한다
+			assertThat(response.getSimilarPosts()).extracting("id").containsExactly(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L);
+		}
 	}
 
 	@Nested
@@ -361,6 +393,20 @@ class SearchServiceTest {
 		Post post = Post.publish(user(99L), LocalDate.of(2026, 6, 21), AspectRatio.RATIO_3_4, false);
 		ReflectionTestUtils.setField(post, "id", id);
 		return post;
+	}
+
+	/** id 를 startId 부터 count 개 연속으로 매긴 Post 목록. */
+	private static List<Post> posts(Long startId, int count) {
+		return java.util.stream.LongStream.range(0, count)
+				.mapToObj(offset -> post(startId + offset))
+				.toList();
+	}
+
+	/** id 를 startId 부터 count 개 연속으로 매긴 User 목록. */
+	private static List<User> users(Long startId, int count) {
+		return java.util.stream.LongStream.range(0, count)
+				.mapToObj(offset -> user(startId + offset))
+				.toList();
 	}
 
 	private static Post postWithRankScore(Long id, BigDecimal rankScore) {

@@ -121,14 +121,20 @@ public class SearchService {
 		List<Long> recentPostIds = recentViewStore.findRecentTargetIds(
 				userId, RecentViewTargetType.POST, RECENT_VIEW_SEED_LIMIT);
 
+		// 리포지토리는 hasNext 판단용으로 size + 1 건을 읽는다(더보기 API 와 같은 메서드를 공유한다).
+		// 미리보기는 hasNext 가 필요 없으니 그 여분 한 건만 잘라낸다 — 안 자르면 섹션마다 9개가 나간다.
 		List<Post> similarPosts = recommendationRepository
-				.findSimilarToRecent(recentPostIds, userId, null, RECOMMENDATION_PREVIEW_SIZE);
+				.findSimilarToRecent(recentPostIds, userId, null, RECOMMENDATION_PREVIEW_SIZE)
+				.stream().limit(RECOMMENDATION_PREVIEW_SIZE).toList();
 		List<Post> popularPosts = recommendationRepository
-				.findPopularStyle(userId, null, RECOMMENDATION_PREVIEW_SIZE);
+				.findPopularStyle(userId, null, RECOMMENDATION_PREVIEW_SIZE)
+				.stream().limit(RECOMMENDATION_PREVIEW_SIZE).toList();
 		List<Post> latestPosts = recommendationRepository
-				.findNewOotd(userId, null, RECOMMENDATION_PREVIEW_SIZE);
+				.findNewOotd(userId, null, RECOMMENDATION_PREVIEW_SIZE)
+				.stream().limit(RECOMMENDATION_PREVIEW_SIZE).toList();
 		List<User> popularUsers = recommendationRepository
-				.findPopularUsers(userId, null, RECOMMENDATION_PREVIEW_SIZE);
+				.findPopularUsers(userId, null, RECOMMENDATION_PREVIEW_SIZE)
+				.stream().limit(RECOMMENDATION_PREVIEW_SIZE).toList();
 
 		Map<Long, String> coverUrls = coverUrls(
 				concatIds(similarPosts, popularPosts, latestPosts));
