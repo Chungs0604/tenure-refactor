@@ -210,11 +210,46 @@ class AuthServiceTest {
 		void reissue_aliveRefreshToken_issuesAccessToken() {
 			givenParsedRefreshToken(TOKEN_ID);
 			given(refreshTokenStore.isAlive(USER_ID, TOKEN_ID)).willReturn(true);
+			given(userRepository.findById(USER_ID)).willReturn(Optional.of(activeUser(null)));
 			given(jwtTokenProvider.issueAccessToken(USER_ID)).willReturn("new-access-token");
 
 			TokenReissueResponse response = authService.reissue(reissueRequest());
 
 			assertThat(response.getAccessToken()).isEqualTo("new-access-token");
+		}
+
+		@Test
+		@DisplayName("탈퇴한 계정이면 AUTH_401_TOKEN 예외가 발생한다")
+		void reissue_withdrawnUser_throwsUnauthorized() {
+			// withdraw() 의 Redis 반영(afterCommit)이 일부만 실행돼도 isAlive() 만으로는 못 거른다 —
+			// DB 를 직접 봐서 막아야 한다
+			givenParsedRefreshToken(TOKEN_ID);
+			given(refreshTokenStore.isAlive(USER_ID, TOKEN_ID)).willReturn(true);
+			User withdrawn = activeUser(null);
+			ReflectionTestUtils.setField(withdrawn, "status", UserStatus.WITHDRAWN);
+			given(userRepository.findById(USER_ID)).willReturn(Optional.of(withdrawn));
+
+			assertThatThrownBy(() -> authService.reissue(reissueRequest()))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_401_TOKEN);
+
+			verify(jwtTokenProvider, never()).issueAccessToken(any());
+		}
+
+		@Test
+		@DisplayName("계정이 존재하지 않으면 AUTH_401_TOKEN 예외가 발생한다")
+		void reissue_userGone_throwsUnauthorized() {
+			givenParsedRefreshToken(TOKEN_ID);
+			given(refreshTokenStore.isAlive(USER_ID, TOKEN_ID)).willReturn(true);
+			given(userRepository.findById(USER_ID)).willReturn(Optional.empty());
+
+			assertThatThrownBy(() -> authService.reissue(reissueRequest()))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_401_TOKEN);
+
+			verify(jwtTokenProvider, never()).issueAccessToken(any());
 		}
 
 		@Test
@@ -290,6 +325,38 @@ class AuthServiceTest {
 			assertThat(response.getExpiresAt())
 					.isAfterOrEqualTo(before.plus(EmailVerificationStore.CODE_TTL))
 					.isBeforeOrEqualTo(LocalDateTime.now().plus(EmailVerificationStore.CODE_TTL));
+			// 쿨다운·일일 한도 집계가 안 되면 재전송 제한이 동작하지 않는다
+			verify(verificationStore).markSent(EMAIL, SIGN_UP);
+		}
+
+		@Test
+		@DisplayName("재전송 쿨다운 중이면 AUTH_429_CODE_RESEND_COOLDOWN 예외가 발생하고 메일을 보내지 않는다")
+		void sendCode_inCooldown_throwsTooManyRequests() {
+			given(verificationStore.isInSendCooldown(EMAIL, SIGN_UP)).willReturn(true);
+
+			assertThatThrownBy(() -> authService.sendCode(sendRequest(SIGN_UP)))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_429_CODE_RESEND_COOLDOWN);
+
+			// 쿨다운에서 막히면 가입 여부 조회·발송 전부 필요 없다
+			verifyNoInteractions(userRepository, emailSender);
+			verify(verificationStore, never()).issueCode(anyString(), any());
+		}
+
+		@Test
+		@DisplayName("일일 발송 한도를 넘었으면 AUTH_429_CODE_DAILY_LIMIT 예외가 발생하고 메일을 보내지 않는다")
+		void sendCode_exceedsDailyLimit_throwsTooManyRequests() {
+			given(verificationStore.isInSendCooldown(EMAIL, SIGN_UP)).willReturn(false);
+			given(verificationStore.exceedsDailySendLimit(EMAIL, SIGN_UP)).willReturn(true);
+
+			assertThatThrownBy(() -> authService.sendCode(sendRequest(SIGN_UP)))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_429_CODE_DAILY_LIMIT);
+
+			verifyNoInteractions(userRepository, emailSender);
+			verify(verificationStore, never()).issueCode(anyString(), any());
 		}
 
 		@Test
@@ -359,6 +426,38 @@ class AuthServiceTest {
 		}
 
 		@Test
+		@DisplayName("인증번호가 틀려도 한도 전이면 시도 횟수만 늘리고 코드는 지우지 않는다")
+		void confirmCode_wrongCode_underLimit_onlyCountsAttempt() {
+			given(verificationStore.findCode(EMAIL, SIGN_UP)).willReturn(CODE);
+			given(verificationStore.incrementConfirmAttempts(EMAIL, SIGN_UP)).willReturn(3L);
+
+			assertThatThrownBy(() -> authService.confirmCode(confirmRequest("999999")))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_400_CODE);
+
+			// 아직 브루트포스 한도(5회)를 넘지 않았으니 코드는 그대로 살아있어야 한다
+			verify(verificationStore, never()).deleteCode(anyString(), any());
+		}
+
+		@Test
+		@DisplayName("인증번호 대조 실패가 한도를 넘으면 코드를 지우고 AUTH_410_CODE 예외가 발생한다")
+		void confirmCode_wrongCode_overLimit_invalidatesCode() {
+			given(verificationStore.findCode(EMAIL, SIGN_UP)).willReturn(CODE);
+			given(verificationStore.incrementConfirmAttempts(EMAIL, SIGN_UP))
+					.willReturn((long) EmailVerificationStore.MAX_CONFIRM_ATTEMPTS);
+
+			assertThatThrownBy(() -> authService.confirmCode(confirmRequest("999999")))
+					.isInstanceOf(CustomException.class)
+					.extracting(AuthServiceTest::errorCodeOf)
+					.isEqualTo(AuthErrorCode.AUTH_410_CODE);
+
+			// 한도를 넘으면 코드를 무효화해 무차별 대입을 끊는다 — 재시도는 재발송부터
+			verify(verificationStore).deleteCode(EMAIL, SIGN_UP);
+			verify(verificationStore).clearConfirmAttempts(EMAIL, SIGN_UP);
+		}
+
+		@Test
 		@DisplayName("인증번호가 만료됐으면 AUTH_410_CODE 예외가 발생한다")
 		void confirmCode_expiredCode_throwsGone() {
 			given(verificationStore.findCode(EMAIL, SIGN_UP)).willReturn(null);
@@ -397,11 +496,15 @@ class AuthServiceTest {
 	class ConsumeVerificationToken {
 
 		@Test
-		@DisplayName("용도와 대상 이메일이 맞으면 통과한다")
+		@DisplayName("용도와 대상 이메일이 맞으면 통과하고 토큰을 지운다")
 		void consume_validToken_passes() {
 			givenToken(SIGN_UP, EMAIL);
 
 			authService.consumeVerificationToken(TOKEN, EMAIL, SIGN_UP);
+
+			// 트랜잭션 동기화가 없는 이 테스트에서는 afterCommit 콜백이 즉시 실행된다 —
+			// 실제 트랜잭션 안에서는 커밋 뒤로 미뤄진다(AuthServiceVerificationTokenCommitTimingTest 참고)
+			verify(verificationStore).deleteToken(TOKEN);
 		}
 
 		@Test
@@ -417,7 +520,7 @@ class AuthServiceTest {
 		@Test
 		@DisplayName("이미 사용된 토큰이면 AUTH_409_TOKEN_CONSUMED 예외가 발생한다")
 		void consume_alreadyUsedToken_throwsConflict() {
-			given(verificationStore.consumeToken(TOKEN)).willReturn(null);
+			given(verificationStore.peekToken(TOKEN)).willReturn(null);
 			given(verificationStore.wasConsumed(TOKEN)).willReturn(true);
 
 			assertThatThrownBy(() -> authService.consumeVerificationToken(TOKEN, EMAIL, SIGN_UP))
@@ -430,7 +533,7 @@ class AuthServiceTest {
 		@DisplayName("만료된 토큰이면 AUTH_410_VERIFICATION_TOKEN 예외가 발생한다")
 		void consume_expiredToken_throwsGone() {
 			// 소비 흔적이 없다 = 애초에 발급된 적이 없거나 TTL 이 지난 것
-			given(verificationStore.consumeToken(TOKEN)).willReturn(null);
+			given(verificationStore.peekToken(TOKEN)).willReturn(null);
 			given(verificationStore.wasConsumed(TOKEN)).willReturn(false);
 
 			assertThatThrownBy(() -> authService.consumeVerificationToken(TOKEN, EMAIL, SIGN_UP))
@@ -440,7 +543,7 @@ class AuthServiceTest {
 		}
 
 		@Test
-		@DisplayName("가입용 토큰으로 비밀번호 재설정을 하려 하면 AUTH_400_PURPOSE_MISMATCH 예외가 발생한다")
+		@DisplayName("가입용 토큰으로 비밀번호 재설정을 하려 하면 AUTH_400_PURPOSE_MISMATCH 예외가 발생하고 토큰을 지우지 않는다")
 		void consume_purposeMismatch_throwsBadRequest() {
 			givenToken(SIGN_UP, EMAIL);
 
@@ -448,10 +551,13 @@ class AuthServiceTest {
 					.isInstanceOf(CustomException.class)
 					.extracting(AuthServiceTest::errorCodeOf)
 					.isEqualTo(AuthErrorCode.AUTH_400_PURPOSE_MISMATCH);
+
+			// 검증에 실패하면 토큰을 살려둬야 한다 — 올바른 용도로 재시도할 수 있게
+			verify(verificationStore, never()).deleteToken(anyString());
 		}
 
 		@Test
-		@DisplayName("남의 토큰으로 다른 이메일을 인증하려 하면 AUTH_401_VERIFICATION_TOKEN 예외가 발생한다")
+		@DisplayName("남의 토큰으로 다른 이메일을 인증하려 하면 AUTH_401_VERIFICATION_TOKEN 예외가 발생하고 토큰을 지우지 않는다")
 		void consume_emailMismatch_throwsUnauthorized() {
 			givenToken(SIGN_UP, "other@naver.com");
 
@@ -459,10 +565,12 @@ class AuthServiceTest {
 					.isInstanceOf(CustomException.class)
 					.extracting(AuthServiceTest::errorCodeOf)
 					.isEqualTo(AuthErrorCode.AUTH_401_VERIFICATION_TOKEN);
+
+			verify(verificationStore, never()).deleteToken(anyString());
 		}
 
 		private void givenToken(VerificationPurpose purpose, String email) {
-			given(verificationStore.consumeToken(TOKEN))
+			given(verificationStore.peekToken(TOKEN))
 					.willReturn(new EmailVerificationStore.VerifiedTarget(purpose, email));
 		}
 	}
@@ -485,6 +593,9 @@ class AuthServiceTest {
 
 			// 평문이 들어가면 다음 로그인이 전부 실패한다
 			assertThat(user.getPasswordHash()).isEqualTo("$2a$10$newHash");
+			// 트랜잭션 동기화가 없는 이 테스트에서는 afterCommit 콜백이 즉시 실행된다 —
+			// 실제 트랜잭션에서 성공·실패에 따라 미뤄지는지는 AuthServiceVerificationTokenCommitTimingTest 가 본다
+			verify(verificationStore).deleteToken(TOKEN);
 		}
 
 		@Test
@@ -517,7 +628,7 @@ class AuthServiceTest {
 		@Test
 		@DisplayName("이미 사용된 토큰이면 AUTH_409_TOKEN_CONSUMED 예외가 발생한다")
 		void resetPassword_consumedToken_throwsConflict() {
-			given(verificationStore.consumeToken(TOKEN)).willReturn(null);
+			given(verificationStore.peekToken(TOKEN)).willReturn(null);
 			given(verificationStore.wasConsumed(TOKEN)).willReturn(true);
 
 			assertThatThrownBy(() -> authService.resetPassword(resetRequest(NEW_PASSWORD)))
@@ -541,7 +652,7 @@ class AuthServiceTest {
 		}
 
 		private void givenToken(VerificationPurpose purpose) {
-			given(verificationStore.consumeToken(TOKEN))
+			given(verificationStore.peekToken(TOKEN))
 					.willReturn(new EmailVerificationStore.VerifiedTarget(purpose, EMAIL));
 		}
 
