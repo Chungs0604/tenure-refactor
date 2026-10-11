@@ -1,6 +1,7 @@
 package com.tenure.domain.block.repository;
 
 import com.tenure.domain.block.entity.UserBlock;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -11,6 +12,9 @@ public interface UserBlockRepository extends JpaRepository<UserBlock, Long> {
 	@Query("select count(b) > 0 from UserBlock b "
 			+ "where b.blocker.id = :blockerId and b.blocked.id = :blockedId")
 	boolean existsBlock(@Param("blockerId") Long blockerId, @Param("blockedId") Long blockedId);
+
+	/** 차단해제용. 삭제할 관계 자체를 찾아야 해서 existsBlock 과 별도로 둔다 */
+	Optional<UserBlock> findByBlockerIdAndBlockedId(Long blockerId, Long blockedId);
 
 	/**
 	 * 양방향 차단 여부. 둘 중 누가 먼저 차단했는지는 호출부 대부분에서 중요하지 않아,

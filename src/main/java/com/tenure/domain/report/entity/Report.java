@@ -23,9 +23,6 @@ import lombok.NoArgsConstructor;
 
 /**
  * 게시물·상품·사용자 신고. ReportReason 10종의 발생 근거.
- *
- * <p>생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
- * 스키마에서 읽을 수 없다. {@code @Builder} 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
  */
 @Entity
 @Table(name = "report")
@@ -63,5 +60,23 @@ public class Report extends BaseCreatedEntity {
 	/** 상세 사유 입력란. 화면 미확인 */
 	@Column(name = "detail", length = 500)
 	private String detail;
+
+	/**
+	 * 신고 접수. 접수까지만 담는다 — 처리 상태는 없음.
+	 *
+	 * targetType·reason 조합의 유효성, 대상 존재 여부는 Service 가 먼저 가린다.
+	 */
+	public static Report submit(
+			User reporter, ReportTargetType targetType, Long targetId,
+			ReportReason reason, String detail
+	) {
+		return Report.builder()
+				.reporter(reporter)
+				.targetType(targetType)
+				.targetId(targetId)
+				.reason(reason)
+				.detail(detail)
+				.build();
+	}
 
 }
