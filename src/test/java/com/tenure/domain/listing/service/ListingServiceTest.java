@@ -651,7 +651,6 @@ class ListingServiceTest {
 	}
 
 	private void givenOwnedItem(Item item, UserGrade grade) {
-		given(itemRepository.findActiveWithCategory(ITEM_ID)).willReturn(Optional.of(item));
 		given(itemRepository.findActiveForUpdate(ITEM_ID)).willReturn(Optional.of(item));
 		given(itemOwnershipRepository.findCurrent(ITEM_ID))
 				.willReturn(Optional.of(ownershipOf(item, user(USER_ID, grade))));
