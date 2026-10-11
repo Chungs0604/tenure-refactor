@@ -1207,7 +1207,7 @@ nullable 이 됐는데 `trade_order.listing_id` 는 `NOT NULL` 로 남아 있었
 | 등급 | 항목 | 시점 | 비용 |
 |---|---|---|---|
 | ~~🟡~~ | ~~`Q6` 대분류별 사이즈 체계 매핑~~ | **2026-09-29 해소** | 상세 수정 바텀시트 10종에서 확보했다. 표는 위 `아이템 구현 전 피그마 정밀 점검` 절에 있다 |
-| 🟡 | `Q7` 인증번호 재전송 쿨다운·한도 | **배포 전** | Redis 키 1개 + `AuthService`. 제한이 없으면 메일 발송이 어뷰징 통로다 |
+| ~~🟡~~ | ~~`Q7` 인증번호 재전송 쿨다운·한도~~ | **2026-10-12 해소** | `EmailVerificationStore` 에 쿨다운(60초)·일일 한도(5회) 키를 추가하고 `AuthService.sendCode()` 에서 검사한다. 초과 시 `AUTH_429_CODE_RESEND_COOLDOWN`·`AUTH_429_CODE_DAILY_LIMIT` 로 거절한다(`fix/auth-verification-hardening`) |
 | ~~🟡~~ | ~~`Q8` 판매를 내릴 때 남은 `PENDING` 제안~~ | **2026-10-04 해소** | `ListingService.changeSaleStatus` 에서 `OfferService.cancelPendingForDelist` 를 호출한다. `OfferCancelReason` 에 `LISTING_DELISTED` 를 추가해 자동 취소와 같이 1회 제한에서 제외했다 |
 | ~~🟢~~ | ~~`notification.target_type` 딥링크 대상~~ | **2026-10-07 전체 확정** | `offer` 가 발행하는 알림은 `OFFER`(제안 전송·거절·시스템 취소)와 `ORDER`(수락) 로 확정했다(2026-10-04). `chat` 은 새 메시지마다 `NotificationSettingType.CHAT`·`NotificationCategory.ACTION_REQUIRED`·`NotificationTargetType.CHAT_ROOM` 으로 발행한다 — 이미 있던 `CHAT` 설정 토글("상대방에게 새 채팅이 오면 알림을 받아요")을 실제로 쓰기 시작했다. notification 도메인 구현(2026-10-07)에서 `listing` 쪽도 채워졌다 — 판매 전환·가격 변경·판매 완료 때 관심 등록(알림 켠) 사용자에게 `NotificationTargetType.ITEM` 으로 발행한다. `POST` 는 끝까지 발행하는 곳이 없어 enum 에서 뺐다 |
 | 🟢 | `ReportTargetType.USER` 복원 | 사용자 신고 화면이 생기면 | enum 값 추가뿐 |
