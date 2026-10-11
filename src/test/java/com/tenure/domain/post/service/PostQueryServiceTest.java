@@ -28,6 +28,7 @@ import com.tenure.domain.post.repository.PostLikeRepository;
 import com.tenure.domain.post.repository.PostRepository;
 import com.tenure.domain.post.repository.PostSaveRepository;
 import com.tenure.domain.search.enums.RecentViewTargetType;
+import com.tenure.domain.post.store.PostViewCountBuffer;
 import com.tenure.domain.search.store.RecentViewStore;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.user.enums.Gender;
@@ -97,6 +98,7 @@ class PostQueryServiceTest {
 	@Mock private UserRepository userRepository;
 	@Mock private FileStorage fileStorage;
 	@Mock private RecentViewStore recentViewStore;
+	@Mock private PostViewCountBuffer postViewCountBuffer;
 
 	/** mock 하지 않는다 — mock 하면 응답에 값을 안 실어도 테스트가 통과한다. */
 	@Spy private PostMapper postMapper = new PostMapperImpl();
