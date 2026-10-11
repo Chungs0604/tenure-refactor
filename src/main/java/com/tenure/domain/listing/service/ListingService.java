@@ -388,9 +388,17 @@ public class ListingService {
 		return listing;
 	}
 
-	/** 현재 소유자만 팔 수 있다 — 등록자여도 이미 팔았으면 남의 옷이다. */
+	/**
+	 * 현재 소유자만 팔 수 있다 — 등록자여도 이미 팔았으면 남의 옷이다.
+	 *
+	 * 행 잠금 조회다 — accept()·changeSaleStatus() 와 같은 item → offer 잠금 순서에 맞춰,
+	 * 동시에 들어오는 두 판매 전환(또는 판매 전환과 제안 수락)이 같은 아이템을 두고 경합하지
+	 * 않게 먼저 잠근다. 잠그지 않으면 바로 위의 "열린 등록 없음"·"진행 중 거래 없음" 확인이
+	 * 커밋되지 않은 값을 보고 통과한 뒤에야 경쟁자가 같은 확인을 통과해, 둘 다 판매 등록을
+	 * 열어버리는 TOCTOU 경쟁이 남는다.
+	 */
 	private Item findOwnedItem(Long userId, Long itemId) {
-		Item item = itemRepository.findActiveWithCategory(itemId)
+		Item item = itemRepository.findActiveForUpdate(itemId)
 				.orElseThrow(() -> {
 					log.info("없거나 삭제된 아이템이다 itemId={}", itemId);
 					return new CustomException(ItemErrorCode.ITEM_404);
