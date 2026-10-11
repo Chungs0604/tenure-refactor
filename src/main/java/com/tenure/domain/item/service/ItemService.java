@@ -14,6 +14,8 @@ import com.tenure.domain.item.exception.ItemErrorCode;
 import com.tenure.domain.item.mapper.ItemMapper;
 import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
+import com.tenure.domain.offer.enums.OfferCancelReason;
+import com.tenure.domain.offer.service.OfferService;
 import com.tenure.domain.order.enums.OrderStatus;
 import com.tenure.domain.order.repository.TradeOrderRepository;
 import com.tenure.domain.user.entity.User;
@@ -48,6 +50,7 @@ public class ItemService {
 	private final ItemOwnershipRepository itemOwnershipRepository;
 	private final ItemFormApplier itemFormApplier;
 	private final TradeOrderRepository tradeOrderRepository;
+	private final OfferService offerService;
 	private final ItemMapper itemMapper;
 	private final UserRepository userRepository;
 
@@ -135,13 +138,19 @@ public class ItemService {
 	 *
 	 * 태그는 남아 '삭제된 아이템' 으로 표시된다 — 그래서 물리 삭제를 하지 않는다.
 	 * 판매 중이거나 끝나지 않은 거래가 있으면 막는다.
+	 *
+	 * 미판매 아이템에 PENDING 구매 제안이 걸려 있을 수 있어(결제는 이미 AUTHORIZED) 삭제 전에
+	 * 함께 정리한다 — 안 그러면 결제 승인이 풀리지 않고 남고, 구매자가 나중에 직접 취소하면
+	 * 1회 제한(uk_purchase_offer_limit)에 영구히 걸린다. ListingService.changeSaleStatus 와
+	 * 대칭이며 같은 item → offer 잠금 순서를 따른다
 	 */
 	@Transactional
 	@Loggable("아이템 삭제")
 	public void delete(Long userId, Long itemId) {
 
-		// 현재 본인의 아이템인지 확인
-		Item item = findOwnedItem(userId, itemId);
+		// offerService.cancelPendingForDelist 가 같은 아이템의 제안 행을 잠그므로, item → offer
+		// 잠금 순서를 지키기 위해 여기서도 잠금 조회로 먼저 아이템 행을 잠근다
+		Item item = findOwnedItemForUpdate(userId, itemId);
 
 		// 판매 중이면 지울 수 없음. 상태는 아이템이 들고 있어 판매 등록을 읽지 않는다 (DEC-026)
 		if (item.isOnSale()) {
@@ -155,6 +164,9 @@ public class ItemService {
 			throw new CustomException(ItemErrorCode.ITEM_409_ON_SALE);
 		}
 
+		// 수락 전 PENDING 제안이 남아 있으면 결제 승인을 해제하며 정리함
+		offerService.cancelPendingForDelist(itemId, OfferCancelReason.ITEM_DELETED);
+
 		// 태그가 '삭제된 아이템' 으로 남아야 해서 행은 지우지 않음
 		item.delete(LocalDateTime.now());
 	}
@@ -162,6 +174,28 @@ public class ItemService {
 	/** 소유자 본인만 고치고 지운다. 등록자여도 팔았으면 남의 옷이다. */
 	private Item findOwnedItem(Long userId, Long itemId) {
 		Item item = itemRepository.findActiveWithCategory(itemId)
+				.orElseThrow(() -> {
+					log.warn("아이템을 찾을 수 없습니다. itemId = {}", itemId);
+					return new CustomException(ItemErrorCode.ITEM_404);
+				});
+
+		// 등록자여도 팔았으면 남의 옷임
+		itemOwnershipRepository.findCurrent(itemId)
+				.filter(ownership -> ownership.getOwner().getId().equals(userId))
+				.orElseThrow(() -> {
+					log.info("현재 소유자가 아니다 userId={} itemId={}", userId, itemId);
+					return new CustomException(ItemErrorCode.ITEM_403);
+				});
+
+		return item;
+	}
+
+	/**
+	 * 삭제 전용 — 행 잠금 조회임. 이 안에서 purchase_offer 를 함께 정리하므로, 동시에 들어오는
+	 * 제안 수락과 아이템 행을 두고 경합하지 않게 먼저 잠근다(ListingService.findOwnedItemForUpdate 와 대칭)
+	 */
+	private Item findOwnedItemForUpdate(Long userId, Long itemId) {
+		Item item = itemRepository.findActiveForUpdate(itemId)
 				.orElseThrow(() -> {
 					log.warn("아이템을 찾을 수 없습니다. itemId = {}", itemId);
 					return new CustomException(ItemErrorCode.ITEM_404);
