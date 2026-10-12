@@ -326,11 +326,13 @@ public class ChatService {
 				.build();
 		chatWebSocketService.pushRoomListUpdate(counterpart.getId(), listUpdate);
 
-		// 알림 INSERT·설정 조회는 커밋 전에 하면 아직 안 끝난 트랜잭션에 묶여 들어감 — pushMessage 와 같은 패턴으로 커밋 후로 미룸
-		afterCommit(() -> notificationService.notify(
+		// notify 자체가 DB INSERT 라 afterCommit 으로 미루면 이미 커밋된 뒤라 새 트랜잭션이 기대한 대로
+		// 열리지 않고 INSERT 가 아무도 커밋하지 않는 상태로 유실된다. pushMessage 와 달리 이건 sendMessage
+		// 자신의 트랜잭션 안에서 동기로 호출한다 (OfferService 등 다른 알림 발행 지점과 같은 패턴)
+		notificationService.notify(
 				counterpart, NotificationSettingType.CHAT, NotificationCategory.ACTION_REQUIRED,
 				room.getItem().getName(), "새 메시지가 왔어요.",
-				room.getItem().getCoverImageKey(), NotificationTargetType.CHAT_ROOM, room.getId()));
+				room.getItem().getCoverImageKey(), NotificationTargetType.CHAT_ROOM, room.getId());
 	}
 
 	// 트랜잭션이 끝까지 커밋된 뒤에만 실행함. 트랜잭션 없이 불리면(단위 테스트 등) 동기화가
