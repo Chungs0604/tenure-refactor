@@ -48,8 +48,11 @@ public class ListingCreateRequest {
 	@Max(100_000_000)
 	private Integer price;
 
+	// 상한이 없으면 price(최대 1억)와 더해 FeeCalculator 의 int 합산이 오버플로할 수 있다.
+	// 실제 택배비 현실 범위를 감안해 100만원으로 막는다 — price 상한과 같은 자릿수 방어 패턴
 	@Schema(description = "배송비(원). 0 이면 판매자 부담. 기본 사용자는 보낼 수 없다", example = "5000")
 	@Min(0)
+	@Max(1_000_000)
 	private Integer shippingFee;
 
 	@Schema(description = "수수료 부담. 기본 사용자는 보낼 수 없다", example = "SELLER")

@@ -86,6 +86,17 @@ class ItemListingControllerTest extends ControllerSliceTestSupport {
 	}
 
 	@Test
+	@DisplayName("배송비가 상한(100만원)을 넘으면 400 이다 — price+shippingFee 의 int 오버플로를 막는 선")
+	void create_shippingFeeOverMax_returnsBadRequest() throws Exception {
+		mvc.perform(post(ITEMS_URL + "/" + ITEM_ID + "/listings")
+						.with(authentication(principalOf(USER_ID))).with(csrf())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(createBody().replace("\"price\": 320000,",
+								"\"price\": 320000,\n\"shippingFee\": 1000001,")))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
 	@DisplayName("미판매 아이템 상세는 listing 과 seller 가 비고 태그된 OOTD 를 그린다")
 	void getItemDetail_neverListed_hasNoListing() throws Exception {
 		given(listingQueryService.getItemDetail(anyLong(), anyLong()))

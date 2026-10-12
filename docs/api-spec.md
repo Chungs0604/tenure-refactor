@@ -3111,7 +3111,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 | `item.wearTarget` | WearTarget | O | MALE \| FEMALE \| UNISEX | — |
 | `item.coverImageKey` | String | O | `API-060` 이 준 키 | `대표 사진` |
 | `price` | String | O | 1 이상 | 가격 |
-| `shippingFee` | String |  | BASIC 은 입력 불가 | 0 이면 판매자 부담 |
+| `shippingFee` | String |  | BASIC 은 입력 불가, 0~1,000,000 | 0 이면 판매자 부담. 상한은 `price`(최대 1억)와 더했을 때 결제·정산 계산의 정수 오버플로를 막기 위한 실제 택배비 현실 범위 기준이다 |
 | `feeBearer` | FeeBearer |  | BASIC 은 SELLER 고정 | SELLER \| BUYER \| SPLIT |
 | `sellerNote` | String |  | — | 화면 라벨은 `판매자 설명` |
 | `featuredPostIds[]` | Long | O | 1개 이상 5개 이하, 본인 게시물 | 보낸 순서가 노출 순서다 |
