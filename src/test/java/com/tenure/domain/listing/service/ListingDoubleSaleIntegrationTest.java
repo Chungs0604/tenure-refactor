@@ -248,6 +248,8 @@ class ListingDoubleSaleIntegrationTest extends IntegrationTestSupport {
 				.offerType(OfferType.TRADE_INTENT)
 				.shippingAddressId(address.getId())
 				.paymentMethod(com.tenure.domain.payment.enums.PaymentMethod.TOSS_PAY)
+				.paymentKey("test-payment-key")
+				.orderId(UUID.randomUUID().toString())
 				.build();
 	}
 
@@ -258,6 +260,8 @@ class ListingDoubleSaleIntegrationTest extends IntegrationTestSupport {
 				.offerPrice(offerPrice)
 				.shippingAddressId(address.getId())
 				.paymentMethod(com.tenure.domain.payment.enums.PaymentMethod.TOSS_PAY)
+				.paymentKey("test-payment-key")
+				.orderId(UUID.randomUUID().toString())
 				.build();
 	}
 }

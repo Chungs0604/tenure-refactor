@@ -78,6 +78,11 @@ app:
     base-url: https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService
     service-key: ${HOLIDAY_API_SERVICE_KEY}
 
+  toss:
+    # 토스페이먼츠 결제 승인(confirm)·취소(cancel). 결제창은 프론트가 클라이언트 키로 직접 띄운다
+    base-url: https://api.tosspayments.com
+    secret-key: ${TOSS_SECRET_KEY}
+
 springdoc:
   # 운영에서는 SWAGGER_ENABLED=false 로 끈다. 켜두면 스키마가 그대로 공개된다
   api-docs:

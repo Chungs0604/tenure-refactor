@@ -265,7 +265,6 @@ public class OrderService {
 			throw new CustomException(OrderErrorCode.ORDER_409_CANCEL_WINDOW);
 		}
 
-		paymentService.refund(order.getOffer().getId(), now);
 		order.cancel(now);
 		// 판매로 올라간 적 있어도 listing 은 닫힌 뒤 다시 열지 않는다 — 재판매는
 		// 판매 전환을 다시 거쳐 새 listing 을 만들어야 함. 그래서 미판매로 보낸다(ON_SALE 아님)
@@ -279,6 +278,12 @@ public class OrderService {
 				counterpart, NotificationSettingType.TRADE_STATUS, NotificationCategory.TRADE_STATUS,
 				order.getItem().getName(), "거래가 취소됐어요.",
 				order.getItem().getCoverImageKey(), NotificationTargetType.ORDER, order.getId());
+
+		// 토스 환불(refund)을 메서드의 마지막에 둔다 — 그 이후로 실패할 수 있는 코드가 없어야,
+		// 환불이 성공한 뒤 트랜잭션이 롤백돼 "돈은 돌아갔는데 거래는 PAYMENT_COMPLETED 로
+		// 남는" 창을 없앤다. 그 상태로 자동 구매확정 배치가 돌면 받은 적 없는 돈을 정산까지
+		// 보낼 수 있다
+		paymentService.refund(order.getOffer().getId(), now);
 
 		return orderMapper.toCancelResponse(order.getStatus(), now);
 	}

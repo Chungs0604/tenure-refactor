@@ -17,13 +17,18 @@ MySQL 8. JPA 규칙은 db-mysql 스킬을 따른다.
 비밀값은 `.env` 로 분리했다. `application.yaml` 에 기본값이 없으므로 **없으면 기동하지 않는다.**
 
 ```
-cp .env.example .env    # DB_PASSWORD · JWT_SECRET · REDIS_PASSWORD · MAIL_PASSWORD · HOLIDAY_API_SERVICE_KEY
+cp .env.example .env    # DB_PASSWORD · JWT_SECRET · REDIS_PASSWORD · MAIL_PASSWORD · HOLIDAY_API_SERVICE_KEY · TOSS_SECRET_KEY
 ```
 
 `HOLIDAY_API_SERVICE_KEY` — 공공데이터포털 "한국천문연구원_특일 정보" 서비스 키. order 도메인의
 정산 영업일 계산(`global/holiday/*`)에 쓴다. data.go.kr 에서 개발계정으로 활용신청하면 받는다
 (승인까지 시간이 걸릴 수 있다). `_type=json` 쿼리 파라미터로 JSON 응답을 받는다 — 신청 화면의
 "데이터포맷: XML" 은 그 파라미터를 안 줬을 때의 기본값일 뿐이다.
+
+`TOSS_SECRET_KEY` — 토스페이먼츠 결제 승인(confirm)·취소(cancel) 호출용 시크릿 키
+(`domain/payment/client/*`). [developers.tosspayments.com](https://developers.tosspayments.com)
+회원가입만 하면 사업자번호 없이 테스트용 키(`test_sk_...`)가 바로 발급된다 — 심사 없음. 결제창
+자체(클라이언트 키로 여는 쪽)는 프론트엔드(별도 저장소) 영역이라 이 백엔드엔 없다.
 
 Spring Boot 는 `.env` 를 자동으로 읽지 않는다. 둘 중 하나로 주입한다.
 
@@ -94,7 +99,10 @@ global/          config, exception, response
 
 - 아이템은 소유자가 바뀌어도 행을 유지한다. 소유 구간은 `item_ownership`에 쌓고
   착용 기록(`item_wear_record`)은 아이템에 영구 귀속한다. 복제하면 기록 승계가 깨진다
-- 결제가 주문보다 먼저 생성된다. 제안 시 승인(`authorized_at`) → 판매자 수락 시 확정(`captured_at`)
+- 결제가 주문보다 먼저 생성된다. 제안 시 승인(`authorized_at`) → 판매자 수락 시 확정(`captured_at`).
+  단, 토스페이먼츠 간편결제 자체는 승인(confirm) 호출 즉시 최종 결제가 끝난다 — "승인/확정" 분리는
+  우리 도메인 모델일 뿐이라, 거절·취소·만료로 해제(`released_at`)할 때도 토스 cancel을 실제로
+  호출해 환불한다(`PaymentService`)
 - 금액·배송지·정산계좌는 거래 시점 스냅샷이다. 원본이 바뀌어도 거래는 불변
 - 이미지 컬럼 `*_image_key` 에는 **저장소 키**를 넣는다(전체 URL 아님). `app.storage.type`(local|s3)으로
   구현이 갈리고 `FileStorage.toUrl()` 이 base-url 을 붙인다

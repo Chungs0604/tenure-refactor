@@ -1476,7 +1476,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `status` | VARCHAR(20) | PaymentStatus |  | O |  | `design` | 승인/확정/해제 3단계 |
 | `amount` | INT | Integer |  | O |  | `design` | '최종 결제 금액' / '결제 금액' |
 | `method_detail` | VARCHAR(100) | String |  |  |  | `design` | 제안서·거래 상세의 '결제 수단'이 `토스뱅크 1234-1234-1234` 로 표시된다. enum 만으로는 못 그려 PG 가 준 표시 문자열을 스냅샷한다 |
-| `pg_transaction_id` | VARCHAR(100) | String |  |  |  | `inferred` | PG 연동 식별자. 화면 미표시 |
+| `pg_transaction_id` | VARCHAR(200) | String |  |  |  | `inferred` | PG 연동 식별자(토스페이먼츠 paymentKey). 화면 미표시. 토스 스펙상 최대 200자라 V23 에서 넓힘 |
 | `authorized_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | '결제 승인이 임시로 확보되었습니다' |
 | `captured_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | '판매자가 수락하면 최종 결제되며' |
 | `released_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | '거절·취소·만료 시 승인이 해제됩니다' |
@@ -2196,10 +2196,9 @@ INSERT 대신 `voided_at` 을 `NULL` 로 되돌리는 규칙을 제약으로 두
 
 피그마에 근거가 없어 확정하지 못한 항목이다. 확정된 결정은 §6-2·§6-3·§6-4 로 옮겼다.
 
-| ID | 항목 | 핵심 |
-|---|---|---|
-| **Q7** | 인증번호 재전송 정책 | 회원가입·비밀번호 찾기 모두 `재전송` 버튼이 있는데 쿨다운과 1일 한도가 없다. 제한이 없으면 메일 발송이 그대로 어뷰징 통로가 된다 |
-| **Q6** | 카테고리별 사이즈 체계의 **매핑** | 값 목록은 찾았다 — `ALPHA`(XS~3XL) · `KR_NUMERIC`(85~115) · `EU_NUMERIC`(36~50) · `FREE_NUMBER`(0~6). 남은 것은 대분류 10종이 각각 어느 체계를 쓰는지다. 화면이 네 체계를 한 번에 펼쳐 놓아 매핑을 읽을 수 없었다 |
+**현재 없음.** `Q6`(카테고리별 사이즈 체계 매핑)은 2026-09-29 `DEC-025`로, `Q7`(인증번호 재전송
+정책)은 2026-10-12 `EmailVerificationStore` 쿨다운(60초)·일일 한도(5회) 도입으로 해소됐다 —
+자세한 내용은 `design-audit.md` 🚦절 참고.
 
 ### 설계 범위에서 제외한 것
 

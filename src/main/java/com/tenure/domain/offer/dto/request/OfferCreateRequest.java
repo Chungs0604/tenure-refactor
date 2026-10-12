@@ -5,6 +5,7 @@ import com.tenure.domain.payment.enums.PaymentMethod;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.AccessLevel;
@@ -44,4 +45,12 @@ public class OfferCreateRequest {
 	@Schema(description = "결제 수단", example = "TOSS_PAY")
 	@NotNull
 	private PaymentMethod paymentMethod;
+
+	@Schema(description = "결제위젯에서 받은 토스페이먼츠 결제 승인 키", example = "5EnNZRJGvaBX7zk4Y9bAN97Eoq2D7qgO41Dq2BAkXoYarMAD")
+	@NotBlank
+	private String paymentKey;
+
+	@Schema(description = "결제위젯 호출 시 클라이언트가 생성한 주문 식별자", example = "a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+	@NotBlank
+	private String orderId;
 }

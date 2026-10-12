@@ -1429,3 +1429,82 @@ enum 라벨과 한 글자도 다르지 않았고, 추가 입력란이나 확인 
 
 - 검색 메인 추천 4종(`API-202`), 추천 섹션 더보기(`API-207`), 추천 검색어(`API-206`),
   검색 필터 4종(`API-200`), 빈 상태 2종 — 전부 1차 감사 그대로 유지, 추가로 깨진 곳 없음
+
+## 결제 실 PG(토스페이먼츠) 연동 (2026-10-12)
+
+`PaymentService` 가 "PG 연동이 없어 항상 성공하는 mock" 이던 상태에서 실제 토스페이먼츠
+confirm·cancel API 호출로 바뀌면서, 설계 당시엔 드러나지 않았던 전제가 깨졌다 —
+**"승인(authorized_at)은 임시 확보, 확정(captured_at)에만 최종 결제"** 라는 우리 도메인
+모델은 카드 결제의 승인/매입 분리를 가정한 것인데, 토스페이먼츠 간편결제(토스페이·
+카카오페이·네이버페이)는 confirm 호출 즉시 최종 결제가 끝나 "임시 승인만" 해두는 단계가
+없다.
+
+→ **대응**: `authorized_at`/`captured_at` 이라는 우리 쪽 상태 이름은 그대로 두되(스키마·
+`erd.md` 변경 없음), 그 의미를 바꿨다 — `release()`(거절·취소·만료)·`refund()`(거래 취소)가
+내부 상태만 바꾸는 게 아니라 토스 cancel(환불) API를 **실제로** 호출하도록 고쳤다. 실패하면
+상태를 바꾸지 않고 409 를 던진다(돈은 안 돌아왔는데 '해제됨'으로 남으면 안 됨).
+
+→ **트랜잭션 경계**: 이 저장소의 보안 규칙(`.claude/claude-security-guidance.md`)이 이미
+"외부 API 같은 되돌릴 수 없는 부작용은 DB 트랜잭션이 완전히 커밋된 뒤에만 실행한다"고
+적어 두고 있었는데, `OfferService` 의 배치 정리 메서드(`cancelPendingForDelist`·
+`cancelAndRejectPendingForWithdrawal`·`expirePending`·경쟁 제안 자동 취소)는 전부
+한 트랜잭션으로 여러 건을 순회하는 구조였다 — PG 연동 전에는 문제가 없었지만(DB 쓰기만
+있었음), 이제 환불 호출이 실제로 일어나므로 한 건의 실패가 이미 환불에 성공한 다른 건의
+커밋까지 롤백시킬 수 있다. `OrderBatchExecutor`(정산 배치)가 이미 쓰던 건별
+`REQUIRES_NEW` 패턴을 그대로 가져와 `OfferBatchExecutor` 를 신설하고 네 경로 전부 옮겼다.
+
+→ **승인 호출 순서**: `offerService.create()` 에서 토스 confirm 호출을 제안 저장
+**직전**(다른 모든 검증을 통과한 뒤)으로 옮겼다 — 검증 실패로 거부할 걸 먼저 돈부터
+받는 순서가 되면 안 된다. confirm 이 성공한 뒤 제안 저장이 실패하면(동시 요청 경합 등)
+`PaymentService.compensateFailedAuthorization()` 으로 즉시 보정 환불한다.
+
+`OfferCreateRequest` 에 `paymentKey`·`orderId` 가 새로 필요해졌다(`api-spec.md` 반영) —
+결제위젯(프론트 + 토스 SDK)이 먼저 완료돼야 나오는 값이라, 프론트 작업과 맞물린다.
+
+### 2차 검토에서 고친 것과 의도적으로 남긴 것 (2026-10-12)
+
+코드·보안 리뷰를 한 번 더 돌려 1차 수정 자체가 만든 문제를 찾았다 — 전부 고쳤다.
+
+- **`TossPaymentClient` 가 기동조차 안 됐다.** Jackson 2 `ObjectMapper` 를 주입받았는데
+  이 프로젝트(Spring Boot 4.1.1)는 Jackson 3(`tools.jackson.databind.ObjectMapper`)만
+  빈으로 등록한다. 테스트가 못 잡은 이유는 또 있었다 — `IntegrationTestSupport` 의 가짜
+  빈 이름이 컴포넌트 스캔 이름과 같아 실제 빈 생성 자체를 건너뛰고 있었다(이름을
+  분리해 진짜 빈도 매번 생성되게 고쳤다).
+- **5xx 를 "거부"로 분류하고 있었다.** `HttpStatusCodeException` 이 4xx·5xx 공통 부모라는
+  걸 놓쳐, "타임아웃·5xx 는 Unknown" 설계 의도가 5xx 에는 적용 안 되고 있었다.
+  `HttpClientErrorException`(4xx)/`HttpServerErrorException`(5xx) 으로 분리했다.
+- **결제 전용 타임아웃(15초)이 실제로 안 걸리고 있었다.** Lombok `@RequiredArgsConstructor`
+  는 필드의 `@Qualifier` 를 생성자 파라미터로 복사하지 않는다 — 생성자를 직접 써서
+  고쳤다.
+- **confirm 응답 본문이 비면 `confirmed` 참조가 보정 try 블록 밖에서 NPE 날 수 있었다.**
+  `TossPaymentClient.confirm()` 에서 응답이 비거나 `paymentKey` 가 없으면 Unknown 으로
+  돌리도록 해 원천에서 막았다.
+- **`cancelPendingForDelist` 호출이 `ItemService.delete()`·`ListingService.
+  changeSaleStatus()`/`closeOnSaleItemsForWithdrawal()` 안에서 맨 앞에 있었다.** 환불이
+  건별로 먼저 커밋된 뒤 뒤따르는 상태 변경·알림이 실패하면 "환불은 됐는데 아이템/판매
+  상태는 그대로" 가 될 수 있어, 세 호출 전부 각 메서드의 마지막으로 옮겼다.
+- **탈퇴 처리의 1단계 사전 스캔(`isAcceptedNow`)이 사실상 무효했다.** 호출부 트랜잭션에
+  참여하는 일반 조회라 MySQL REPEATABLE READ 의 기존 스냅샷을 그대로 봐서, "지금"이
+  아니라 "탈퇴 처리 시작 시점"을 보고 있었다. `REQUIRES_NEW` 로 새 스냅샷을 열게 고쳤다.
+- **`pg_transaction_id`(VARCHAR(100))가 토스 paymentKey 스펙(최대 200자)보다 좁았다.**
+  `V23__widen_payment_pg_transaction_id.sql` 로 200자로 넓혔다(`schema.yaml`·`erd.md` 반영).
+
+**의도적으로 남긴 것** — 더 큰 재설계가 필요해 이번 범위에서는 보류한다.
+
+- **탈퇴 중 일부 제안이 먼저 환불·커밋된 뒤 다른 제안에서 거래 발견으로 탈퇴가 막히면,
+  이미 커밋된 환불은 되돌리지 않는다.** `REQUIRES_NEW` 로 건별 독립 커밋하는 구조 자체의
+  트레이드오프다 — 완전히 막으려면 "먼저 커밋, 나중에 되돌리기 불가" 구조를 아웃박스/재처리
+  큐로 바꿔야 한다.
+- **`OrderService.cancel()` 은 환불 성공 직후 커밋이 실패하면 자기치유가 안 되는 좁은
+  창이 있다.** `release()`/`refund()` 는 `ALREADY_CANCELED_PAYMENT` 멱등 처리 덕에
+  재시도하면 저절로 수렴하는데, `OrderService.cancel()` 은 재시도 전에 판매자가 발송하면
+  취소 창(`PAYMENT_COMPLETED` 상태) 자체가 닫혀 복구 경로가 없다. 대조 배치가 없으면
+  탐지 수단도 없다.
+- **confirm 결과가 Unknown(타임아웃·5xx)이면 사후 대조 수단이 DB에 없다.** `paymentKey`·
+  `orderId` 는 confirm 성공 전까지 어디에도 저장되지 않아, 로그 외에는 추적할 방법이
+  없다. 제대로 막으려면 confirm **전에** `paymentKey`·`orderId` 를 `PENDING` 상태로
+  먼저 커밋해 두는 2단계 구조가 필요하다 — 이번 범위를 넘는 재설계라 보류한다.
+- **`item` 행 X 락을 쥔 채 토스 API(최대 connect 3s + read 15s)를 호출한다.** `create()`
+  의 confirm, `release()`/`refund()` 의 cancel 모두 그렇다. `OrderService.settleDue()` 가
+  이미 확립한 반대 패턴(외부 호출을 잠금 밖에서 먼저 끝냄)과 다르다 — 호출량이 적은
+  지금은 감내하지만, 트래픽이 늘면 confirm 을 트랜잭션 밖으로 빼는 재설계가 필요하다.
