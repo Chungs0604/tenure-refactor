@@ -153,12 +153,28 @@ class SearchHistoryServiceTest {
 		}
 
 		@Test
-		@DisplayName("Redis 에는 남아 있지만 탈퇴 등으로 유저 행이 사라진 경우는 건너뛴다")
+		@DisplayName("Redis 에는 남아 있는데 findAllById 결과에 없는 id 는 건너뛴다(방어적 null 체크)")
 		void getHistories_missingUser_skipsDanglingId() {
 			given(searchHistoryRepository.findRecent(USER_ID, 20)).willReturn(List.of());
 			given(recentViewStore.findRecentTargetIds(USER_ID, RecentViewTargetType.USER, 20))
 					.willReturn(List.of(TARGET_ID));
 			given(userRepository.findAllById(List.of(TARGET_ID))).willReturn(List.of());
+
+			var response = searchHistoryService.getHistories(USER_ID);
+
+			assertThat(response.getRecentUsers()).isEmpty();
+		}
+
+		@Test
+		@DisplayName("탈퇴(익명화)한 사용자는 user 행이 남아 있어도 제외한다 — "
+				+ "다른 사용자 목록 경로(UserSearchRepositoryImpl 등)와 같은 ACTIVE 기준")
+		void getHistories_withdrawnUser_isExcluded() {
+			given(searchHistoryRepository.findRecent(USER_ID, 20)).willReturn(List.of());
+			given(recentViewStore.findRecentTargetIds(USER_ID, RecentViewTargetType.USER, 20))
+					.willReturn(List.of(TARGET_ID));
+			User withdrawnUser = user(TARGET_ID);
+			withdrawnUser.anonymize(LocalDateTime.now());
+			given(userRepository.findAllById(List.of(TARGET_ID))).willReturn(List.of(withdrawnUser));
 
 			var response = searchHistoryService.getHistories(USER_ID);
 

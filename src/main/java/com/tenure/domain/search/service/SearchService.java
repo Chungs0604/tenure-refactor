@@ -121,14 +121,17 @@ public class SearchService {
 		List<Long> recentPostIds = recentViewStore.findRecentTargetIds(
 				userId, RecentViewTargetType.POST, RECENT_VIEW_SEED_LIMIT);
 
-		List<Post> similarPosts = recommendationRepository
-				.findSimilarToRecent(recentPostIds, userId, null, RECOMMENDATION_PREVIEW_SIZE);
-		List<Post> popularPosts = recommendationRepository
-				.findPopularStyle(userId, null, RECOMMENDATION_PREVIEW_SIZE);
-		List<Post> latestPosts = recommendationRepository
-				.findNewOotd(userId, null, RECOMMENDATION_PREVIEW_SIZE);
-		List<User> popularUsers = recommendationRepository
-				.findPopularUsers(userId, null, RECOMMENDATION_PREVIEW_SIZE);
+		// 리포지토리는 hasNext 판단용으로 size + 1 건을 읽는다(더보기 API 와 같은 메서드를 공유한다).
+		// 미리보기는 hasNext 가 필요 없으니 그 여분 한 건을 trimToPreview 로 한 곳에서 잘라낸다 —
+		// 호출부마다 따로 자르면 섹션이 늘 때 이번 버그(9개 반환)가 그대로 재발한다
+		List<Post> similarPosts = trimToPreview(
+				recommendationRepository.findSimilarToRecent(recentPostIds, userId, null, RECOMMENDATION_PREVIEW_SIZE));
+		List<Post> popularPosts = trimToPreview(
+				recommendationRepository.findPopularStyle(userId, null, RECOMMENDATION_PREVIEW_SIZE));
+		List<Post> latestPosts = trimToPreview(
+				recommendationRepository.findNewOotd(userId, null, RECOMMENDATION_PREVIEW_SIZE));
+		List<User> popularUsers = trimToPreview(
+				recommendationRepository.findPopularUsers(userId, null, RECOMMENDATION_PREVIEW_SIZE));
 
 		Map<Long, String> coverUrls = coverUrls(
 				concatIds(similarPosts, popularPosts, latestPosts));
@@ -222,6 +225,15 @@ public class SearchService {
 
 	private SearchPostSummaryResponse toSearchPostSummary(Post post, Map<Long, String> coverUrls) {
 		return searchMapper.toSearchPostSummaryResponse(post, coverUrls.get(post.getId()));
+	}
+
+	/**
+	 * 추천 리포지토리는 hasNext 판단용으로 size + 1 건을 읽는다(더보기 API 와 메서드를 공유한다).
+	 * 미리보기는 hasNext 가 필요 없으니 그 여분 한 건을 여기 한 곳에서 잘라낸다 — 섹션마다
+	 * 호출부에서 따로 자르면 새 섹션이 추가될 때 이번에 고친 버그(9개 반환)가 그대로 재발한다.
+	 */
+	private <T> List<T> trimToPreview(List<T> rows) {
+		return rows.size() > RECOMMENDATION_PREVIEW_SIZE ? rows.subList(0, RECOMMENDATION_PREVIEW_SIZE) : rows;
 	}
 
 	@SafeVarargs

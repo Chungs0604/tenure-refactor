@@ -44,6 +44,13 @@ import org.springframework.stereotype.Repository;
 @RequiredArgsConstructor
 public class PostSearchRepositoryImpl implements PostSearchRepository {
 
+	/**
+	 * 3등급(brandAndNameBothMatch) 판정에서 "키워드가 필드를 포함하는지" 를 보는 필드의 최소 길이.
+	 * 1자리면 거의 모든 검색어에 우연히 걸려 순위 조작 통로가 된다(brandName="e"·name="5" 로
+	 * "Levis 501" 이 걸리는 식) — 등록 시점 최소 길이 제약이 없어 여기서 막는다.
+	 */
+	private static final int MIN_FIELD_LENGTH_FOR_GRADE3 = 2;
+
 	private final JPAQueryFactory queryFactory;
 
 	@Override
@@ -202,9 +209,23 @@ public class PostSearchRepositoryImpl implements PostSearchRepository {
 	 * 등급(필드가 키워드를 포함)과 방향이 반대다 — 키워드가 필드를 포함하는지 본다.
 	 * 실제 호출로 이 방향 착오를 잡았다(처음엔 다른 등급과 같은 방향으로 짜서 'Levis 501'
 	 * 검색이 아예 안 걸렸다).
+	 *
+	 * 방향이 반대라 생기는 부작용 — brandName·name 이 한두 글자면 거의 모든 검색어가 그 글자를
+	 * 부분 문자열로 포함해 버려 3등급(최상위 매칭)이 사실상 공짜로 성립한다
+	 * (brandName="e", name="5" 로 등록하면 "Levis 501" 검색에 걸린다). ItemCreateRequest·
+	 * ItemUpdateRequest 가 두 필드에 최소 길이 제한을 두지 않아 등록 시점에 막을 수 없으므로,
+	 * 여기서 최소 길이 미만인 필드는 3등급 판정 대상에서 제외한다.
 	 */
 	private BooleanExpression brandAndNameBothMatch(QItem candidate, String keyword) {
-		return keywordContains(keyword, candidate.brandName).and(keywordContains(keyword, candidate.name));
+		return hasMinLengthForExactMatch(candidate.brandName)
+				.and(hasMinLengthForExactMatch(candidate.name))
+				.and(keywordContains(keyword, candidate.brandName))
+				.and(keywordContains(keyword, candidate.name));
+	}
+
+	/** 3등급(키워드가 필드를 포함하는 방향) 전용 — 한두 글자 필드로 모든 검색어를 걸리게 하는 것을 막는다. */
+	private BooleanExpression hasMinLengthForExactMatch(StringExpression field) {
+		return field.length().goe(MIN_FIELD_LENGTH_FOR_GRADE3);
 	}
 
 	/**
