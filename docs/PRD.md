@@ -72,6 +72,11 @@ OOTD 게시 ──(태그)──▶ 아이템 실착 이력 축적 ──▶ 판
 대기 중 제안 정리(`OfferService.cancelAndRejectPendingForWithdrawal`) + 연관 데이터(배송지·정산계좌·
 검색기록·알림·알림설정) 하드 삭제로 끝난다. 처리 규칙 전체는 `erd.md` §8 DEC-004 참고.
 
+`payment`는 2026-10-12부터 토스페이먼츠 confirm·cancel API를 실제로 호출한다(`feat/payment-toss-confirm`,
+`design-audit.md` "결제 실 PG 연동" 참고) — 그전까지는 PG 연동이 없어 항상 성공하는 mock 이었다.
+간편결제는 confirm 즉시 최종 결제가 끝나 승인/확정 분리가 PG 단에는 없고, 거절·취소·만료
+(`release`)·거래 취소(`refund`)가 토스 cancel(환불) API를 실제로 호출한다.
+
 다음 착수 후보와 선결 사항은 `docs/design-audit.md` 끝의 🚦 절을 먼저 확인한다 — `listing` 때도
 `DEC-005` 같은 선결 결정이 있었다.
 
