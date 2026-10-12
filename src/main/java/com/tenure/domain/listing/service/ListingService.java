@@ -94,7 +94,7 @@ public class ListingService {
 	public ListingIdResponse create(Long userId, Long itemId, ListingCreateRequest request) {
 
 		// 현재 소유자만 팔 수 있음
-		Item item = findOwnedItem(userId, itemId);
+		Item item = findOwnedItemForUpdate(userId, itemId);
 		User seller = currentOwner(itemId);
 
 		// 정산 계좌가 없으면 판매 대금을 받을 곳이 없음
@@ -109,8 +109,21 @@ public class ListingService {
 			throw new CustomException(ListingErrorCode.LISTING_409_ALREADY_OPEN);
 		}
 
+		// 진행 중인 거래가 있으면 판매 전환할 수 없음 — 수락 후 구매 확정 전까지는 열린 등록이
+		// 없어도 이미 팔린 아이템이다. changeSaleStatus 와 같은 검사
+		if (tradeOrderRepository.existsInProgress(itemId, OrderStatus.FINISHED)) {
+			log.info("진행 중인 거래가 있어 판매 전환할 수 없다 itemId={}", itemId);
+			throw new CustomException(ListingErrorCode.LISTING_409_IN_TRADE);
+		}
+
 		// 폼이 아이템 정보도 다시 받으므로 함께 갱신함
 		Category category = applyItemChanges(item, request.getItem());
+
+		// 배지를 그리는 상태는 아이템이 가짐. 바로 아래 실측·상태이상·대표 OOTD 저장이 벌크
+		// @Modifying(clearAutomatically=true) 라 영속성 컨텍스트를 비운다 — 그 뒤에 두면 이미
+		// detach 된 item 을 바꾸는 꼴이라 커밋 때 반영되지 않는다. 이 호출보다 뒤에 item 변경을
+		// 두지 않는다
+		item.changeSaleStatus(SaleStatus.ON_SALE);
 
 		// 닫힌 행을 되살리지 않고 늘 새로 만듦
 		ItemListing listing = itemListingRepository.save(
@@ -128,9 +141,6 @@ public class ListingService {
 		itemFormApplier.replaceMeasurements(item, category, request.getMeasurements());
 		itemFormApplier.replaceConditions(item, request.getConditions());
 		replaceFeaturedPosts(listing, userId, request.getFeaturedPostIds());
-
-		// 배지를 그리는 상태는 아이템이 가짐
-		item.changeSaleStatus(SaleStatus.ON_SALE);
 
 		// 이 아이템을 미판매 상태일 때 관심 등록해 둔 사람이 있을 수 있음 — 다시 팔린다는 것을 알림
 		// 알림 받을 사람이 없으면 notifyAll 내부에서 바로 끝나므로 여기서 미리 거를 필요 없음
@@ -378,25 +388,16 @@ public class ListingService {
 		return listing;
 	}
 
-	/** 현재 소유자만 팔 수 있다 — 등록자여도 이미 팔았으면 남의 옷이다. */
-	private Item findOwnedItem(Long userId, Long itemId) {
-		Item item = itemRepository.findActiveWithCategory(itemId)
-				.orElseThrow(() -> {
-					log.info("없거나 삭제된 아이템이다 itemId={}", itemId);
-					return new CustomException(ItemErrorCode.ITEM_404);
-				});
-
-		// 등록자여도 이미 팔았으면 남의 옷임
-		if (!currentOwner(itemId).getId().equals(userId)) {
-			log.info("현재 소유자가 아닌 사람이 판매를 시도했다 itemId={} userId={}", itemId, userId);
-			throw new CustomException(ItemErrorCode.ITEM_403);
-		}
-		return item;
-	}
-
 	/**
-	 * 판매 상태 변경 전용 — 행 잠금 조회임. 이 안에서 item_listing·purchase_offer 를 함께
-	 * 건드리므로, 동시에 들어오는 제안 수락과 아이템 행을 두고 경합하지 않게 먼저 잠근다
+	 * 현재 소유자만 팔 수 있다 — 등록자여도 이미 팔았으면 남의 옷이다.
+	 *
+	 * 행 잠금 조회다 — accept()·changeSaleStatus() 와 같은 item → offer 잠금 순서에 맞춰,
+	 * 동시에 들어오는 쓰기(판매 전환·판매 상태 변경·제안 수락)가 같은 아이템을 두고 경합하지
+	 * 않게 먼저 잠근다. create() 처럼 그 안에서 "열린 등록 없음"·"진행 중 거래 없음" 같은
+	 * 확인을 하는 호출부는 특히 이 잠금이 있어야 한다 — 잠그지 않으면 그 확인이 커밋되지 않은
+	 * 값을 보고 통과한 뒤에야 경쟁자가 같은 확인을 통과해, 둘 다 판매 등록을 열어버리는 TOCTOU
+	 * 경쟁이 남는다. create()·changeSaleStatus() 둘 다 이 메서드 하나를 쓴다 — 사본이 둘이면
+	 * 한쪽만 고쳐질 때 잠금 여부가 갈린다.
 	 */
 	private Item findOwnedItemForUpdate(Long userId, Long itemId) {
 		Item item = itemRepository.findActiveForUpdate(itemId)

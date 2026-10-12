@@ -53,7 +53,8 @@ public interface ItemListingApi {
 			@ApiResponse(responseCode = "400", description = "PAYOUT_400_REQUIRED / LISTING_400_FEATURED_RANGE / ITEM_400_MEASUREMENT / ITEM_400_SIZE"),
 			@ApiResponse(responseCode = "403", description = "ITEM_403 / LISTING_403_FEE_BEARER"),
 			@ApiResponse(responseCode = "404", description = "ITEM_404 / POST_404 / CATEGORY_404"),
-			@ApiResponse(responseCode = "409", description = "LISTING_409_ALREADY_OPEN — 이미 판매 중")
+			@ApiResponse(responseCode = "409",
+					description = "LISTING_409_ALREADY_OPEN — 이미 판매 중 / LISTING_409_IN_TRADE — 진행 중인 거래가 있음")
 	})
 	ResponseEntity<BaseResponse<ListingIdResponse>> create(
 			@Parameter(hidden = true) AuthUser authUser,

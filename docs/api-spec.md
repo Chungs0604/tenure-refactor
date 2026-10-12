@@ -440,7 +440,7 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | `LISTING_409_ALREADY_OPEN` | 409 | 이미 판매 중인 아이템입니다. | API-111 |
 | `LISTING_409_CLOSED` | 409 | 판매가 끝난 등록은 수정할 수 없습니다. | API-112, API-115 |
 | `LISTING_409_SOLD` | 409 | 이미 판매 완료된 상품입니다. | API-141, API-144 |
-| `LISTING_409_IN_TRADE` | 409 | 진행 중인 거래가 있어 판매 상태를 바꿀 수 없습니다. | API-113 |
+| `LISTING_409_IN_TRADE` | 409 | 진행 중인 거래가 있어 판매 상태를 바꿀 수 없습니다. | API-111, API-113 |
 | `LISTING_400_STATUS` | 400 | 판매중으로 되돌릴 수 없습니다. 판매 전환을 다시 진행해주세요. | API-113 |
 
 ### WishlistErrorCode
@@ -3135,7 +3135,7 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 }
 ```
 
-에러 — PAYOUT_400_REQUIRED, LISTING_400_FEATURED_RANGE, LISTING_403_FEE_BEARER, LISTING_409_ALREADY_OPEN, ITEM_403, ITEM_400_MEASUREMENT, CATEGORY_404, POST_404
+에러 — PAYOUT_400_REQUIRED, LISTING_400_FEATURED_RANGE, LISTING_403_FEE_BEARER, LISTING_409_ALREADY_OPEN, LISTING_409_IN_TRADE, ITEM_403, ITEM_400_MEASUREMENT, CATEGORY_404, POST_404
 
 #### API-112 · `PUT /api/v1/listings/{listingId}`
 
