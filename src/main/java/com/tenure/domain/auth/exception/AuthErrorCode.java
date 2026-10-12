@@ -19,7 +19,9 @@ public enum AuthErrorCode implements ErrorCode {
 	AUTH_401_VERIFICATION_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_401_VERIFICATION_TOKEN", "유효하지 않은 인증 토큰입니다."),
 	AUTH_410_VERIFICATION_TOKEN(HttpStatus.GONE, "AUTH_410_VERIFICATION_TOKEN", "인증 토큰이 만료되었습니다."),
 	AUTH_409_TOKEN_CONSUMED(HttpStatus.CONFLICT, "AUTH_409_TOKEN_CONSUMED", "이미 사용된 인증 토큰입니다."),
-	AUTH_400_PURPOSE_MISMATCH(HttpStatus.BAD_REQUEST, "AUTH_400_PURPOSE_MISMATCH", "용도가 맞지 않는 인증 토큰입니다.");
+	AUTH_400_PURPOSE_MISMATCH(HttpStatus.BAD_REQUEST, "AUTH_400_PURPOSE_MISMATCH", "용도가 맞지 않는 인증 토큰입니다."),
+	AUTH_429_CODE_RESEND_COOLDOWN(HttpStatus.TOO_MANY_REQUESTS, "AUTH_429_CODE_RESEND_COOLDOWN", "잠시 후 다시 시도해주세요."),
+	AUTH_429_CODE_DAILY_LIMIT(HttpStatus.TOO_MANY_REQUESTS, "AUTH_429_CODE_DAILY_LIMIT", "오늘은 더 이상 인증번호를 받을 수 없습니다.");
 
 	private final HttpStatus status;
 	private final String code;

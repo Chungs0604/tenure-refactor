@@ -30,6 +30,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import static com.tenure.domain.auth.enums.VerificationPurpose.*;
 
@@ -156,6 +158,20 @@ public class AuthService {
 			throw new CustomException(AuthErrorCode.AUTH_401_TOKEN);
 		}
 
+		// 탈퇴 여부 확인. withdraw() 의 Redis 반영(refreshTokenStore.revokeAll 등)은 커밋 후로
+		// 미뤄지는데, 그 사이나 Redis 장애로 일부만 실행되면 isAlive() 만으로는 탈퇴자를 걸러내지
+		// 못한다 — DB 를 직접 봐야 확실하다
+		User user = userRepository.findById(userId)
+				.orElseThrow(() -> {
+					log.warn("존재하지 않는 사용자의 refresh token 으로 재발급을 시도했다. userId={}", userId);
+					return new CustomException(AuthErrorCode.AUTH_401_TOKEN);
+				});
+
+		if (user.isWithdrawn()) {
+			log.warn("탈퇴한 계정이 refresh token 으로 재발급을 시도했다. userId={}", userId);
+			throw new CustomException(AuthErrorCode.AUTH_401_TOKEN);
+		}
+
 		return TokenReissueResponse.builder()
 				.accessToken(jwtTokenProvider.issueAccessToken(userId))
 				.build();
@@ -200,6 +216,18 @@ public class AuthService {
 	@Loggable("인증번호 발송")
 	public EmailVerificationSendResponse sendCode(EmailVerificationSendRequest request) {
 
+		// 재전송 어뷰징 차단(design-audit Q7) — 계정 조회보다 먼저 봐서 불필요한 DB 조회도 아낀다.
+		// 얕은 선제 검사일 뿐이다 — 동시 요청 두 개가 똑같이 이 두 검사를 통과할 수 있다. 진짜
+		// 차단은 아래 원자적 예약에서 일어난다
+		if (verificationStore.isInSendCooldown(request.getEmail(), request.getPurpose())) {
+			log.warn("재전송 쿨다운 중이다. email={} purpose={}", request.getEmail(), request.getPurpose());
+			throw new CustomException(AuthErrorCode.AUTH_429_CODE_RESEND_COOLDOWN);
+		}
+		if (verificationStore.exceedsDailySendLimit(request.getEmail(), request.getPurpose())) {
+			log.warn("일일 발송 한도를 넘었다. email={} purpose={}", request.getEmail(), request.getPurpose());
+			throw new CustomException(AuthErrorCode.AUTH_429_CODE_DAILY_LIMIT);
+		}
+
 		// 용도에 따라 가입 여부를 반대로 본다 — 가입은 없어야 하고, 비밀번호 찾기는 있어야 함
 		boolean alreadyJoined = userRepository.existsByEmail(request.getEmail());
 
@@ -212,11 +240,30 @@ public class AuthService {
 			throw new CustomException(AuthErrorCode.AUTH_404_EMAIL);
 		}
 
-		// 인증번호 발급. 같은 (email, purpose) 의 이전 번호는 이 시점에 무효화
-		String code = verificationStore.issueCode(request.getEmail(), request.getPurpose());
+		// 원자적 예약 — 위의 얕은 선제 검사를 동시에 통과한 요청이 여럿이어도 쿨다운은 하나만
+		// 가져간다. 늦게 온 쪽은 여기서 걸린다
+		if (!verificationStore.reserveSendCooldown(request.getEmail(), request.getPurpose())) {
+			log.warn("재전송 쿨다운 경합에서 졌다. email={} purpose={}", request.getEmail(), request.getPurpose());
+			throw new CustomException(AuthErrorCode.AUTH_429_CODE_RESEND_COOLDOWN);
+		}
+		if (!verificationStore.incrementAndCheckDailySend(request.getEmail(), request.getPurpose())) {
+			verificationStore.releaseSendCooldown(request.getEmail(), request.getPurpose());
+			log.warn("일일 발송 한도 경합에서 졌다. email={} purpose={}", request.getEmail(), request.getPurpose());
+			throw new CustomException(AuthErrorCode.AUTH_429_CODE_DAILY_LIMIT);
+		}
 
-		// 메일 발송
-		emailSender.sendVerificationCode(request.getEmail(), code);
+		String code;
+		try {
+			// 인증번호 발급. 같은 (email, purpose) 의 이전 번호는 이 시점에 무효화
+			code = verificationStore.issueCode(request.getEmail(), request.getPurpose());
+			emailSender.sendVerificationCode(request.getEmail(), code);
+		} catch (RuntimeException e) {
+			// 발송 실패까지 한도에 넣으면 인프라 장애가 사용자의 재시도 기회를 깎아먹는다 —
+			// 위에서 선점한 예약을 되돌린다
+			verificationStore.releaseSendCooldown(request.getEmail(), request.getPurpose());
+			verificationStore.decrementDailySend(request.getEmail(), request.getPurpose());
+			throw e;
+		}
 
 		return EmailVerificationSendResponse.builder()
 				.expiresAt(LocalDateTime.now().plus(EmailVerificationStore.CODE_TTL))
@@ -239,11 +286,24 @@ public class AuthService {
 
 		// 입력값 대조. 번호 자체는 로그에 남기지 않는다
 		if (!issued.equals(request.getCode())) {
+
+			// 틀려도 코드 키가 안 지워지면 같은 코드로 무제한 대입이 가능하다. 한도를 넘으면
+			// 코드 자체를 지워 만료와 같은 상태로 만든다 — 공격자는 재발송(쿨다운·일일 한도가 막음)
+			// 부터 다시 받아야 한다
+			long attempts = verificationStore.incrementConfirmAttempts(request.getEmail(), request.getPurpose());
+			if (attempts >= EmailVerificationStore.MAX_CONFIRM_ATTEMPTS) {
+				verificationStore.deleteCode(request.getEmail(), request.getPurpose());
+				verificationStore.clearConfirmAttempts(request.getEmail(), request.getPurpose());
+				log.warn("인증번호 대조 실패가 한도를 넘어 코드를 무효화했다. email={} purpose={}",
+						request.getEmail(), request.getPurpose());
+				throw new CustomException(AuthErrorCode.AUTH_410_CODE);
+			}
+
 			log.warn("인증번호 불일치 email={} purpose={}", request.getEmail(), request.getPurpose());
 			throw new CustomException(AuthErrorCode.AUTH_400_CODE);
 		}
 
-		// 1회용 토큰 발급. 인증번호 키는 함께 지워져 같은 번호로 토큰을 또 받을 수 없음
+		// 1회용 토큰 발급. 인증번호 키·시도 횟수는 함께 지워져 같은 번호로 토큰을 또 받을 수 없음
 		String token = verificationStore.issueToken(request.getEmail(), request.getPurpose());
 
 		return EmailVerificationConfirmResponse.builder()
@@ -253,17 +313,25 @@ public class AuthService {
 	}
 
 	/**
-	 * 인증 토큰을 소비한다. 회원가입·비밀번호 재설정이 공유한다.
+	 * 인증 토큰을 검증한다. 회원가입·비밀번호 재설정이 공유한다.
 	 *
-	 * <p>읽으면서 지우므로 두 번 쓸 수 없다.
+	 * <p>검증만 하고 토큰은 바로 지우지 않는다 — 호출자(signUp, resetPassword)는 이 검증 다음에
+	 * DB 쓰기를 하는데, 여기서 즉시 지우면 그 DB 쓰기가 나중에 실패(닉네임 동시 충돌, 계정 소실 등)해
+	 * 롤백돼도 토큰은 이미 사라진 뒤라 재발송 없이 재시도할 수 없다. 실제 삭제는 호출자의 트랜잭션이
+	 * 커밋된 뒤로 미룬다 — 롤백되면 삭제 자체가 실행되지 않아 토큰이 살아남는다.
+	 *
+	 * <p>이 때문에 같은 토큰으로 동시에 들어온 다른 요청도 커밋 전까지는 검증을 통과할 수 있는 짧은
+	 * 창이 생긴다. 회원가입은 {@code user.email} UNIQUE 제약이 둘 중 하나를 걸러내 최종 일관성이
+	 * 깨지지 않고, 비밀번호 재설정은 토큰 보유자 본인이 비밀번호를 중복으로 바꾸는 것뿐이라 보안상
+	 * 문제가 되지 않는다.
 	 */
-	@Loggable("인증 토큰 소비")
+	@Loggable("인증 토큰 검증")
 	public void consumeVerificationToken(
 			@LogMask String token, String email,
 			VerificationPurpose purpose
 	) {
-		// 회원가입 or 비밀번호 재설정을 하는 회원(예비)을 조회하면서 1회용 토큰 소비
-		EmailVerificationStore.VerifiedTarget target = verificationStore.consumeToken(token);
+		// 회원가입 or 비밀번호 재설정을 하는 회원(예비)을 조회. 토큰은 지우지 않고 본다
+		EmailVerificationStore.VerifiedTarget target = verificationStore.peekToken(token);
 
 		// 없다면 이미 쓴 것인지 만료된 것인지 가른다. 흔적 키로 구분
 		if (target == null) {
@@ -287,6 +355,24 @@ public class AuthService {
 		if (!target.email().equalsIgnoreCase(email)) {
 			log.warn("인증 토큰의 대상 이메일이 다릅니다. 토큰대상={} 요청={}", target.email(), email);
 			throw new CustomException(AuthErrorCode.AUTH_401_VERIFICATION_TOKEN);
+		}
+
+		// 실제 소비는 호출자의 DB 트랜잭션이 커밋된 뒤로 미룸. withdraw() 와 같은 패턴
+		afterCommit(() -> verificationStore.deleteToken(token));
+	}
+
+	// 트랜잭션이 끝까지 커밋된 뒤에만 실행함. 트랜잭션 없이 불리면(단위 테스트 등) 동기화가
+	// 활성화돼 있지 않으니 그냥 바로 실행함 — UserService.withdraw() 와 같은 패턴
+	private void afterCommit(Runnable action) {
+		if (TransactionSynchronizationManager.isSynchronizationActive()) {
+			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+				@Override
+				public void afterCommit() {
+					action.run();
+				}
+			});
+		} else {
+			action.run();
 		}
 	}
 

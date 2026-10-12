@@ -329,6 +329,8 @@ offset 방식은 스크롤 중에 새 글이 앞에 들어오면 페이지가 �
 | `AUTH_401_CREDENTIAL` | 401 | 이메일 또는 비밀번호가 올바르지 않습니다. | API-001 |
 | `AUTH_404_EMAIL` | 404 | 가입되지 않은 이메일입니다. | API-001, API-004 |
 | `AUTH_401_TOKEN` | 401 | 유효하지 않은 토큰입니다. | API-003 |
+| `AUTH_429_CODE_RESEND_COOLDOWN` | 429 | 잠시 후 다시 시도해주세요. | API-004 |
+| `AUTH_429_CODE_DAILY_LIMIT` | 429 | 오늘은 더 이상 인증번호를 받을 수 없습니다. | API-004 |
 | `AUTH_400_CODE` | 400 | 인증번호가 틀렸습니다. | API-005 |
 | `AUTH_410_CODE` | 410 | 인증번호가 만료되었습니다. | API-005 |
 | `AUTH_400_NOT_VERIFIED` | 400 | 이메일 인증이 완료되지 않았습니다. | API-012, API-006 |
@@ -648,13 +650,19 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 }
 ```
 
-에러 — AUTH_404_EMAIL(PASSWORD_RESET 인데 미가입), USER_409_EMAIL(SIGN_UP 인데 기존 가입)
+에러 — AUTH_404_EMAIL(PASSWORD_RESET 인데 미가입), USER_409_EMAIL(SIGN_UP 인데 기존 가입),
+AUTH_429_CODE_RESEND_COOLDOWN(쿨다운 60초 이내 재요청), AUTH_429_CODE_DAILY_LIMIT(같은 이메일·용도로
+일일 5회 초과)
 
 #### API-005 · `POST /api/v1/auth/email-verifications/verify`
 
 인증번호 확인. 인증 **불필요**. 관련 화면 SCR-002, SCR-003.
 
-요청 `{ email, purpose, code }` → `{ verificationToken, expiresAt }`. 인증 완료를 증명하는 **1회용 토큰**으로 수명은 **10분**이다(가입 플로우를 마칠 여유). `purpose` 가 토큰에 바인딩되어 `SIGN_UP` 토큰으로 `PASSWORD_RESET` 을 수행할 수 없다. 토큰은 Redis 키 `email-verify-token:{token}` 에 있고, 소비할 때 `GETDEL` 로 읽으면서 지워 **재사용이 구조적으로 불가능**하다(`DEC-009`).
+요청 `{ email, purpose, code }` → `{ verificationToken, expiresAt }`. 인증 완료를 증명하는 **1회용 토큰**으로 수명은 **10분**이다(가입 플로우를 마칠 여유). `purpose` 가 토큰에 바인딩되어 `SIGN_UP` 토큰으로 `PASSWORD_RESET` 을 수행할 수 없다. 토큰은 Redis 키 `email-verify-token:{token}` 에 있다.
+
+대조 실패는 (email, purpose) 당 **5회**로 제한한다 — 틀려도 코드 키가 안 지워지면 6자리를 무제한 대입할 수 있다. 5회를 넘기면 코드 자체를 지워 `AUTH_410_CODE`(만료와 동일한 상태)로 응답하고, 재발송(API-004, 쿨다운·일일 한도 적용)부터 다시 받아야 한다.
+
+토큰 소비는 검증(peek, 지우지 않음) → 호출자(API-012, API-006)의 DB 커밋 → 삭제 순서다. 커밋이 실패해 롤백되면 토큰이 살아있어 재발송 없이 재시도할 수 있다 — 그 대신 같은 토큰으로 동시에 들어온 다른 요청도 커밋 전까지는 검증을 통과할 수 있는 짧은 창이 생기는데, 가입은 `user.email` UNIQUE 제약이, 비밀번호 재설정은 "토큰 보유자 본인이 중복으로 재설정"일 뿐이라는 점이 최종 일관성을 지킨다.
 
 **요청 본문**
 
@@ -689,7 +697,7 @@ access token 재발급. 인증 **불필요**. 관련 화면 —(화면 근거 �
 
 비밀번호 재설정. 인증 **불필요**. 관련 화면 SCR-003.
 
-요청 `{ email, verificationToken, newPassword }`. 토큰은 `purpose=PASSWORD_RESET` 이어야 한다. `GETDEL` 로 읽는 즉시 키가 사라지므로 같은 토큰을 두 번 쓸 수 없다.
+요청 `{ email, verificationToken, newPassword }`. 토큰은 `purpose=PASSWORD_RESET` 이어야 한다. 토큰 소비 순서는 API-005 설명과 같다 — 검증 후 비밀번호 변경이 커밋돼야 토큰이 지워진다.
 
 **요청 본문**
 
