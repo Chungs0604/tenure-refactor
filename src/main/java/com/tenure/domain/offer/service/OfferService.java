@@ -434,30 +434,49 @@ public class OfferService {
 	}
 
 	/**
-	 * 판매를 내릴 때 남은 대기 제안 정리. 수락 경로의 자동 취소와 대칭임 — 제안자 잘못이 아니라
-	 * 1회 제한에서 제외하고, 결제 승인을 해제한 뒤 알림을 보냄.
+	 * 판매 내림/아이템 삭제로 남은 대기 제안 정리. 수락 경로의 자동 취소와 대칭임 — 제안자
+	 * 잘못이 아니라 1회 제한에서 제외하고, 결제 승인을 해제한 뒤 알림을 보냄.
 	 *
-	 * 호출자(ListingService.changeSaleStatus)가 이미 이 아이템 행을 잠근 뒤라 item → offer
-	 * 잠금 순서가 지켜짐 — 여기서는 제안 행만 다시 잠근다
+	 * 호출자(ListingService.changeSaleStatus·closeOnSaleItemsForWithdrawal, ItemService.delete)가
+	 * 이미 이 아이템 행을 잠근 뒤라 item → offer 잠금 순서가 지켜짐 — 여기서는 제안 행만 다시 잠근다
 	 */
 	@Transactional
-	@Loggable("판매 내림에 따른 제안 정리")
-	public void cancelPendingForDelist(Long itemId) {
+	@Loggable("판매 내림/삭제에 따른 제안 정리")
+	public void cancelPendingForDelist(Long itemId, OfferCancelReason reason) {
 		LocalDateTime now = LocalDateTime.now();
+		// 사유는 호출 전체에서 고정이다 — 건마다 다시 판정하지 않고, 지원하지 않는 사유면
+		// 상태를 하나도 안 건드린 시점에 바로 실패한다
+		String notificationBody = delistCancelNotificationBody(reason);
 
 		// id 만 가볍게 훑고, 전이는 건마다 잠금 재조회로 다시 확인함 — 그 사이 구매자가 직접
 		// 취소했거나 이미 처리된 건이면 더 이상 대상이 아님
 		for (Long offerId : purchaseOfferRepository.findPendingIdsByItemId(itemId)) {
 			relockIfStillPending(offerId).ifPresent(offer -> {
-				offer.cancel(OfferCancelReason.LISTING_DELISTED, now);
+				offer.cancel(reason, now);
 				paymentService.release(offer.getId(), now);
 
 				notificationService.notify(
 						offer.getBuyer(), NotificationSettingType.REQUEST_AUTO_CANCEL, NotificationCategory.TRADE_STATUS,
-						offer.getItem().getName(), "판매가 종료되어 보낸 제안이 취소됐어요.",
+						offer.getItem().getName(), notificationBody,
 						offer.getItem().getCoverImageKey(), NotificationTargetType.OFFER, offer.getId());
 			});
 		}
+	}
+
+	/**
+	 * cancelPendingForDelist 가 다루는 두 사유(LISTING_DELISTED·ITEM_DELETED)만 문구를 가름.
+	 *
+	 * default 대신 나머지 사유를 전부 나열해 switch 를 exhaustive 하게 둔다 — OfferCancelReason
+	 * 에 값이 추가되는데 이 메서드를 안 고치면, default 였다면 런타임까지 숨어 있었을 실수가
+	 * 컴파일 시점에 드러난다.
+	 */
+	private String delistCancelNotificationBody(OfferCancelReason reason) {
+		return switch (reason) {
+			case LISTING_DELISTED -> "판매가 종료되어 보낸 제안이 취소됐어요.";
+			case ITEM_DELETED -> "아이템이 삭제되어 보낸 제안이 취소됐어요.";
+			case BUYER_CANCELED, OTHER_OFFER_ACCEPTED, WITHDRAWN -> throw new IllegalStateException(
+					"cancelPendingForDelist 에서 다루지 않는 취소 사유임: " + reason);
+		};
 	}
 
 	/**

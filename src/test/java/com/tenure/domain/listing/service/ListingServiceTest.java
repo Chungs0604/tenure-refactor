@@ -43,6 +43,7 @@ import com.tenure.domain.notification.enums.NotificationCategory;
 import com.tenure.domain.notification.enums.NotificationSettingType;
 import com.tenure.domain.notification.enums.NotificationTargetType;
 import com.tenure.domain.notification.service.NotificationService;
+import com.tenure.domain.offer.enums.OfferCancelReason;
 import com.tenure.domain.offer.service.OfferService;
 import com.tenure.domain.order.repository.TradeOrderRepository;
 import com.tenure.domain.payout.exception.PayoutErrorCode;
@@ -475,7 +476,7 @@ class ListingServiceTest {
 
 			assertThat(item.getSaleStatus()).isEqualTo(SaleStatus.NOT_FOR_SALE);
 			assertThat(listing.getClosedAt()).isNotNull();
-			verify(offerService).cancelPendingForDelist(ITEM_ID);
+			verify(offerService).cancelPendingForDelist(ITEM_ID, OfferCancelReason.LISTING_DELISTED);
 		}
 
 		@Test
@@ -491,7 +492,7 @@ class ListingServiceTest {
 			listingService.closeOnSaleItemsForWithdrawal(USER_ID);
 
 			assertThat(item.getSaleStatus()).isEqualTo(SaleStatus.NOT_FOR_SALE);
-			verify(offerService).cancelPendingForDelist(ITEM_ID);
+			verify(offerService).cancelPendingForDelist(ITEM_ID, OfferCancelReason.LISTING_DELISTED);
 		}
 
 		@Test
@@ -513,8 +514,8 @@ class ListingServiceTest {
 
 			assertThat(item1.getSaleStatus()).isEqualTo(SaleStatus.NOT_FOR_SALE);
 			assertThat(item2.getSaleStatus()).isEqualTo(SaleStatus.NOT_FOR_SALE);
-			verify(offerService).cancelPendingForDelist(ITEM_ID);
-			verify(offerService).cancelPendingForDelist(itemId2);
+			verify(offerService).cancelPendingForDelist(ITEM_ID, OfferCancelReason.LISTING_DELISTED);
+			verify(offerService).cancelPendingForDelist(itemId2, OfferCancelReason.LISTING_DELISTED);
 		}
 
 		@Test

@@ -1290,15 +1290,20 @@ enums:
   - BUYER_CANCELED
   - OTHER_OFFER_ACCEPTED
   - LISTING_DELISTED
+  - WITHDRAWN
+  - ITEM_DELETED
   source: design
-  evidence: 제안자 본인 취소와 시스템 자동 취소(다른 제안 수락·판매 내림)를 구분한다. Q8 — 판매를
-    내릴 때 남은 PENDING 제안은 수락 경로의 자동 취소 규칙과 대칭으로 정리하기로 했다(결제 승인
-    해제 + 알림). OTHER_OFFER_ACCEPTED 와 마찬가지로 제안자 잘못이 아니므로 1회 제한에서 제외한다
+  evidence: 제안자 본인 취소와 시스템 자동 취소(다른 제안 수락·판매 내림·회원탈퇴·아이템 삭제)를
+    구분한다. Q8 — 판매를 내릴 때 남은 PENDING 제안은 수락 경로의 자동 취소 규칙과 대칭으로
+    정리하기로 했다(결제 승인 해제 + 알림). WITHDRAWN(구매자 탈퇴)·ITEM_DELETED(미판매 아이템
+    삭제)도 OTHER_OFFER_ACCEPTED 와 마찬가지로 제안자 잘못이 아니므로 1회 제한에서 제외한다
   value_evidence_table: purchase_offer
   value_evidence_columns:
     BUYER_CANCELED: canceled_at
     OTHER_OFFER_ACCEPTED: canceled_at
     LISTING_DELISTED: canceled_at
+    WITHDRAWN: canceled_at
+    ITEM_DELETED: canceled_at
 entities:
 - name: User
   table: user

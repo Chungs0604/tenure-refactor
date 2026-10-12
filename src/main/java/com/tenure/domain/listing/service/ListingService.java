@@ -23,6 +23,7 @@ import com.tenure.domain.notification.enums.NotificationCategory;
 import com.tenure.domain.notification.enums.NotificationSettingType;
 import com.tenure.domain.notification.enums.NotificationTargetType;
 import com.tenure.domain.notification.service.NotificationService;
+import com.tenure.domain.offer.enums.OfferCancelReason;
 import com.tenure.domain.offer.service.OfferService;
 import com.tenure.domain.order.enums.OrderStatus;
 import com.tenure.domain.order.repository.TradeOrderRepository;
@@ -250,7 +251,7 @@ public class ListingService {
 				.ifPresent(listing -> listing.close(LocalDateTime.now()));
 
 		// 응답을 못 받은 대기 제안이 남아 있으면 함께 정리함 — 막아두면 결제 승인이 잡힌 채 방치됨
-		offerService.cancelPendingForDelist(itemId);
+		offerService.cancelPendingForDelist(itemId, OfferCancelReason.LISTING_DELISTED);
 
 		item.changeSaleStatus(saleStatus);
 
@@ -285,7 +286,7 @@ public class ListingService {
 				itemListingRepository.findOpenByItemId(itemId)
 						.ifPresent(listing -> listing.close(now));
 
-				offerService.cancelPendingForDelist(itemId);
+				offerService.cancelPendingForDelist(itemId, OfferCancelReason.LISTING_DELISTED);
 
 				item.changeSaleStatus(SaleStatus.NOT_FOR_SALE);
 			});

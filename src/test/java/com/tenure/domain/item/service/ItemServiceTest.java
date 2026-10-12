@@ -10,6 +10,8 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.tenure.domain.offer.enums.OfferCancelReason;
+import com.tenure.domain.offer.service.OfferService;
 import com.tenure.domain.category.entity.Category;
 import com.tenure.domain.category.enums.SizeScheme;
 import com.tenure.domain.category.exception.CategoryErrorCode;
@@ -76,6 +78,7 @@ class ItemServiceTest {
 	@Mock private ItemFormApplier itemFormApplier;
 	@Mock private ItemOwnershipRepository itemOwnershipRepository;
 	@Mock private TradeOrderRepository tradeOrderRepository;
+	@Mock private OfferService offerService;
 	@Mock private UserRepository userRepository;
 
 	// 매핑은 검증 대상이라 mock 이 아니라 실제 생성 구현을 넣는다
@@ -262,6 +265,17 @@ class ItemServiceTest {
 		}
 
 		@Test
+		@DisplayName("미판매 아이템에 걸린 PENDING 구매 제안을 함께 정리한다 — 안 하면 결제 승인이 그대로 묶인다")
+		void delete_cancelsPendingOffers() {
+			Item item = item();
+			givenDeletableItem(item);
+
+			itemService.delete(USER_ID, ITEM_ID);
+
+			verify(offerService).cancelPendingForDelist(ITEM_ID, OfferCancelReason.ITEM_DELETED);
+		}
+
+		@Test
 		@DisplayName("판매 중이면 막는다")
 		void delete_onSale_rejected() {
 			Item item = item();
@@ -274,6 +288,8 @@ class ItemServiceTest {
 					.isEqualTo(ItemErrorCode.ITEM_409_ON_SALE);
 
 			assertThat(item.isDeleted()).isFalse();
+			// 막힌 경로라 제안 정리까지 가지 않아야 한다
+			verify(offerService, never()).cancelPendingForDelist(anyLong(), any());
 		}
 
 		@Test
@@ -289,10 +305,11 @@ class ItemServiceTest {
 					.isEqualTo(ItemErrorCode.ITEM_409_ON_SALE);
 
 			assertThat(item.isDeleted()).isFalse();
+			verify(offerService, never()).cancelPendingForDelist(anyLong(), any());
 		}
 
 		private void givenDeletableItem(Item item) {
-			given(itemRepository.findActiveWithCategory(ITEM_ID)).willReturn(Optional.of(item));
+			given(itemRepository.findActiveForUpdate(ITEM_ID)).willReturn(Optional.of(item));
 			given(itemOwnershipRepository.findCurrent(ITEM_ID)).willReturn(Optional.of(ownershipOf(item, user())));
 			given(tradeOrderRepository.existsInProgress(anyLong(), any())).willReturn(false);
 		}
