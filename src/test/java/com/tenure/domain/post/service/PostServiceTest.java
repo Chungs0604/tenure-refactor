@@ -54,6 +54,7 @@ import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -62,6 +63,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -605,12 +607,45 @@ class PostServiceTest {
 		@Test
 		@DisplayName("삭제된 게시물에는 좋아요할 수 없다 — POST_404")
 		void like_deletedPost_throwsNotFound() {
-			given(postRepository.findActive(POST_ID)).willReturn(Optional.empty());
+			given(postRepository.findActiveForUpdate(POST_ID)).willReturn(Optional.empty());
 
 			assertThatThrownBy(() -> postService.like(USER_ID, POST_ID))
 					.isInstanceOf(CustomException.class)
 					.extracting(PostServiceTest::errorCodeOf)
 					.isEqualTo(PostErrorCode.POST_404);
+		}
+
+		@Test
+		@DisplayName("동시 요청이 겹쳐 좋아요 유니크 제약에 걸리면 POST_409_LIKE 로 번역한다")
+		void like_concurrentConflict_translatesToPost409Like() {
+			User author = givenAuthor();
+			Post post = givenExistingPost(author);
+			willThrow(new DataIntegrityViolationException("uk_post_like"))
+					.given(postLikeRepository).save(any(PostLike.class));
+
+			assertThatThrownBy(() -> postService.like(USER_ID, POST_ID))
+					.isInstanceOf(CustomException.class)
+					.extracting(PostServiceTest::errorCodeOf)
+					.isEqualTo(PostErrorCode.POST_409_LIKE);
+
+			// 선검사를 통과한 뒤 저장에서 걸렸으므로 카운터는 올라가지 않아야 한다
+			assertThat(post.getLikeCount()).isZero();
+		}
+
+		@Test
+		@DisplayName("동시 요청이 겹쳐 저장 유니크 제약에 걸리면 POST_409_SAVE 로 번역한다")
+		void save_concurrentConflict_translatesToPost409Save() {
+			User author = givenAuthor();
+			Post post = givenExistingPost(author);
+			willThrow(new DataIntegrityViolationException("uk_post_save"))
+					.given(postSaveRepository).save(any(PostSave.class));
+
+			assertThatThrownBy(() -> postService.save(USER_ID, POST_ID))
+					.isInstanceOf(CustomException.class)
+					.extracting(PostServiceTest::errorCodeOf)
+					.isEqualTo(PostErrorCode.POST_409_SAVE);
+
+			assertThat(post.getSaveCount()).isZero();
 		}
 	}
 
@@ -668,6 +703,8 @@ class PostServiceTest {
 		Post post = Post.publish(author, LocalDate.now(), AspectRatio.RATIO_3_4, false);
 		ReflectionTestUtils.setField(post, "id", POST_ID);
 		given(postRepository.findActive(POST_ID)).willReturn(Optional.of(post));
+		// like()/unlike()/save()/unsave() 는 잠금 조회(findActiveForUpdate)를 쓴다
+		given(postRepository.findActiveForUpdate(POST_ID)).willReturn(Optional.of(post));
 		return post;
 	}
 

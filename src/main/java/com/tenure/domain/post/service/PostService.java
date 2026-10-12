@@ -47,6 +47,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -238,18 +239,31 @@ public class PostService {
 		post.getAuthor().decreasePostCount();
 	}
 
-	/** 좋아요. 이미 눌렀으면 409 다 — 화면의 토글 상태와 서버가 어긋났다는 뜻이다. */
+	/**
+	 * 좋아요. 이미 눌렀으면 409 다 — 화면의 토글 상태와 서버가 어긋났다는 뜻이다.
+	 *
+	 * post 행을 잠근 채로 카운터를 올린다 — 더티체킹만으로 증감하면 동시 좋아요 두 건이 같은
+	 * like_count 를 읽어 한 건만 반영되는 lost update 가 난다. 선검사를 통과한 동시 요청 두 건이
+	 * 둘 다 저장을 시도하면 uk_post_like 위반이 나는데, 그대로 올리면 500 이 되므로 번역한다
+	 * (FollowService.follow() 와 같은 패턴).
+	 */
 	@Transactional
 	@Loggable("좋아요")
 	public PostLikeResponse like(Long userId, Long postId) {
-		Post post = findActivePost(postId);
+		Post post = findActivePostForUpdate(postId);
 
 		if (postLikeRepository.existsByPostIdAndUserId(postId, userId)) {
 			log.warn("이미 좋아요한 게시물입니다. postId={}, userId={}", postId, userId);
 			throw new CustomException(PostErrorCode.POST_409_LIKE);
 		}
 
-		postLikeRepository.save(PostLike.of(post, findUser(userId)));
+		try {
+			postLikeRepository.save(PostLike.of(post, findUser(userId)));
+			postLikeRepository.flush();
+		} catch (DataIntegrityViolationException e) {
+			log.warn("동시 요청으로 좋아요 유니크 제약에 걸림. postId={}, userId={}", postId, userId);
+			throw new CustomException(PostErrorCode.POST_409_LIKE);
+		}
 		post.increaseLikeCount();
 
 		return PostLikeResponse.builder()
@@ -257,11 +271,15 @@ public class PostService {
 				.build();
 	}
 
-	/** 좋아요 취소. 없는 관계면 조용히 성공 처리한다 — 취소의 결과는 어느 쪽이든 '안 누른 상태' 다. */
+	/**
+	 * 좋아요 취소. 없는 관계면 조용히 성공 처리한다 — 취소의 결과는 어느 쪽이든 '안 누른 상태' 다.
+	 *
+	 * like() 와 같은 이유로 post 행을 잠근 채로 카운터를 내린다.
+	 */
 	@Transactional
 	@Loggable("좋아요 취소")
 	public PostLikeResponse unlike(Long userId, Long postId) {
-		Post post = findActivePost(postId);
+		Post post = findActivePostForUpdate(postId);
 
 		postLikeRepository.findByPostIdAndUserId(postId, userId).ifPresent(like -> {
 			postLikeRepository.delete(like);
@@ -273,18 +291,28 @@ public class PostService {
 				.build();
 	}
 
-	/** 저장. 좋아요와 탭이 분리돼 있어 테이블도 따로다. */
+	/**
+	 * 저장. 좋아요와 탭이 분리돼 있어 테이블도 따로다.
+	 *
+	 * like() 와 같은 이유로 post 행을 잠근 채로 카운터를 올리고, uk_post_save 위반을 번역한다.
+	 */
 	@Transactional
 	@Loggable("게시물 저장")
 	public PostSaveResponse save(Long userId, Long postId) {
-		Post post = findActivePost(postId);
+		Post post = findActivePostForUpdate(postId);
 
 		if (postSaveRepository.existsByPostIdAndUserId(postId, userId)) {
 			log.warn("이미 저장한 게시물입니다. postId={}, userId={}", postId, userId);
 			throw new CustomException(PostErrorCode.POST_409_SAVE);
 		}
 
-		postSaveRepository.save(PostSave.of(post, findUser(userId)));
+		try {
+			postSaveRepository.save(PostSave.of(post, findUser(userId)));
+			postSaveRepository.flush();
+		} catch (DataIntegrityViolationException e) {
+			log.warn("동시 요청으로 저장 유니크 제약에 걸림. postId={}, userId={}", postId, userId);
+			throw new CustomException(PostErrorCode.POST_409_SAVE);
+		}
 		post.increaseSaveCount();
 
 		return PostSaveResponse.builder()
@@ -292,11 +320,15 @@ public class PostService {
 				.build();
 	}
 
-	/** 저장 취소. */
+	/**
+	 * 저장 취소.
+	 *
+	 * like() 와 같은 이유로 post 행을 잠근 채로 카운터를 내린다.
+	 */
 	@Transactional
 	@Loggable("게시물 저장 취소")
 	public PostSaveResponse unsave(Long userId, Long postId) {
-		Post post = findActivePost(postId);
+		Post post = findActivePostForUpdate(postId);
 
 		postSaveRepository.findByPostIdAndUserId(postId, userId).ifPresent(saved -> {
 			postSaveRepository.delete(saved);
@@ -474,6 +506,15 @@ public class PostService {
 
 	private Post findActivePost(Long postId) {
 		return postRepository.findActive(postId)
+				.orElseThrow(() -> {
+					log.warn("존재하지 않거나 삭제된 게시물입니다. postId={}", postId);
+					return new CustomException(PostErrorCode.POST_404);
+				});
+	}
+
+	/** 좋아요·저장 카운터 증감 전용 — post 행을 잠근 채로 읽는다. */
+	private Post findActivePostForUpdate(Long postId) {
+		return postRepository.findActiveForUpdate(postId)
 				.orElseThrow(() -> {
 					log.warn("존재하지 않거나 삭제된 게시물입니다. postId={}", postId);
 					return new CustomException(PostErrorCode.POST_404);
