@@ -9,6 +9,7 @@ import com.tenure.domain.item.repository.ItemOwnershipRepository;
 import com.tenure.domain.item.repository.ItemRepository;
 import com.tenure.domain.listing.dto.request.ListingCreateRequest;
 import com.tenure.domain.listing.dto.request.ListingItemRequest;
+import com.tenure.domain.listing.dto.response.FeaturedPostResponse;
 import com.tenure.domain.listing.dto.response.ListingIdResponse;
 import com.tenure.domain.listing.dto.response.SaleStatusResponse;
 import com.tenure.domain.listing.entity.ItemListing;
@@ -77,6 +78,7 @@ public class ListingService {
 	private final ItemOwnershipRepository itemOwnershipRepository;
 	private final PayoutAccountRepository payoutAccountRepository;
 	private final PostRepository postRepository;
+	private final FeaturedPostAssembler featuredPostAssembler;
 	private final TradeOrderRepository tradeOrderRepository;
 	private final OfferService offerService;
 	private final WishlistRepository wishlistRepository;
@@ -140,7 +142,7 @@ public class ListingService {
 		// 실측·상태는 아이템에 붙고 대표 OOTD 는 판매 등록에 붙음
 		itemFormApplier.replaceMeasurements(item, category, request.getMeasurements());
 		itemFormApplier.replaceConditions(item, request.getConditions());
-		replaceFeaturedPosts(listing, userId, request.getFeaturedPostIds());
+		applyFeaturedPosts(listing, userId, request.getFeaturedPostIds());
 
 		// 이 아이템을 미판매 상태일 때 관심 등록해 둔 사람이 있을 수 있음 — 다시 팔린다는 것을 알림
 		// 알림 받을 사람이 없으면 notifyAll 내부에서 바로 끝나므로 여기서 미리 거를 필요 없음
@@ -184,7 +186,7 @@ public class ListingService {
 
 		itemFormApplier.replaceMeasurements(item, category, request.getMeasurements());
 		itemFormApplier.replaceConditions(item, request.getConditions());
-		replaceFeaturedPosts(listing, userId, request.getFeaturedPostIds());
+		applyFeaturedPosts(listing, userId, request.getFeaturedPostIds());
 
 		// 가격만 알림 대상임 — 위에서 떼어 둔 previousPrice 와 지금 요청값을 비교해서 실제로 바뀐 경우만 보냄
 		// 배송비·판매자 설명만 바뀐 요청은 여기 안 걸려서 알림이 안 나감
@@ -193,6 +195,27 @@ public class ListingService {
 		}
 
 		return listingMapper.toListingIdResponse(listing);
+	}
+
+	/**
+	 * 대표 OOTD 교체. 상세 화면 상단 캐러셀만 따로 바꿀 때 쓴다 — 가격·배송비·수수료 등
+	 * 나머지 판매 조건은 손대지 않는다. update() 와 같은 가드(본인 판매 등록인지, 판매가
+	 * 끝난 등록인지)를 그대로 적용한다.
+	 */
+	@Transactional
+	@Loggable("대표 OOTD 교체")
+	public List<FeaturedPostResponse> replaceFeaturedPosts(Long userId, Long listingId, List<Long> postIds) {
+		ItemListing listing = findOwnListing(userId, listingId);
+
+		// 판매중이 아니면 대표 OOTD 도 수정 불가
+		if (listing.isClosed()) {
+			log.info("판매가 끝난 등록의 대표 OOTD를 교체하려 했다 listingId={}", listingId);
+			throw new CustomException(ListingErrorCode.LISTING_409_CLOSED);
+		}
+
+		List<Post> ordered = applyFeaturedPosts(listing, userId, postIds);
+
+		return featuredPostAssembler.toCards(ordered);
 	}
 
 	/**
@@ -296,7 +319,7 @@ public class ListingService {
 	 *
 	 * 본인 게시물만 걸 수 있다 — 남의 OOTD 로 내 상품을 증명할 수 없다.
 	 */
-	private void replaceFeaturedPosts(ItemListing listing, Long userId, List<Long> postIds) {
+	private List<Post> applyFeaturedPosts(ItemListing listing, Long userId, List<Long> postIds) {
 		// 중복을 걷어낸 뒤 개수를 셈
 		List<Long> distinct = postIds.stream().distinct().toList();
 
@@ -332,8 +355,14 @@ public class ListingService {
 			rows.add(ListingFeaturedPost.of(listing, ordered.get(i), i));
 		}
 		listingFeaturedPostRepository.saveAll(rows);
+
+		return ordered;
 	}
 
+	/**
+	 * 교체된 대표 OOTD 를 응답 모양으로 돌려준다. ListingQueryService#getFeaturedPosts 와 같은
+	 * 조회지만, 두 서비스를 서로 의존하게 만들지 않기 위해 여기서 다시 조립한다.
+	 */
 	/** 기본 사용자는 배송비를 보낼 수 없다. 화면에서도 '0원' 으로 잠겨 있다 */
 	private Integer resolveShippingFee(User seller, ListingCreateRequest request) {
 		validateFeeFieldsForBasicGrade(seller, request);
