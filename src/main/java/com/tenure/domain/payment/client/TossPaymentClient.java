@@ -119,8 +119,11 @@ public class TossPaymentClient {
 		}
 	}
 
-	/** paymentKey 는 그 값만으로 confirm·cancel 을 호출할 수 있는 자격증명이라 로그에 통째로 남기지 않음 */
-	private String mask(String paymentKey) {
+	/**
+	 * paymentKey 는 그 값만으로 confirm·cancel 을 호출할 수 있는 자격증명이라 로그에 통째로
+	 * 남기지 않음. static 으로 둬 PaymentService 의 보정 환불 로그에서도 같이 쓴다
+	 */
+	public static String mask(String paymentKey) {
 		if (paymentKey == null || paymentKey.length() <= 8) {
 			return "***";
 		}

@@ -76,7 +76,7 @@ public class PaymentService {
 	 */
 	public void compensateFailedAuthorization(String paymentKey) {
 		if (!tossPaymentClient.cancel(paymentKey, "제안 저장 실패에 따른 환불")) {
-			log.error("승인은 성공했지만 보정 환불에 실패함 — 수동 확인 필요 paymentKey={}", paymentKey);
+			log.error("승인은 성공했지만 보정 환불에 실패함 — 수동 확인 필요 paymentKey={}", TossPaymentClient.mask(paymentKey));
 		}
 	}
 
