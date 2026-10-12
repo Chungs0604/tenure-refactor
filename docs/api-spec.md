@@ -3540,7 +3540,9 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 
 경로 키가 `listingId` 가 아니라 `itemId` 다 — API-140 과 같은 이유다. 요청의 `offerType` 은 아이템 현재 상태(열린 판매 등록 유무)와 일치해야 하며 안 맞으면 `OFFER_400_NOT_ALLOWED` 다.
 
-요청 `OfferCreateRequest` — `offerType` `offerPrice`(미판매만) `shippingAddressId` `buyerRequest?` `paymentMethod`. 전송 시점에 **결제 승인을 임시 확보**하고 24시간 만료를 건다. 미판매 아이템은 아이템당 1회만 가능하며, 시스템 자동 취소(다른 제안 수락·판매 내림)로 끝난 이력은 횟수에서 제외한다 — 제안자 본인 취소·거절·만료는 영구 소진이다.
+요청 `OfferCreateRequest` — `offerType` `offerPrice`(미판매만) `shippingAddressId` `buyerRequest?` `paymentMethod` `paymentKey` `orderId`. 전송 시점에 토스페이먼츠 결제 승인(confirm)을 실제로 호출하고 24시간 만료를 건다 — `paymentKey`·`orderId` 는 클라이언트가 결제위젯(토스 SDK)으로 결제를 완료한 뒤 돌려받는 값이다. 승인에 실패하면 `PAYMENT_402` 다. 미판매 아이템은 아이템당 1회만 가능하며, 시스템 자동 취소(다른 제안 수락·판매 내림)로 끝난 이력은 횟수에서 제외한다 — 제안자 본인 취소·거절·만료는 영구 소진이다.
+
+**간편결제(토스페이·카카오페이·네이버페이)는 confirm 호출 즉시 최종 결제가 끝난다** — 카드처럼 "임시 승인만" 해두는 단계가 없다. 그래서 거절·취소·만료로 이 결제를 되돌릴 때도 상태만 바꾸는 게 아니라 토스 결제취소(cancel) API를 실제로 호출해 환불한다(`PaymentService.release()`/`refund()`). "승인(authorized_at)/확정(captured_at)" 분리는 우리 도메인 모델일 뿐이다.
 
 미판매 구매 제안이면 같은 트랜잭션에서 해당 구매자·아이템의 `chat_room.purchase_offer_id` 를 이 제안으로 갱신한다 — 재제안이면 기존 방의 포인터가 최신 제안으로 바뀐다. 방이 없으면(최초 제안) 생성한다. 판매 중 거래 의사는 이미 `listing_id` 가 가격 출처라 채팅방을 건드리지 않는다.
 
@@ -3553,6 +3555,8 @@ Guidi / 788z Boots와 비슷한 스타일        비슷한 부츠 스타일을 �
 | `shippingAddressId` | Long | O | — | 배송지 |
 | `buyerRequest` | String |  | 500자 이내 | 거래 요청사항 |
 | `paymentMethod` | PaymentMethod | O | TOSS_PAY \| KAKAO_PAY \| NAVER_PAY | — |
+| `paymentKey` | String | O | — | 결제위젯에서 받은 토스페이먼츠 결제 승인 키 |
+| `orderId` | String | O | — | 결제위젯 호출 시 클라이언트가 생성한 주문 식별자 |
 
 **응답** (`data`)
 

@@ -164,11 +164,13 @@ public class ItemService {
 			throw new CustomException(ItemErrorCode.ITEM_409_ON_SALE);
 		}
 
-		// 수락 전 PENDING 제안이 남아 있으면 결제 승인을 해제하며 정리함
-		offerService.cancelPendingForDelist(itemId, OfferCancelReason.ITEM_DELETED);
-
 		// 태그가 '삭제된 아이템' 으로 남아야 해서 행은 지우지 않음
 		item.delete(LocalDateTime.now());
+
+		// 수락 전 PENDING 제안 정리(결제 환불 포함)를 메서드 마지막에 둔다 — 이 호출 안에서
+		// 건별로 실제 토스 환불이 커밋되는데, 그 뒤에 더 실패할 수 있는 코드가 있으면 "환불은
+		// 됐는데 아이템은 안 지워짐"이 될 수 있다(OfferService.reject() 등과 같은 이유)
+		offerService.cancelPendingForDelist(itemId, OfferCancelReason.ITEM_DELETED);
 	}
 
 	/** 소유자 본인만 고치고 지운다. 등록자여도 팔았으면 남의 옷이다. */

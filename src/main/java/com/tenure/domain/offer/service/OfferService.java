@@ -41,6 +41,7 @@ import com.tenure.domain.order.enums.OrderStatus;
 import com.tenure.domain.order.repository.OrderShipmentRepository;
 import com.tenure.domain.order.repository.OrderStatusHistoryRepository;
 import com.tenure.domain.order.repository.TradeOrderRepository;
+import com.tenure.domain.payment.client.TossConfirmResponse;
 import com.tenure.domain.payment.entity.Payment;
 import com.tenure.domain.payment.repository.PaymentRepository;
 import com.tenure.domain.payment.service.PaymentService;
@@ -58,6 +59,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -95,6 +97,7 @@ public class OfferService {
 	private final OrderShipmentRepository orderShipmentRepository;
 	private final OrderStatusHistoryRepository orderStatusHistoryRepository;
 	private final PaymentService paymentService;
+	private final OfferBatchExecutor offerBatchExecutor;
 	private final NotificationService notificationService;
 	private final OfferMapper offerMapper;
 	private final FileStorage fileStorage;
@@ -126,7 +129,12 @@ public class OfferService {
 				String.valueOf(result.getExpectedPayoutAmount()));
 	}
 
-	/** 구매 제안 / 거래 의사 전송. 결제 승인까지 같은 트랜잭션에서 끝냄 */
+	/**
+	 * 구매 제안 / 거래 의사 전송. 결제 승인까지 같은 트랜잭션에서 끝냄.
+	 *
+	 * 토스페이먼츠 confirm 호출은 다른 모든 검증을 통과한 뒤, 제안을 저장하기 '직전'에 한다 —
+	 * 검증 실패로 거부할 걸 먼저 돈부터 받는 순서가 되지 않도록 함
+	 */
 	@Transactional
 	@Loggable("구매 제안 전송")
 	public OfferCreateResponse create(Long buyerId, Long itemId, OfferCreateRequest request) {
@@ -202,42 +210,66 @@ public class OfferService {
 				basis.offerPrice(), basis.shippingFee(),
 				feeRate, basis.feeBearer());
 
-		PurchaseOffer offer;
+		// 토스페이먼츠 승인(confirm) — 이 시점까지는 DB 쓰기가 전혀 없어, 실패해도 되돌릴 게
+		// 없다. 간편결제는 confirm 호출 즉시 최종 결제가 끝나므로, 이 아래부터는 "이미 돈을
+		// 받은 뒤" 라는 뜻이다
+		TossConfirmResponse confirmed = paymentService.confirmWithPg(
+				request.getPaymentKey(), request.getOrderId(), result.getTotalPaymentAmount());
+
+		// 이 아래부터 반환까지, 무엇이 실패하든(락 타임아웃·채팅방/알림 저장 실패·유니크 제약 등)
+		// 반드시 보정 환불을 호출한 뒤 그대로 다시 던진다 — confirm 이 이미 성공해 돈이 빠져나간
+		// 뒤라, 제안이 안 만들어지면 결제만 남는 상태가 된다. 이 메서드가 정상 반환한 뒤
+		// 트랜잭션 커밋 자체가 실패하는 경우는 여기서 잡을 수 없다 — 그 창은 사후 대조가
+		// 필요한 영역으로 남는다. confirmed 를 쓰는 코드는 전부 이 try 안에 둔다
 		try {
-			// IDENTITY 전략이라 save 호출 시점에 바로 INSERT 됨 — uk_purchase_offer_limit 위반이면
-			// 여기서 바로 던져짐(동시에 보낸 두 번째 요청)
-			offer = purchaseOfferRepository.save(
-					PurchaseOffer.create(
-						basis.listing(), item, buyer, seller, basis.offerType(),
-						basis.offerPrice(), basis.shippingFee(), basis.feeBearer(), feeRate,
-						result.getBuyerFeeAmount(), result.getSellerFeeAmount(),
-						result.getTotalPaymentAmount(), result.getExpectedPayoutAmount(),
-						request.getBuyerRequest(), address, now
-					)
-			);
-		} catch (DataIntegrityViolationException e) {
-			// uk_purchase_offer_limit 은 PURCHASE_OFFER 행만 걸림(V20 함수형 인덱스) — TRADE_INTENT
-			// 에서 난 제약 위반을 같은 뜻으로 오역하지 않도록 유형으로 좁힘
-			if (basis.offerType() != OfferType.PURCHASE_OFFER) {
-				throw e;
+			// 토스가 금액을 서버에서도 검증하므로 위험하진 않지만, 혹시 어긋나면 바로 알 수
+			// 있게 로그만 남긴다 — amount 는 전부 FeeCalculator 의 서버 계산값이라 클라이언트가
+			// 보낸 값이 그대로 쓰이는 지점은 없다
+			if (!Objects.equals(confirmed.totalAmount(), result.getTotalPaymentAmount())) {
+				log.error("토스 confirm 금액이 서버 계산과 다름 orderId={} expected={} actual={}",
+						request.getOrderId(), result.getTotalPaymentAmount(), confirmed.totalAmount());
 			}
-			log.info("동시 요청으로 1회 제한 유니크 제약에 걸림 itemId={} buyerId={}", itemId, buyerId);
-			throw new CustomException(OfferErrorCode.OFFER_409_ALREADY_USED);
+
+			PurchaseOffer offer;
+			try {
+				// IDENTITY 전략이라 save 호출 시점에 바로 INSERT 됨 — uk_purchase_offer_limit 위반이면
+				// 여기서 바로 던져짐(동시에 보낸 두 번째 요청)
+				offer = purchaseOfferRepository.save(
+						PurchaseOffer.create(
+							basis.listing(), item, buyer, seller, basis.offerType(),
+							basis.offerPrice(), basis.shippingFee(), basis.feeBearer(), feeRate,
+							result.getBuyerFeeAmount(), result.getSellerFeeAmount(),
+							result.getTotalPaymentAmount(), result.getExpectedPayoutAmount(),
+							request.getBuyerRequest(), address, now
+						)
+				);
+			} catch (DataIntegrityViolationException e) {
+				// uk_purchase_offer_limit 은 PURCHASE_OFFER 행만 걸림(V20 함수형 인덱스) — TRADE_INTENT
+				// 에서 난 제약 위반을 같은 뜻으로 오역하지 않도록 유형으로 좁힘
+				if (basis.offerType() != OfferType.PURCHASE_OFFER) {
+					throw e;
+				}
+				log.info("동시 요청으로 1회 제한 유니크 제약에 걸림 itemId={} buyerId={}", itemId, buyerId);
+				throw new CustomException(OfferErrorCode.OFFER_409_ALREADY_USED);
+			}
+
+			paymentService.authorize(offer, request.getPaymentMethod(), result.getTotalPaymentAmount(), confirmed, now);
+
+			// 미판매+제안 방만 이 제안을 가격 출처로 가짐 — 판매중 채팅은 listing_id 가 그 역할을 함
+			if (basis.offerType() == OfferType.PURCHASE_OFFER) {
+				openOrUpdateChatRoom(item, buyer, seller, offer, now);
+			}
+
+			notificationService.notify(
+					seller, NotificationSettingType.TRADE_REQUEST, NotificationCategory.ACTION_REQUIRED,
+					item.getName(), tradeRequestBody(basis.offerType()),
+					item.getCoverImageKey(), NotificationTargetType.OFFER, offer.getId());
+
+			return offerMapper.toCreateResponse(offer, String.valueOf(result.getTotalPaymentAmount()));
+		} catch (RuntimeException e) {
+			paymentService.compensateFailedAuthorization(confirmed.paymentKey());
+			throw e;
 		}
-
-		paymentService.authorize(offer, request.getPaymentMethod(), result.getTotalPaymentAmount(), now);
-
-		// 미판매+제안 방만 이 제안을 가격 출처로 가짐 — 판매중 채팅은 listing_id 가 그 역할을 함
-		if (basis.offerType() == OfferType.PURCHASE_OFFER) {
-			openOrUpdateChatRoom(item, buyer, seller, offer, now);
-		}
-
-		notificationService.notify(
-				seller, NotificationSettingType.TRADE_REQUEST, NotificationCategory.ACTION_REQUIRED,
-				item.getName(), tradeRequestBody(basis.offerType()),
-				item.getCoverImageKey(), NotificationTargetType.OFFER, offer.getId());
-
-		return offerMapper.toCreateResponse(offer, String.valueOf(result.getTotalPaymentAmount()));
 	}
 
 	/** 제안서 상세. 구매자·판매자 시점에 따라 결제/정산 블록이 갈림 */
@@ -354,12 +386,16 @@ public class OfferService {
 		itemListingRepository.findOpenByItemId(itemId)
 				.ifPresent(openListing -> openListing.close(now));
 
-		int autoCanceledCount = autoCancelOtherPendingOffers(itemId, offerId, now);
-
 		notificationService.notify(
 				offer.getBuyer(), NotificationSettingType.REQUEST_STATUS, NotificationCategory.TRADE_STATUS,
 				item.getName(), "제안이 수락됐어요.",
 				item.getCoverImageKey(), NotificationTargetType.ORDER, order.getId());
+
+		// 경쟁 제안 자동 취소(환불 포함)를 메서드 마지막에 둔다 — 그 전에 있는 어떤 코드든
+		// 실패하면 accept() 전체(거래 생성 포함)가 롤백되는데, 경쟁 제안의 환불은 건별
+		// 독립 트랜잭션으로 이미 커밋돼버려 되돌릴 수 없다. 거래 생성 자체가 확정되기
+		// 직전까지 모든 코드를 통과한 뒤에만 경쟁 제안을 정리해야 한다
+		int autoCanceledCount = autoCancelOtherPendingOffers(itemId, offerId, now);
 
 		return offerMapper.toAcceptResponse(order, autoCanceledCount);
 	}
@@ -383,12 +419,15 @@ public class OfferService {
 		}
 
 		offer.reject(now);
-		paymentService.release(offerId, now);
 
 		notificationService.notify(
 				offer.getBuyer(), NotificationSettingType.REQUEST_STATUS, NotificationCategory.TRADE_STATUS,
 				offer.getItem().getName(), "제안이 거절됐어요.",
 				offer.getItem().getCoverImageKey(), NotificationTargetType.OFFER, offer.getId());
+
+		// 토스 환불(release)을 메서드의 마지막에 둔다 — 이후로 실패할 수 있는 코드가 없어야,
+		// 환불이 성공한 뒤 트랜잭션이 롤백돼 "돈은 돌아갔는데 상태는 그대로"가 되는 창을 없앤다
+		paymentService.release(offerId, now);
 	}
 
 	/** 아이템별 받은 제안·요청 목록 (판매자) */
@@ -438,9 +477,20 @@ public class OfferService {
 	 * 잘못이 아니라 1회 제한에서 제외하고, 결제 승인을 해제한 뒤 알림을 보냄.
 	 *
 	 * 호출자(ListingService.changeSaleStatus·closeOnSaleItemsForWithdrawal, ItemService.delete)가
-	 * 이미 이 아이템 행을 잠근 뒤라 item → offer 잠금 순서가 지켜짐 — 여기서는 제안 행만 다시 잠근다
+	 * 이미 이 아이템 행을 잠근 뒤라 item → offer 잠금 순서가 지켜짐 — 여기서는 제안 행만 다시 잠근다.
+	 *
+	 * 건별 처리(상태 전이·결제 해제·알림)는 OfferBatchExecutor.cancelIfPending 의 독립 트랜잭션으로
+	 * 넘긴다 — 토스 환불 호출이 실제로 일어나는 지금은, 한 건이 실패해도 이미 환불에 성공한
+	 * 다른 건들의 커밋이 같이 날아가면 안 된다.
+	 *
+	 * 다만 예외를 여기서 삼키지 않고 그대로 전파한다 — 호출자가 같은 트랜잭션에서 이 메서드
+	 * 뒤에 item.delete()/listing 상태 변경을 커밋하는데, 정리가 덜 끝난 채(환불 안 된 PENDING
+	 * 제안이 남은 채) 그게 커밋되면 "구매자가 나중에 직접 취소해도 1회 제한이 영구 소진된
+	 * 아이템" 같은 꼬인 상태가 남는다. 이미 성공해 커밋된 건들의 환불은 (REQUIRES_NEW 라)
+	 * 이 예외로 롤백되지 않는다 — 그래서 아직 처리 안 된 건이 하나라도 있으면 삭제/내림
+	 * 자체를 막는 게 맞다
 	 */
-	@Transactional
+	@Transactional(readOnly = true)
 	@Loggable("판매 내림/삭제에 따른 제안 정리")
 	public void cancelPendingForDelist(Long itemId, OfferCancelReason reason) {
 		LocalDateTime now = LocalDateTime.now();
@@ -451,15 +501,8 @@ public class OfferService {
 		// id 만 가볍게 훑고, 전이는 건마다 잠금 재조회로 다시 확인함 — 그 사이 구매자가 직접
 		// 취소했거나 이미 처리된 건이면 더 이상 대상이 아님
 		for (Long offerId : purchaseOfferRepository.findPendingIdsByItemId(itemId)) {
-			relockIfStillPending(offerId).ifPresent(offer -> {
-				offer.cancel(reason, now);
-				paymentService.release(offer.getId(), now);
-
-				notificationService.notify(
-						offer.getBuyer(), NotificationSettingType.REQUEST_AUTO_CANCEL, NotificationCategory.TRADE_STATUS,
-						offer.getItem().getName(), notificationBody,
-						offer.getItem().getCoverImageKey(), NotificationTargetType.OFFER, offer.getId());
-			});
+			offerBatchExecutor.cancelIfPending(
+					offerId, reason, now, NotificationSettingType.REQUEST_AUTO_CANCEL, notificationBody);
 		}
 	}
 
@@ -486,76 +529,83 @@ public class OfferService {
 	 * 받은 것도 reject() 대신 cancel() 을 씀 — reject() 로 끝내면 아무 잘못 없는 구매자가
 	 * 그 아이템에 영구히 재제안하지 못하게 된다(유니크 인덱스가 REJECTED 는 면제해주지 않음).
 	 *
-	 * 반환값은 정리 도중 상대가 먼저 수락해 거래가 생긴 제안이 있었는지 — 있었으면
-	 * UserService.withdraw() 가 탈퇴를 막아야 하는 신호임
+	 * 반환값은 탈퇴를 막아야 하는지 — 정리 도중 상대가 먼저 수락해 거래가 생긴 제안이
+	 * 있었거나, 환불(결제 해제)이 하나라도 실패했으면 true 임. UserService.withdraw() 가
+	 * 이 신호로 탈퇴를 막음
 	 */
-	@Transactional
+	@Transactional(readOnly = true)
 	@Loggable("탈퇴에 따른 제안 정리")
 	public boolean cancelAndRejectPendingForWithdrawal(Long userId) {
 		LocalDateTime now = LocalDateTime.now();
-		boolean concurrentTradeFound = false;
+		List<Long> offerIds = purchaseOfferRepository.findPendingIdsByBuyerOrSellerId(userId);
 
-		// 보낸 것·받은 것을 id 오름차순으로 합쳐 훑음 — 서로 PENDING 제안을 주고받은 두
-		// 사용자가 동시에 탈퇴해도 항상 같은 순서로 잠그기 위함. id 만 가볍게 읽고 건마다
-		// findForUpdate 로 재확인함 — 그 사이 상대가 수락했으면 ACCEPTED 로 정확히 보임
-		for (Long offerId : purchaseOfferRepository.findPendingIdsByBuyerOrSellerId(userId)) {
-			PurchaseOffer offer = findForUpdate(offerId);
-
-			if (offer.isPending()) {
-				offer.cancel(OfferCancelReason.WITHDRAWN, now);
-				// 임시로 잡아 둔 결제 승인을 풀어 상대가 확정하지 못하게 함
-				paymentService.release(offer.getId(), now);
-
-				if (offer.isBuyer(userId)) {
-					// 받는 쪽이던 판매자에게 제안이 사라졌음을 알림
-					notificationService.notify(
-							offer.getSeller(), NotificationSettingType.REQUEST_AUTO_CANCEL, NotificationCategory.TRADE_STATUS,
-							offer.getItem().getName(), "상대가 탈퇴해 받은 제안이 취소됐어요.",
-							offer.getItem().getCoverImageKey(), NotificationTargetType.OFFER, offer.getId());
-				} else {
-					// 보낸 쪽이던 구매자에게 취소됐음을 알림
-					notificationService.notify(
-							offer.getBuyer(), NotificationSettingType.REQUEST_AUTO_CANCEL, NotificationCategory.TRADE_STATUS,
-							offer.getItem().getName(), "상대가 탈퇴해 보낸 제안이 취소됐어요.",
-							offer.getItem().getCoverImageKey(), NotificationTargetType.OFFER, offer.getId());
-				}
-			} else if (offer.getStatus() == OfferStatus.ACCEPTED) {
-				// 정리 도중 상대가 먼저 수락해 거래가 생김 — 탈퇴를 이대로 진행하면 안 됨
-				log.info("탈퇴 정리 중 먼저 수락된 제안을 발견함 offerId={}", offerId);
-				concurrentTradeFound = true;
+		// 1단계: 잠그지 않고 먼저 전부 확인만 함 — 하나라도 이미 수락된 거래가 있으면 그
+		// 사실을 알기 전에 다른 제안들을 먼저 취소·환불해버리면, 탈퇴가 이 때문에 막혀도 그
+		// 환불(REQUIRES_NEW 로 이미 커밋됨)은 되돌릴 수 없다. 잠금 없는 조회라 경합이 남지만,
+		// 바로 이어지는 2단계의 재잠금 확인이 새로 생긴 경우까지 안전하게 걸러준다
+		for (Long offerId : offerIds) {
+			if (offerBatchExecutor.isAcceptedNow(offerId)) {
+				log.info("탈퇴 정리 전 이미 수락된 제안을 발견함 offerId={}", offerId);
+				return true;
 			}
-			// REJECTED·CANCELED·EXPIRED 는 거래가 생기지 않은 상태라 그냥 넘어감
 		}
 
-		return concurrentTradeFound;
+		// 2단계: 통과했으면 취소·환불을 진행함. 보낸 것·받은 것을 id 오름차순으로 합쳐 훑음 —
+		// 서로 PENDING 제안을 주고받은 두 사용자가 동시에 탈퇴해도 항상 같은 순서로 잠그기
+		// 위함. 건별 처리는 OfferBatchExecutor.cancelForWithdrawalIfPending 의 독립
+		// 트랜잭션으로 넘긴다 — 이유는 cancelPendingForDelist 주석 참고
+		boolean cleanupFailed = false;
+		for (Long offerId : offerIds) {
+			try {
+				if (offerBatchExecutor.cancelForWithdrawalIfPending(offerId, userId, now)) {
+					// 1단계 이후 상대가 수락해버린 드문 경합 — 그래도 안전하게 걸러진다
+					log.info("탈퇴 정리 중 먼저 수락된 제안을 발견함 offerId={}", offerId);
+					return true;
+				}
+			} catch (Exception e) {
+				// 여기서 예외를 삼키되(나머지 건은 계속 처리), 하나라도 실패하면 탈퇴 자체를
+				// 막는다 — 안 그러면 익명화된 사용자에게 아직 살아있는 결제가 붙은 제안이 남는다
+				log.warn("탈퇴 정리 중 오류 offerId={}", offerId, e);
+				cleanupFailed = true;
+			}
+		}
+
+		if (cleanupFailed) {
+			log.warn("제안 정리 중 일부가 실패해 탈퇴를 막음 userId={}", userId);
+			return true;
+		}
+		return false;
 	}
 
-	/** 24시간 무응답 자동 만료. 스케줄러가 호출함 */
-	@Transactional
+	/**
+	 * 24시간 무응답 자동 만료. 스케줄러가 호출함.
+	 *
+	 * 건별 처리는 OfferBatchExecutor.expireIfPending 의 독립 트랜잭션으로 넘긴다 — 이유는
+	 * cancelPendingForDelist 주석 참고
+	 */
+	@Transactional(readOnly = true)
 	@Loggable("구매 제안 자동 만료")
 	public void expirePending(LocalDateTime now) {
 		// id 만 가볍게 훑고, 전이는 건마다 잠금 재조회로 다시 확인함 — 그 사이 수락·거절·취소가
 		// 끼어들었으면 더 이상 대상이 아님
 		for (Long offerId : purchaseOfferRepository.findExpirableIds(now)) {
-			relockIfStillPending(offerId)
-					.filter(offer -> offer.isExpired(now))
-					.ifPresent(offer -> {
-						offer.expire(now);
-						paymentService.release(offer.getId(), now);
-
-						notificationService.notify(
-								offer.getBuyer(), NotificationSettingType.REQUEST_AUTO_CANCEL, NotificationCategory.TRADE_STATUS,
-								offer.getItem().getName(), "응답이 없어 보낸 제안이 만료됐어요.",
-								offer.getItem().getCoverImageKey(), NotificationTargetType.OFFER, offer.getId());
-					});
+			try {
+				offerBatchExecutor.expireIfPending(offerId, now);
+			} catch (Exception e) {
+				log.warn("자동 만료 처리 중 오류로 건너뜀 offerId={}", offerId, e);
+			}
 		}
 	}
 
 	/**
 	 * 같은 아이템의 나머지 대기 제안을 전부 취소함. 제안자의 1회 기회는 복구됨.
 	 *
-	 * accept() 가 이미 이 아이템 행을 잠근 뒤라 item → offer 잠금 순서가 지켜짐 — 여기서는
-	 * 제안 행만 다시 잠근다(건별로 구매자의 취소·거절과 경합할 수 있어 재확인이 필요함)
+	 * accept() 가 이미 이 아이템 행을 잠근 뒤라 item → offer 잠금 순서가 지켜짐.
+	 *
+	 * 건별 처리는 OfferBatchExecutor.cancelIfPending 의 독립 트랜잭션으로 넘긴다 — 방금 성공한
+	 * accept() 의 거래 생성까지 한 트랜잭션에 묶여 있었다면, 다른 제안 하나의 환불 호출이
+	 * 실패하는 순간 이미 끝난 거래까지 전부 롤백된다. 이유는 cancelPendingForDelist 주석 참고.
+	 * 그래서 accept() 의 핵심 결과(거래 생성)와 분리해 건마다 독립적으로 실패하게 한다
 	 */
 	private int autoCancelOtherPendingOffers(Long itemId, Long acceptedOfferId, LocalDateTime now) {
 		List<Long> otherIds = purchaseOfferRepository.findPendingIdsByItemId(itemId).stream()
@@ -564,30 +614,18 @@ public class OfferService {
 
 		int canceled = 0;
 		for (Long otherId : otherIds) {
-			Optional<PurchaseOffer> other = relockIfStillPending(otherId);
-			if (other.isEmpty()) {
-				continue;
+			try {
+				if (offerBatchExecutor.cancelIfPending(
+						otherId, OfferCancelReason.OTHER_OFFER_ACCEPTED, now,
+						NotificationSettingType.REQUEST_AUTO_CANCEL, "다른 제안이 수락되어 보낸 제안이 취소됐어요.")) {
+					canceled++;
+				}
+			} catch (Exception e) {
+				log.warn("경쟁 제안 자동 취소 중 오류로 건너뜀 offerId={}", otherId, e);
 			}
-			PurchaseOffer offer = other.get();
-			offer.cancel(OfferCancelReason.OTHER_OFFER_ACCEPTED, now);
-			paymentService.release(offer.getId(), now);
-			canceled++;
-
-			notificationService.notify(
-					offer.getBuyer(), NotificationSettingType.REQUEST_AUTO_CANCEL, NotificationCategory.TRADE_STATUS,
-					offer.getItem().getName(), "다른 제안이 수락되어 보낸 제안이 취소됐어요.",
-					offer.getItem().getCoverImageKey(), NotificationTargetType.OFFER, offer.getId());
 		}
 
 		return canceled;
-	}
-
-	/** 잠금 재조회 후 아직 PENDING 일 때만 돌려줌 — 그 사이 다른 응답이 먼저 끝났으면 빈 값임 */
-	private Optional<PurchaseOffer> relockIfStillPending(Long offerId) {
-
-		//findForUpdate로 가지고 온 offer는 비관적 락이 걸린 상태
-		PurchaseOffer offer = findForUpdate(offerId);
-		return offer.isPending() ? Optional.of(offer) : Optional.empty();
 	}
 
 	/**

@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.tenure.domain.address.entity.ShippingAddress;
@@ -22,24 +22,18 @@ import com.tenure.domain.listing.entity.ItemListing;
 import com.tenure.domain.listing.enums.FeeBearer;
 import com.tenure.domain.listing.exception.ListingErrorCode;
 import com.tenure.domain.listing.repository.ItemListingRepository;
-import com.tenure.domain.notification.enums.NotificationCategory;
-import com.tenure.domain.notification.enums.NotificationSettingType;
-import com.tenure.domain.notification.enums.NotificationTargetType;
 import com.tenure.domain.notification.service.NotificationService;
 import com.tenure.domain.offer.dto.request.OfferCreateRequest;
-import com.tenure.domain.offer.entity.PurchaseOffer;
-import com.tenure.domain.offer.enums.OfferCancelReason;
-import com.tenure.domain.offer.enums.OfferStatus;
 import com.tenure.domain.offer.enums.OfferType;
 import com.tenure.domain.offer.exception.OfferErrorCode;
 import com.tenure.domain.offer.repository.PurchaseOfferRepository;
+import com.tenure.domain.payment.client.TossConfirmResponse;
 import com.tenure.domain.payment.enums.PaymentMethod;
 import com.tenure.domain.payment.service.PaymentService;
 import com.tenure.domain.user.entity.User;
 import com.tenure.domain.user.enums.Gender;
 import com.tenure.domain.user.repository.UserRepository;
 import com.tenure.global.exception.CustomException;
-import java.lang.reflect.Constructor;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -71,6 +65,7 @@ class OfferServiceTest {
 
 	@Mock private PurchaseOfferRepository purchaseOfferRepository;
 	@Mock private PaymentService paymentService;
+	@Mock private OfferBatchExecutor offerBatchExecutor;
 	@Mock private NotificationService notificationService;
 	@Mock private ItemRepository itemRepository;
 	@Mock private ItemListingRepository itemListingRepository;
@@ -81,166 +76,76 @@ class OfferServiceTest {
 
 	@InjectMocks private OfferService offerService;
 
+	/**
+	 * 건별 취소·결제 해제·알림은 OfferBatchExecutor.cancelForWithdrawalIfPending 으로 옮겼다 —
+	 * OfferBatchExecutorTest 참고. 여기서는 대상 id마다 그 메서드가 독립적으로(건별 REQUIRES_NEW
+	 * 트랜잭션으로) 호출되고, 반환값(거래 발견 여부)을 올바르게 합산하는지, 한 건이 예외를
+	 * 던져도 나머지는 계속 처리하는지만 본다.
+	 */
 	@Nested
 	@DisplayName("탈퇴에 따른 제안 정리")
 	class CancelAndRejectPendingForWithdrawal {
 
 		@Test
-		@DisplayName("내가 보낸 PENDING 은 취소하고 결제를 해제한 뒤 판매자에게 알림을 보낸다")
-		void withdrawal_sentPending_cancelsReleasesAndNotifiesSeller() {
-			User buyer = user(BUYER_ID);
-			User seller = user(SELLER_ID);
-			PurchaseOffer offer = pendingOffer(SENT_OFFER_ID, buyer, seller);
-
-			given(purchaseOfferRepository.findPendingIdsByBuyerOrSellerId(BUYER_ID)).willReturn(List.of(SENT_OFFER_ID));
-			given(purchaseOfferRepository.findByIdForUpdate(SENT_OFFER_ID)).willReturn(Optional.of(offer));
+		@DisplayName("대상이 없으면 배치 실행기를 호출하지 않는다")
+		void withdrawal_noTargets_doesNothing() {
+			given(purchaseOfferRepository.findPendingIdsByBuyerOrSellerId(BUYER_ID)).willReturn(List.of());
 
 			boolean concurrentTradeFound = offerService.cancelAndRejectPendingForWithdrawal(BUYER_ID);
 
 			assertThat(concurrentTradeFound).isFalse();
-			assertThat(offer.getStatus()).isEqualTo(OfferStatus.CANCELED);
-			assertThat(offer.getCancelReason()).isEqualTo(OfferCancelReason.WITHDRAWN);
-
-			verify(paymentService).release(eq(SENT_OFFER_ID), any());
-			verify(notificationService).notify(
-					eq(seller), eq(NotificationSettingType.REQUEST_AUTO_CANCEL), eq(NotificationCategory.TRADE_STATUS),
-					any(), any(), any(), eq(NotificationTargetType.OFFER), eq(SENT_OFFER_ID));
+			verify(offerBatchExecutor, never()).cancelForWithdrawalIfPending(any(), any(), any());
 		}
 
 		@Test
-		@DisplayName("내가 받은 PENDING 도 취소 처리하고(거절 아님) 결제를 해제한 뒤 구매자에게 알림을 보낸다")
-		void withdrawal_receivedPending_cancelsReleasesAndNotifiesBuyer() {
-			User buyer = user(BUYER_ID);
-			User seller = user(SELLER_ID);
-			PurchaseOffer offer = pendingOffer(RECEIVED_OFFER_ID, buyer, seller);
-
-			given(purchaseOfferRepository.findPendingIdsByBuyerOrSellerId(SELLER_ID)).willReturn(List.of(RECEIVED_OFFER_ID));
-			given(purchaseOfferRepository.findByIdForUpdate(RECEIVED_OFFER_ID)).willReturn(Optional.of(offer));
-
-			boolean concurrentTradeFound = offerService.cancelAndRejectPendingForWithdrawal(SELLER_ID);
-
-			assertThat(concurrentTradeFound).isFalse();
-			// reject() 가 아니라 cancel(WITHDRAWN) 이어야 함 — uk_purchase_offer_limit 이
-			// REJECTED 는 면제해주지 않아 reject() 로 끝내면 구매자의 1회 제한이 영구 소진된다
-			assertThat(offer.getStatus()).isEqualTo(OfferStatus.CANCELED);
-			assertThat(offer.getCancelReason()).isEqualTo(OfferCancelReason.WITHDRAWN);
-
-			verify(paymentService).release(eq(RECEIVED_OFFER_ID), any());
-			verify(notificationService).notify(
-					eq(buyer), eq(NotificationSettingType.REQUEST_AUTO_CANCEL), eq(NotificationCategory.TRADE_STATUS),
-					any(), any(), any(), eq(NotificationTargetType.OFFER), eq(RECEIVED_OFFER_ID));
-		}
-
-		@Test
-		@DisplayName("재잠금 사이 거절·취소·만료 등으로 이미 끝난 건은 건드리지 않고 거래 발견으로도 안 본다")
-		void withdrawal_alreadyFinishedBetweenFetchAndLock_skipsSafely() {
-			User buyer = user(BUYER_ID);
-			User seller = user(SELLER_ID);
-			PurchaseOffer alreadyExpired = pendingOffer(SENT_OFFER_ID, buyer, seller);
-			alreadyExpired.expire(LocalDateTime.now());
-
-			given(purchaseOfferRepository.findPendingIdsByBuyerOrSellerId(BUYER_ID)).willReturn(List.of(SENT_OFFER_ID));
-			given(purchaseOfferRepository.findByIdForUpdate(SENT_OFFER_ID)).willReturn(Optional.of(alreadyExpired));
+		@DisplayName("대상 id마다 배치 실행기를 호출하고 거래 발견 여부를 합산한다")
+		void withdrawal_targets_delegatesEachIdAndAggregates() {
+			given(purchaseOfferRepository.findPendingIdsByBuyerOrSellerId(BUYER_ID))
+					.willReturn(List.of(SENT_OFFER_ID, RECEIVED_OFFER_ID));
+			given(offerBatchExecutor.cancelForWithdrawalIfPending(eq(SENT_OFFER_ID), eq(BUYER_ID), any()))
+					.willReturn(false);
+			given(offerBatchExecutor.cancelForWithdrawalIfPending(eq(RECEIVED_OFFER_ID), eq(BUYER_ID), any()))
+					.willReturn(true);
 
 			boolean concurrentTradeFound = offerService.cancelAndRejectPendingForWithdrawal(BUYER_ID);
 
-			assertThat(concurrentTradeFound).isFalse();
-			verify(paymentService, never()).release(any(), any());
-			verify(notificationService, never()).notify(any(), any(), any(), any(), any(), any(), any(), any());
+			// 먼저 처리된 건이 신호를 false 로 돌려줘도, 뒤이은 건의 true 가 덮이지 않아야 함
+			assertThat(concurrentTradeFound).isTrue();
+			verify(offerBatchExecutor).cancelForWithdrawalIfPending(eq(SENT_OFFER_ID), eq(BUYER_ID), any());
+			verify(offerBatchExecutor).cancelForWithdrawalIfPending(eq(RECEIVED_OFFER_ID), eq(BUYER_ID), any());
 		}
 
 		@Test
-		@DisplayName("재잠금 사이 상대가 먼저 수락해 거래가 생긴 건은 손대지 않고 거래 발견으로 알려준다")
-		void withdrawal_alreadyAcceptedBetweenFetchAndLock_reportsConcurrentTrade() {
-			User buyer = user(BUYER_ID);
-			User seller = user(SELLER_ID);
-			PurchaseOffer alreadyAccepted = pendingOffer(SENT_OFFER_ID, buyer, seller);
-			alreadyAccepted.accept(LocalDateTime.now());
+		@DisplayName("한 건이 예외를 던져도 나머지 건은 계속 처리하지만, 실패가 있었으니 탈퇴는 막는다")
+		void withdrawal_oneThrows_othersContinueButWithdrawalIsBlocked() {
+			given(purchaseOfferRepository.findPendingIdsByBuyerOrSellerId(BUYER_ID))
+					.willReturn(List.of(SENT_OFFER_ID, RECEIVED_OFFER_ID));
+			doThrow(new RuntimeException("토스 취소 실패"))
+					.when(offerBatchExecutor).cancelForWithdrawalIfPending(eq(SENT_OFFER_ID), eq(BUYER_ID), any());
+			given(offerBatchExecutor.cancelForWithdrawalIfPending(eq(RECEIVED_OFFER_ID), eq(BUYER_ID), any()))
+					.willReturn(false);
 
-			given(purchaseOfferRepository.findPendingIdsByBuyerOrSellerId(BUYER_ID)).willReturn(List.of(SENT_OFFER_ID));
-			given(purchaseOfferRepository.findByIdForUpdate(SENT_OFFER_ID)).willReturn(Optional.of(alreadyAccepted));
+			boolean concurrentTradeFound = offerService.cancelAndRejectPendingForWithdrawal(BUYER_ID);
+
+			// 환불 실패가 하나라도 있으면 탈퇴를 막는다 — 안 그러면 익명화된 사용자에게 아직
+			// 살아있는 결제가 붙은 제안이 남는다
+			assertThat(concurrentTradeFound).isTrue();
+			verify(offerBatchExecutor).cancelForWithdrawalIfPending(eq(RECEIVED_OFFER_ID), eq(BUYER_ID), any());
+		}
+
+		@Test
+		@DisplayName("이미 수락된 건이 있으면 아무것도 취소·환불하지 않고 바로 탈퇴를 막는다")
+		void withdrawal_alreadyAccepted_blocksBeforeCancelingAnything() {
+			given(purchaseOfferRepository.findPendingIdsByBuyerOrSellerId(BUYER_ID))
+					.willReturn(List.of(SENT_OFFER_ID, RECEIVED_OFFER_ID));
+			given(offerBatchExecutor.isAcceptedNow(SENT_OFFER_ID)).willReturn(false);
+			given(offerBatchExecutor.isAcceptedNow(RECEIVED_OFFER_ID)).willReturn(true);
 
 			boolean concurrentTradeFound = offerService.cancelAndRejectPendingForWithdrawal(BUYER_ID);
 
 			assertThat(concurrentTradeFound).isTrue();
-			assertThat(alreadyAccepted.getStatus()).isEqualTo(OfferStatus.ACCEPTED);
-			verify(paymentService, never()).release(any(), any());
-			verify(notificationService, never()).notify(any(), any(), any(), any(), any(), any(), any(), any());
-		}
-
-		@Test
-		@DisplayName("보낸 제안과 받은 제안이 여러 건씩 섞여 있어도 전부 취소 처리한다")
-		void withdrawal_multipleSentAndReceivedPending_processesAllOfThem() {
-			Long sentOfferId2 = 11L;
-			Long receivedOfferId2 = 21L;
-
-			User withdrawing = user(BUYER_ID);
-			User otherSeller1 = user(SELLER_ID);
-			User otherSeller2 = user(3L);
-			User otherBuyer1 = user(4L);
-			User otherBuyer2 = user(5L);
-
-			PurchaseOffer sent1 = pendingOffer(SENT_OFFER_ID, withdrawing, otherSeller1);
-			PurchaseOffer sent2 = pendingOffer(sentOfferId2, withdrawing, otherSeller2);
-			PurchaseOffer received1 = pendingOffer(RECEIVED_OFFER_ID, otherBuyer1, withdrawing);
-			PurchaseOffer received2 = pendingOffer(receivedOfferId2, otherBuyer2, withdrawing);
-
-			// 하나로 합친 쿼리는 id 오름차순이라 보낸 것·받은 것이 섞여 나올 수 있음을 그대로 반영
-			given(purchaseOfferRepository.findPendingIdsByBuyerOrSellerId(BUYER_ID))
-					.willReturn(List.of(SENT_OFFER_ID, sentOfferId2, RECEIVED_OFFER_ID, receivedOfferId2));
-			given(purchaseOfferRepository.findByIdForUpdate(SENT_OFFER_ID)).willReturn(Optional.of(sent1));
-			given(purchaseOfferRepository.findByIdForUpdate(sentOfferId2)).willReturn(Optional.of(sent2));
-			given(purchaseOfferRepository.findByIdForUpdate(RECEIVED_OFFER_ID)).willReturn(Optional.of(received1));
-			given(purchaseOfferRepository.findByIdForUpdate(receivedOfferId2)).willReturn(Optional.of(received2));
-
-			boolean concurrentTradeFound = offerService.cancelAndRejectPendingForWithdrawal(BUYER_ID);
-
-			assertThat(concurrentTradeFound).isFalse();
-			assertThat(sent1.getStatus()).isEqualTo(OfferStatus.CANCELED);
-			assertThat(sent2.getStatus()).isEqualTo(OfferStatus.CANCELED);
-			assertThat(sent1.getCancelReason()).isEqualTo(OfferCancelReason.WITHDRAWN);
-			assertThat(sent2.getCancelReason()).isEqualTo(OfferCancelReason.WITHDRAWN);
-			assertThat(received1.getStatus()).isEqualTo(OfferStatus.CANCELED);
-			assertThat(received2.getStatus()).isEqualTo(OfferStatus.CANCELED);
-			assertThat(received1.getCancelReason()).isEqualTo(OfferCancelReason.WITHDRAWN);
-			assertThat(received2.getCancelReason()).isEqualTo(OfferCancelReason.WITHDRAWN);
-
-			verify(paymentService, times(4)).release(any(), any());
-			verify(notificationService, times(4))
-					.notify(any(), any(), any(), any(), any(), any(), any(), any());
-		}
-
-		@Test
-		@DisplayName("보낸 제안 중 하나가 먼저 수락돼도 나머지 PENDING 건은 계속 처리한다")
-		void withdrawal_oneOfMultipleSentAlreadyAccepted_stillProcessesTheRest() {
-			Long acceptedOfferId = SENT_OFFER_ID;
-			Long stillPendingOfferId = 11L;
-
-			User withdrawing = user(BUYER_ID);
-			User seller1 = user(SELLER_ID);
-			User seller2 = user(3L);
-
-			PurchaseOffer accepted = pendingOffer(acceptedOfferId, withdrawing, seller1);
-			accepted.accept(LocalDateTime.now());
-			PurchaseOffer stillPending = pendingOffer(stillPendingOfferId, withdrawing, seller2);
-
-			given(purchaseOfferRepository.findPendingIdsByBuyerOrSellerId(BUYER_ID))
-					.willReturn(List.of(acceptedOfferId, stillPendingOfferId));
-			given(purchaseOfferRepository.findByIdForUpdate(acceptedOfferId)).willReturn(Optional.of(accepted));
-			given(purchaseOfferRepository.findByIdForUpdate(stillPendingOfferId)).willReturn(Optional.of(stillPending));
-
-			boolean concurrentTradeFound = offerService.cancelAndRejectPendingForWithdrawal(BUYER_ID);
-
-			// 먼저 수락된 건을 만나 true 로 바뀐 신호가 뒤이은 정상 처리로 다시 false 가 되지 않는다
-			assertThat(concurrentTradeFound).isTrue();
-			assertThat(accepted.getStatus()).isEqualTo(OfferStatus.ACCEPTED);
-			// 수락된 건과 별개로 나머지는 그대로 취소 처리된다 — 하나의 충돌이 전체 정리를 멈추지 않는다
-			assertThat(stillPending.getStatus()).isEqualTo(OfferStatus.CANCELED);
-			assertThat(stillPending.getCancelReason()).isEqualTo(OfferCancelReason.WITHDRAWN);
-
-			verify(paymentService, times(1)).release(eq(stillPendingOfferId), any());
-			verify(notificationService, times(1))
-					.notify(any(), any(), any(), any(), any(), any(), any(), any());
+			// 2단계(실제 취소·환불)로는 아예 넘어가지 않는다
+			verify(offerBatchExecutor, never()).cancelForWithdrawalIfPending(any(), any(), any());
 		}
 	}
 
@@ -283,6 +188,7 @@ class OfferServiceTest {
 			given(purchaseOfferRepository.findLatestByItemIdAndBuyerId(ITEM_ID, BUYER_ID)).willReturn(Optional.empty());
 			given(shippingAddressRepository.findByIdAndUserId(1L, BUYER_ID))
 					.willReturn(Optional.of(shippingAddress(buyer)));
+			given(paymentService.confirmWithPg(any(), any(), any())).willReturn(confirmedResponse());
 			given(purchaseOfferRepository.save(any())).willThrow(new DataIntegrityViolationException("dup"));
 
 			OfferCreateRequest request = purchaseOfferRequest();
@@ -293,6 +199,9 @@ class OfferServiceTest {
 					.isInstanceOf(CustomException.class)
 					.extracting(e -> ((CustomException) e).getErrorCode())
 					.isEqualTo(OfferErrorCode.OFFER_409_ALREADY_USED);
+
+			// 이미 승인된 결제를 되돌리지 않으면 제안도 없이 돈만 빠져나간 상태로 남는다
+			verify(paymentService).compensateFailedAuthorization("test-payment-key");
 		}
 
 		@Test
@@ -310,6 +219,7 @@ class OfferServiceTest {
 			given(userBlockRepository.existsMutualBlock(BUYER_ID, SELLER_ID)).willReturn(false);
 			given(shippingAddressRepository.findByIdAndUserId(1L, BUYER_ID))
 					.willReturn(Optional.of(shippingAddress(buyer)));
+			given(paymentService.confirmWithPg(any(), any(), any())).willReturn(confirmedResponse());
 			DataIntegrityViolationException original = new DataIntegrityViolationException("other constraint");
 			given(purchaseOfferRepository.save(any())).willThrow(original);
 
@@ -317,6 +227,8 @@ class OfferServiceTest {
 					.offerType(OfferType.TRADE_INTENT)
 					.shippingAddressId(1L)
 					.paymentMethod(PaymentMethod.TOSS_PAY)
+					.paymentKey("test-payment-key")
+					.orderId("test-order-id")
 					.build();
 
 			// TRADE_INTENT 는 uk_purchase_offer_limit 대상이 아니므로(V20 함수형 인덱스),
@@ -325,6 +237,8 @@ class OfferServiceTest {
 					.isSameAs(original);
 			// 1회 제한 조회는 PURCHASE_OFFER 에만 거는 로직이라 TRADE_INTENT 에서는 아예 불리지 않음
 			verify(purchaseOfferRepository, never()).findLatestByItemIdAndBuyerId(any(), any());
+			// 이 분기도 예외 종류와 무관하게 이미 승인된 결제를 되돌려야 한다
+			verify(paymentService).compensateFailedAuthorization("test-payment-key");
 		}
 	}
 
@@ -355,27 +269,13 @@ class OfferServiceTest {
 				.offerPrice(100_000)
 				.shippingAddressId(1L)
 				.paymentMethod(PaymentMethod.TOSS_PAY)
+				.paymentKey("test-payment-key")
+				.orderId("test-order-id")
 				.build();
 	}
 
-	/** PENDING 제안 최소 픽스처. 이 테스트가 보는 필드(item·buyer·seller·status)만 채운다 —
-	 * 나머지는 OfferService 의 이 경로가 읽지 않는다 */
-	private static PurchaseOffer pendingOffer(Long offerId, User buyer, User seller) {
-		PurchaseOffer offer = newInstance(PurchaseOffer.class);
-		ReflectionTestUtils.setField(offer, "id", offerId);
-		ReflectionTestUtils.setField(offer, "item", item());
-		ReflectionTestUtils.setField(offer, "buyer", buyer);
-		ReflectionTestUtils.setField(offer, "seller", seller);
-		ReflectionTestUtils.setField(offer, "status", OfferStatus.PENDING);
-		return offer;
-	}
-
-	private static Item item() {
-		Item item = newInstance(Item.class);
-		ReflectionTestUtils.setField(item, "id", 100L);
-		ReflectionTestUtils.setField(item, "name", "긴소매 티셔츠");
-		ReflectionTestUtils.setField(item, "coverImageKey", "item/2026/09/cover.jpg");
-		return item;
+	private static TossConfirmResponse confirmedResponse() {
+		return new TossConfirmResponse("test-payment-key", "test-order-id", 100_000, null);
 	}
 
 	private static User user(Long id) {
@@ -385,16 +285,5 @@ class OfferServiceTest {
 		);
 		ReflectionTestUtils.setField(user, "id", id);
 		return user;
-	}
-
-	/** protected 기본 생성자(JPA 전용)를 테스트에서만 열어 빈 엔티티를 만든다 */
-	private static <T> T newInstance(Class<T> type) {
-		try {
-			Constructor<T> constructor = type.getDeclaredConstructor();
-			constructor.setAccessible(true);
-			return constructor.newInstance();
-		} catch (ReflectiveOperationException e) {
-			throw new IllegalStateException("테스트 픽스처 생성 실패: " + type.getSimpleName(), e);
-		}
 	}
 }

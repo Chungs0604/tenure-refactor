@@ -250,9 +250,6 @@ public class ListingService {
 		itemListingRepository.findOpenByItemId(itemId)
 				.ifPresent(listing -> listing.close(LocalDateTime.now()));
 
-		// 응답을 못 받은 대기 제안이 남아 있으면 함께 정리함 — 막아두면 결제 승인이 잡힌 채 방치됨
-		offerService.cancelPendingForDelist(itemId, OfferCancelReason.LISTING_DELISTED);
-
 		item.changeSaleStatus(saleStatus);
 
 		// 두 상태(NOT_FOR_SALE·SOLD) 중 판매 완료만 알림을 보냄 — 미판매 전환은 화면 근거가 없어 뺌
@@ -260,7 +257,14 @@ public class ListingService {
 			notifyWishlisters(item, "판매 완료됐어요.");
 		}
 
-		return listingMapper.toSaleStatusResponse(item);
+		SaleStatusResponse response = listingMapper.toSaleStatusResponse(item);
+
+		// 응답을 못 받은 대기 제안 정리(결제 환불 포함)를 메서드 마지막에 둔다 — 이 호출
+		// 안에서 건별로 실제 토스 환불이 커밋되는데, 그 뒤에 더 실패할 수 있는 코드가 있으면
+		// "환불은 됐는데 판매 상태는 그대로"가 될 수 있다(OfferService.reject() 등과 같은 이유)
+		offerService.cancelPendingForDelist(itemId, OfferCancelReason.LISTING_DELISTED);
+
+		return response;
 	}
 
 	/**
@@ -286,9 +290,10 @@ public class ListingService {
 				itemListingRepository.findOpenByItemId(itemId)
 						.ifPresent(listing -> listing.close(now));
 
-				offerService.cancelPendingForDelist(itemId, OfferCancelReason.LISTING_DELISTED);
-
 				item.changeSaleStatus(SaleStatus.NOT_FOR_SALE);
+
+				// 대기 제안 정리(환불 포함)를 마지막에 두는 이유는 changeSaleStatus() 주석 참고
+				offerService.cancelPendingForDelist(itemId, OfferCancelReason.LISTING_DELISTED);
 			});
 		}
 	}

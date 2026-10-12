@@ -1476,7 +1476,7 @@ OOTD 게시물. 착용 날짜를 갖고 마이페이지에서 날짜별로 조�
 | `status` | VARCHAR(20) | PaymentStatus |  | O |  | `design` | 승인/확정/해제 3단계 |
 | `amount` | INT | Integer |  | O |  | `design` | '최종 결제 금액' / '결제 금액' |
 | `method_detail` | VARCHAR(100) | String |  |  |  | `design` | 제안서·거래 상세의 '결제 수단'이 `토스뱅크 1234-1234-1234` 로 표시된다. enum 만으로는 못 그려 PG 가 준 표시 문자열을 스냅샷한다 |
-| `pg_transaction_id` | VARCHAR(100) | String |  |  |  | `inferred` | PG 연동 식별자. 화면 미표시 |
+| `pg_transaction_id` | VARCHAR(200) | String |  |  |  | `inferred` | PG 연동 식별자(토스페이먼츠 paymentKey). 화면 미표시. 토스 스펙상 최대 200자라 V23 에서 넓힘 |
 | `authorized_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | '결제 승인이 임시로 확보되었습니다' |
 | `captured_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | '판매자가 수락하면 최종 결제되며' |
 | `released_at` | DATETIME(6) | LocalDateTime |  |  |  | `design` | '거절·취소·만료 시 승인이 해제됩니다' |

@@ -26,6 +26,11 @@ import lombok.NoArgsConstructor;
 /**
  * 결제. 승인과 확정이 분리되며 주문보다 먼저 생성된다 — 구매자가 제안을 보낼 때 승인이 잡히고, 판매자가 수락해야 TradeOrder 가 생긴다.
  *
+ * <p>이 승인/확정 분리는 우리 도메인 모델일 뿐, 토스페이먼츠 간편결제(토스페이·카카오페이·
+ * 네이버페이) 자체는 confirm 호출 즉시 최종 결제가 끝난다 — 카드처럼 "임시 승인만" 해두는
+ * 단계가 없다. 그래서 거절·취소·만료로 이 결제를 되돌릴 때는 상태만 바꾸는 게 아니라
+ * {@code TossPaymentClient.cancel()} 로 실제 환불을 호출해야 한다({@code PaymentService} 참고).
+ *
  * <p>생성 메서드는 기능 구현 시 추가한다 — 무엇이 필수 인자인지는 도메인 규칙이라
  * 스키마에서 읽을 수 없다. {@code @Builder} 가 PRIVATE 이라 팩토리 없이는 만들 수 없다.
  */
@@ -73,7 +78,8 @@ public class Payment extends BaseEntity {
 	private Integer amount;
 
 	/** PG 연동 식별자. 화면 미표시 */
-	@Column(name = "pg_transaction_id", length = 100)
+	/** 토스페이먼츠 paymentKey. 스펙상 최대 200자 */
+	@Column(name = "pg_transaction_id", length = 200)
 	private String pgTransactionId;
 
 	/** '결제 승인이 임시로 확보되었습니다' */
@@ -93,15 +99,19 @@ public class Payment extends BaseEntity {
 	private LocalDateTime refundedAt;
 
 	/**
-	 * 결제 승인. PG 연동이 없어 항상 성공하는 mock 승인임 — 실패 경로(PAYMENT_402)는 실제 PG 를
-	 * 붙이는 시점에 엶
+	 * 결제 승인. 토스페이먼츠 confirm 호출이 이미 성공한 뒤에만 불린다 — pgTransactionId 는 그
+	 * 응답의 paymentKey 를 그대로 스냅샷한다
 	 */
-	public static Payment authorize(PurchaseOffer offer, PaymentMethod method, Integer amount, LocalDateTime now) {
+	public static Payment authorize(
+			PurchaseOffer offer, PaymentMethod method, String methodDetail,
+			Integer amount, String pgTransactionId, LocalDateTime now) {
 		return Payment.builder()
 				.offer(offer)
 				.method(method)
+				.methodDetail(methodDetail)
 				.status(PaymentStatus.AUTHORIZED)
 				.amount(amount)
+				.pgTransactionId(pgTransactionId)
 				.authorizedAt(now)
 				.build();
 	}

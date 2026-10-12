@@ -423,6 +423,8 @@ class UserWithdrawalConcurrencyTest extends IntegrationTestSupport {
 				.offerPrice(100_000)
 				.shippingAddressId(address.getId())
 				.paymentMethod(PaymentMethod.TOSS_PAY)
+				.paymentKey("test-payment-key")
+				.orderId(UUID.randomUUID().toString())
 				.build();
 	}
 }
